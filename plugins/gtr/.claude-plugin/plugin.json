@@ -1,0 +1,14 @@
+{
+  "name": "gtr",
+  "version": "1.0.0",
+  "description": "Git worktree management using git-worktree-runner for parallel branch development",
+  "author": {
+    "name": "vampik33",
+    "email": "vampik33@users.noreply.github.com",
+    "url": "https://github.com/vampik33"
+  },
+  "homepage": "https://github.com/vampik33/claude-plugins",
+  "repository": "https://github.com/vampik33/claude-plugins",
+  "license": "Apache-2.0",
+  "keywords": ["git", "worktree", "branches", "parallel-development"]
+}

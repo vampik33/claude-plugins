@@ -1,0 +1,26 @@
+{
+  "name": "claude-plugins",
+  "owner": {
+    "name": "vampik33",
+    "email": "vampik33@users.noreply.github.com"
+  },
+  "metadata": {
+    "description": "A collection of Claude Code plugins for development workflows",
+    "version": "1.0.0",
+    "homepage": "https://github.com/vampik33/claude-plugins"
+  },
+  "plugins": [
+    {
+      "name": "gtr",
+      "description": "Git worktree management using git-worktree-runner for parallel branch development",
+      "version": "1.0.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/gtr",
+      "category": "Git Workflow",
+      "keywords": ["git", "worktree", "branches", "parallel-development"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
+    }
+  ]
+}

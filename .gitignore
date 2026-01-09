@@ -1,0 +1,16 @@
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Claude Code local files
+.claude/
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

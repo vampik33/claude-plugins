@@ -1,0 +1,6 @@
+---
+enabled: true
+session_threshold_minutes: 10
+---
+
+Build completed, ready for review

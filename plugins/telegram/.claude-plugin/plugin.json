@@ -1,0 +1,14 @@
+{
+  "name": "telegram",
+  "version": "1.0.0",
+  "description": "Telegram notifications for Claude Code sessions - send messages manually or automatically when sessions exceed configured duration",
+  "author": {
+    "name": "vampik33",
+    "email": "vampik33@users.noreply.github.com",
+    "url": "https://github.com/vampik33"
+  },
+  "homepage": "https://github.com/vampik33/claude-plugins",
+  "repository": "https://github.com/vampik33/claude-plugins",
+  "license": "Apache-2.0",
+  "keywords": ["telegram", "notifications", "messaging", "alerts"]
+}

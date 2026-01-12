@@ -29,6 +29,7 @@ claude --plugin-dir /path/to/claude-plugins/plugins/<plugin-name>
 | Plugin | Description |
 |--------|-------------|
 | **[gtr](plugins/gtr/)** | Git worktree management using git-worktree-runner for parallel branch development |
+| **[telegram](plugins/telegram/)** | Telegram notifications - manual or automatic messages when sessions exceed configured duration |
 
 ## Team Setup
 

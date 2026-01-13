@@ -14,20 +14,19 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/yaml-helpers.sh"
 
-STATE_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/telegram.local.md"
+# Check if plugin is enabled (opt-in behavior with dual-scope support)
+# User config: ~/.claude/telegram.local.md (global defaults)
+# Project config: .claude/telegram.local.md (project overrides)
+ENABLED_STATUS=$(is_plugin_enabled)
 
-# Check if plugin is enabled (opt-in behavior)
-PLUGIN_ENABLED=false
-if [[ -f "$STATE_FILE" ]]; then
-  FRONTMATTER=$(extract_frontmatter "$STATE_FILE")
-  ENABLED_VALUE=$(parse_yaml_field "enabled" "true" "$FRONTMATTER")
-  if [[ "$ENABLED_VALUE" == "true" ]]; then
-    PLUGIN_ENABLED=true
-  fi
+if [[ "$ENABLED_STATUS" == "unconfigured" ]]; then
+  # No config at either level
+  echo '{"systemMessage": "Telegram plugin: No config found. Create ~/.claude/telegram.local.md (global) or .claude/telegram.local.md (project) with enabled: true to enable notifications."}'
+  exit 0
 fi
 
-# If plugin not enabled, just exit silently (no blocking)
-if [[ "$PLUGIN_ENABLED" != "true" ]]; then
+if [[ "$ENABLED_STATUS" != "true" ]]; then
+  # Explicitly disabled
   exit 0
 fi
 

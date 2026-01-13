@@ -7,14 +7,16 @@ Send Telegram notifications from Claude Code sessions - manually via command or 
 - `/telegram` command for manual message sending
 - Automatic notifications when sessions exceed time threshold
 - Opt-in credential validation (only when enabled)
-- Configurable per-project settings
+- Dual-scope configuration (user-level + project-level, like CLAUDE.md)
 - Debug mode for troubleshooting
 
 ## Quick Start
 
 1. Install dependencies: `jq` and `curl`
 2. Set up credentials (see below)
-3. Create `.claude/telegram.local.md` to enable the plugin
+3. Create config file to enable the plugin:
+   - Global: `~/.claude/telegram.local.md`
+   - Per-project: `.claude/telegram.local.md`
 4. Use `/telegram` or wait for automatic notifications
 
 ## Prerequisites
@@ -85,16 +87,44 @@ The plugin sends notifications when:
 
 ## Configuration
 
-Create `.claude/telegram.local.md` in your project to enable the plugin:
+The plugin supports two configuration scopes, similar to CLAUDE.md:
+
+| Scope | Location | Purpose |
+|-------|----------|---------|
+| User (global) | `~/.claude/telegram.local.md` | Default settings for all projects |
+| Project | `.claude/telegram.local.md` | Project-specific overrides |
+
+### Merge Behavior
+
+- **Field resolution**: project value > user value > default
+- Missing fields in project config **fall back to user config**
+- `enabled: false` at either level **disables** the plugin
+- Notification body uses **project body if present**, otherwise user body
+
+### Example Setup
+
+**User config** (`~/.claude/telegram.local.md`) - global defaults:
 
 ```markdown
 ---
 enabled: true
-session_threshold_minutes: 10
+session_threshold_minutes: 15
 ---
 
-Build completed, ready for review
+Claude Code task completed
 ```
+
+**Project override** (`.claude/telegram.local.md`):
+
+```markdown
+---
+session_threshold_minutes: 5
+---
+
+Build finished in my-project
+```
+
+**Result**: enabled=true (from user), threshold=5 min (from project), message="Build finished in my-project" (from project)
 
 ### Settings
 
@@ -105,11 +135,13 @@ Build completed, ready for review
 
 The markdown body (after `---`) is used as the notification message. Session duration is automatically appended (e.g., "Build completed, ready for review (15m)").
 
-**Important:** Without `.claude/telegram.local.md`, the plugin does not validate credentials or send automatic notifications.
+**Note:** If a config file exists but has no frontmatter (or empty frontmatter), the plugin treats it as `enabled: true` with default threshold. To explicitly disable, you must set `enabled: false`.
+
+**Important:** Without any config file (user or project level), the plugin shows a warning but does not block. It will not validate credentials or send automatic notifications until configured.
 
 ### Gitignore
 
-Add to your `.gitignore`:
+Add to your project's `.gitignore` (user-level config in `~/.claude/` is not in git):
 
 ```
 .claude/*.local.md
@@ -131,7 +163,7 @@ See [troubleshooting guide](skills/telegram-messaging/references/troubleshooting
 
 **Quick checks:**
 - Credentials set? `echo $TELEGRAM_BOT_TOKEN`
-- Config exists? `cat .claude/telegram.local.md`
+- Config exists? `cat ~/.claude/telegram.local.md` or `cat .claude/telegram.local.md`
 - Test manually: `/telegram Test message`
 
 ## License

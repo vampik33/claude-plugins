@@ -13,23 +13,15 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/yaml-helpers.sh"
 
-STATE_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/telegram.local.md"
+# Check if plugin is enabled at any level (user or project config)
+ENABLED_STATUS=$(is_plugin_enabled)
 
-# Quick exit if settings file doesn't exist
-if [[ ! -f "$STATE_FILE" ]]; then
+if [[ "$ENABLED_STATUS" != "true" ]]; then
   exit 0
 fi
 
-FRONTMATTER=$(extract_frontmatter "$STATE_FILE")
-
-# Check if enabled (default: true if file exists)
-ENABLED=$(parse_yaml_field "enabled" "true" "$FRONTMATTER")
-if [[ "$ENABLED" != "true" ]]; then
-  exit 0
-fi
-
-# Get threshold (default 10 minutes)
-THRESHOLD=$(parse_yaml_field "session_threshold_minutes" "10" "$FRONTMATTER")
+# Get threshold (project > user > default of 10 minutes)
+THRESHOLD=$(resolve_config_field "session_threshold_minutes" "10")
 # Validate threshold is numeric
 if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
   THRESHOLD=10
@@ -51,8 +43,8 @@ if [[ $ELAPSED_MINUTES -lt $THRESHOLD ]]; then
   exit 0
 fi
 
-# Get custom message from markdown body (after second ---)
-CUSTOM_MESSAGE=$(extract_body "$STATE_FILE" | head -c 500)
+# Get custom message (project body > user body)
+CUSTOM_MESSAGE=$(get_notification_body)
 
 # Build notification message
 if [[ -n "$CUSTOM_MESSAGE" ]]; then

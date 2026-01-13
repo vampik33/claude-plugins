@@ -57,13 +57,9 @@ fi
 # Send notification using shared script (handles JSON escaping and response validation)
 if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
   echo "Sending notification: $MESSAGE" >&2
-  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" || {
-    echo "Warning: Failed to send session notification" >&2
-  }
+  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" || echo "Warning: Failed to send session notification" >&2
 else
-  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" > /dev/null 2>&1 || {
-    echo "Warning: Failed to send session notification" >&2
-  }
+  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" > /dev/null 2>&1 || echo "Warning: Failed to send session notification" >&2
 fi
 
 exit 0

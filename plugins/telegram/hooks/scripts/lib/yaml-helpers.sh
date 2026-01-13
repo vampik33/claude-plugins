@@ -18,14 +18,16 @@ parse_yaml_field() {
   local default="$2"
   local frontmatter="$3"
 
+  # Extract line matching field, strip comment, extract value, remove quotes/whitespace
   local value
-  value=$(echo "$frontmatter" | grep "^${field}:" | head -1 | sed 's/#.*//' | sed "s/${field}:[[:space:]]*//" | tr -d ' "'"'" || echo "")
+  value=$(echo "$frontmatter" \
+    | grep "^${field}:" \
+    | head -1 \
+    | sed -e 's/#.*//' -e "s/${field}:[[:space:]]*//" \
+    | tr -d ' "'"'" \
+    || echo "")
 
-  if [[ -z "$value" ]]; then
-    echo "$default"
-  else
-    echo "$value"
-  fi
+  echo "${value:-$default}"
 }
 
 # Extract markdown body (content after second ---)

@@ -33,47 +33,32 @@ fi
 # Plugin is enabled - validate dependencies and credentials
 
 # Check for required dependencies first
-MISSING_DEPS=""
-if ! command -v jq &> /dev/null; then
-  MISSING_DEPS="jq"
-fi
-if ! command -v curl &> /dev/null; then
-  if [[ -n "$MISSING_DEPS" ]]; then
-    MISSING_DEPS="$MISSING_DEPS, curl"
-  else
-    MISSING_DEPS="curl"
-  fi
-fi
+MISSING_DEPS=()
+command -v jq &> /dev/null || MISSING_DEPS+=("jq")
+command -v curl &> /dev/null || MISSING_DEPS+=("curl")
 
-if [[ -n "$MISSING_DEPS" ]]; then
+if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
+  DEPS_LIST=$(IFS=", "; echo "${MISSING_DEPS[*]}")
   cat >&2 <<EOF
 {
-  "error": "Missing dependencies: $MISSING_DEPS",
-  "systemMessage": "Telegram plugin: Missing required dependencies ($MISSING_DEPS). Install them to use Telegram notifications:\n\n- jq: https://jqlang.github.io/jq/download/\n- curl: Usually pre-installed on most systems"
+  "error": "Missing dependencies: $DEPS_LIST",
+  "systemMessage": "Telegram plugin: Missing required dependencies ($DEPS_LIST). Install them to use Telegram notifications:\n\n- jq: https://jqlang.github.io/jq/download/\n- curl: Usually pre-installed on most systems"
 }
 EOF
   exit 2
 fi
 
 # Check for credentials
-MISSING=""
-if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]]; then
-  MISSING="TELEGRAM_BOT_TOKEN"
-fi
+MISSING_CREDS=()
+[[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && MISSING_CREDS+=("TELEGRAM_BOT_TOKEN")
+[[ -z "${TELEGRAM_CHAT_ID:-}" ]] && MISSING_CREDS+=("TELEGRAM_CHAT_ID")
 
-if [[ -z "${TELEGRAM_CHAT_ID:-}" ]]; then
-  if [[ -n "$MISSING" ]]; then
-    MISSING="$MISSING, TELEGRAM_CHAT_ID"
-  else
-    MISSING="TELEGRAM_CHAT_ID"
-  fi
-fi
-
-if [[ -n "$MISSING" ]]; then
+if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
+  CREDS_LIST=$(IFS=", "; echo "${MISSING_CREDS[*]}")
   cat >&2 <<EOF
 {
-  "error": "Missing Telegram credentials: $MISSING",
-  "systemMessage": "Telegram plugin: Missing required environment variables ($MISSING). See README.md for setup instructions."
+  "error": "Missing Telegram credentials: $CREDS_LIST",
+  "systemMessage": "Telegram plugin: Missing required environment variables ($CREDS_LIST). See README.md for setup instructions."
 }
 EOF
   exit 2

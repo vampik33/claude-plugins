@@ -25,7 +25,7 @@
     {
       "name": "telegram",
       "description": "Telegram notifications for Claude Code sessions - send messages manually or automatically when sessions exceed configured duration",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "vampik33"
       },

@@ -17,7 +17,7 @@ Common issues and solutions. For setup instructions, see [README.md](../../../RE
 **Checklist:**
 1. `.claude/telegram.local.md` exists?
 2. Contains `enabled: true` in frontmatter?
-3. Session exceeded `session_threshold_minutes`?
+3. Idle time exceeded `session_threshold_minutes`?
 4. Credentials are set?
 
 **Debug:**
@@ -26,12 +26,12 @@ export TELEGRAM_DEBUG=1
 # Then run your session and check output
 ```
 
-### Session threshold not working
+### Idle threshold not working
 
-Threshold is in **minutes**, not seconds.
+Threshold is in **minutes**, not seconds. Measures time since your last interaction.
 
-- `10` = notifications only after 10+ minute sessions
-- `0` = notify for all sessions
+- `10` = notifications only after 10+ minutes of inactivity
+- `0` = notify immediately when session ends (regardless of idle time)
 
 ### Custom message not appearing
 

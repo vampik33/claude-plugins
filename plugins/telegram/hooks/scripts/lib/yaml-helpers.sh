@@ -73,6 +73,11 @@ get_project_config_path() {
   echo "${CLAUDE_PROJECT_DIR:-.}/.claude/telegram.local.md"
 }
 
+# Get session activity file path (tracks last user interaction)
+get_session_file_path() {
+  echo "${CLAUDE_PROJECT_DIR:-.}/.claude/.telegram-session-start"
+}
+
 # Resolve config value with dual-scope support
 # Priority: project > user > default
 # Usage: resolve_config_field "field_name" "default_value"

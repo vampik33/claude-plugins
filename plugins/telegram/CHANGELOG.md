@@ -5,6 +5,16 @@ All notable changes to the Telegram plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-14
+
+### Changed
+- **Breaking**: Session notifications now trigger based on idle time (time since last interaction) instead of total session duration
+- Activity timestamp is updated on each user prompt, so notifications fire only after periods of inactivity
+- Moved from environment variable (`TELEGRAM_SESSION_START`) to file-based tracking (`.claude/.telegram-session-start`)
+
+### Added
+- New `UserPromptSubmit` hook to track user activity timestamps
+
 ## [1.1.1] - 2026-01-13
 
 ### Fixed
@@ -28,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial release
 - `/telegram` command for sending manual notifications
-- Automatic session-end notifications when duration exceeds threshold
+- Automatic session-end notifications when idle time exceeds threshold
 - Configurable session threshold (default: 10 minutes)
 - Custom notification message support
 - Credential validation on session start

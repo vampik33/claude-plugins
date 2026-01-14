@@ -1,11 +1,11 @@
 # Telegram Plugin for Claude Code
 
-Send Telegram notifications from Claude Code sessions - manually via command or automatically when sessions exceed a configured duration.
+Send Telegram notifications from Claude Code sessions - manually via command or automatically after periods of inactivity.
 
 ## Features
 
 - `/telegram` command for manual message sending
-- Automatic notifications when sessions exceed time threshold
+- Automatic notifications when idle time exceeds threshold
 - Opt-in credential validation (only when enabled)
 - Dual-scope configuration (user-level + project-level, like CLAUDE.md)
 - Debug mode for troubleshooting
@@ -82,7 +82,7 @@ If no message provided, defaults to "Task completed".
 
 The plugin sends notifications when:
 1. `.claude/telegram.local.md` exists with `enabled: true`
-2. Session duration exceeds the configured threshold
+2. Idle time (since last interaction) exceeds the configured threshold
 3. Credentials are properly set
 
 ## Configuration
@@ -131,9 +131,9 @@ Build finished in my-project
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | true | Enable plugin (credential validation + auto notifications) |
-| `session_threshold_minutes` | number | 10 | Minimum session duration to trigger notification |
+| `session_threshold_minutes` | number | 10 | Minimum idle time (since last interaction) to trigger notification |
 
-The markdown body (after `---`) is used as the notification message. Session duration is automatically appended (e.g., "Build completed, ready for review (15m)").
+The markdown body (after `---`) is used as the notification message. Idle time is automatically appended (e.g., "Build completed, ready for review (15m)").
 
 **Note:** If a config file exists but has no frontmatter (or empty frontmatter), the plugin treats it as `enabled: true` with default threshold. To explicitly disable, you must set `enabled: false`.
 

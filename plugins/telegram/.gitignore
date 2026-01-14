@@ -1,2 +1,5 @@
 # Plugin settings (user-specific)
 .claude/*.local.md
+
+# Runtime artifacts
+.claude/.telegram-session-start

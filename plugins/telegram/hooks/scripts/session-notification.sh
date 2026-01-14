@@ -27,10 +27,20 @@ if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
   THRESHOLD=10
 fi
 
-# Check session duration
-SESSION_START="${TELEGRAM_SESSION_START:-0}"
-if [[ "$SESSION_START" == "0" ]]; then
+# Check session duration from temp file
+SESSION_FILE=$(get_session_file_path)
+
+if [[ ! -f "$SESSION_FILE" ]]; then
   # No start time recorded, skip
+  exit 0
+fi
+
+# Read and immediately delete the temp file
+SESSION_START=$(cat "$SESSION_FILE" 2>/dev/null || echo "0")
+rm -f "$SESSION_FILE" 2>/dev/null || true
+
+if [[ "$SESSION_START" == "0" || ! "$SESSION_START" =~ ^[0-9]+$ ]]; then
+  # Invalid timestamp, skip
   exit 0
 fi
 

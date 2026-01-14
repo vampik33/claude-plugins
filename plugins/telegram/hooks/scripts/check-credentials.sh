@@ -64,13 +64,6 @@ EOF
   exit 2
 fi
 
-# Credentials present - record session start time (avoid duplicates)
-if [[ -n "${CLAUDE_ENV_FILE:-}" && -w "${CLAUDE_ENV_FILE:-/dev/null}" ]]; then
-  if ! grep -q "TELEGRAM_SESSION_START" "$CLAUDE_ENV_FILE" 2>/dev/null; then
-    echo "export TELEGRAM_SESSION_START=$(date +%s)" >> "$CLAUDE_ENV_FILE"
-  fi
-fi
-
 # Success message
 echo '{"systemMessage": "Telegram plugin: Ready. Use /telegram to send messages."}'
 exit 0

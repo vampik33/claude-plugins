@@ -11,7 +11,12 @@ if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/yaml-helpers.sh"
+
+# Read hook input before sourcing (stdin must be captured first)
+HOOK_INPUT=$(cat)
+source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/session.sh"
+extract_session_id "$HOOK_INPUT"
 
 # Read session file early to ensure cleanup happens even if plugin is disabled
 # This handles cases where user disables plugin mid-session

@@ -5,6 +5,21 @@ All notable changes to the Telegram plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-14
+
+### Fixed
+- **Multi-instance conflict**: Session files now use Claude's `session_id` to prevent conflicts when running multiple Claude Code instances simultaneously
+- **Stale file cleanup**: Automatic cleanup of session files older than 24 hours on SessionStart
+
+### Changed
+- Session files moved to `/tmp/` with unique names based on session ID
+
+### Refactored
+- Split `lib/yaml-helpers.sh` into focused modules:
+  - `lib/yaml.sh` - Pure YAML frontmatter parsing
+  - `lib/config.sh` - Configuration resolution (user/project scope)
+  - `lib/session.sh` - Session management and hook initialization
+
 ## [1.2.0] - 2026-01-14
 
 ### Changed

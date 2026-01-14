@@ -12,9 +12,15 @@ if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/yaml-helpers.sh"
 
-# Clean up stale session file from previous force-quit sessions
+# Read hook input before sourcing (stdin must be captured first)
+HOOK_INPUT=$(cat)
+source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/session.sh"
+extract_session_id "$HOOK_INPUT"
+
+# Clean up stale session files from previous force-quit sessions
+cleanup_stale_session_files
 SESSION_FILE=$(get_session_file_path)
 rm -f "$SESSION_FILE" 2>/dev/null || true
 

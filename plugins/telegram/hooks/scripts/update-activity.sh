@@ -5,7 +5,12 @@ set -euo pipefail
 # Called by UserPromptSubmit hook
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/yaml-helpers.sh"
+
+# Read hook input before sourcing (stdin must be captured first)
+HOOK_INPUT=$(cat)
+source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/session.sh"
+extract_session_id "$HOOK_INPUT"
 
 # Check if plugin is enabled
 ENABLED_STATUS=$(is_plugin_enabled)

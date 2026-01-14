@@ -13,6 +13,16 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/yaml-helpers.sh"
 
+# Read session file early to ensure cleanup happens even if plugin is disabled
+# This handles cases where user disables plugin mid-session
+SESSION_FILE=$(get_session_file_path)
+SESSION_START="0"
+
+if [[ -f "$SESSION_FILE" ]]; then
+  SESSION_START=$(cat "$SESSION_FILE" 2>/dev/null || echo "0")
+  rm -f "$SESSION_FILE" 2>/dev/null || true
+fi
+
 # Check if plugin is enabled at any level (user or project config)
 ENABLED_STATUS=$(is_plugin_enabled)
 
@@ -26,18 +36,6 @@ THRESHOLD=$(resolve_config_field "session_threshold_minutes" "10")
 if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
   THRESHOLD=10
 fi
-
-# Check session duration from temp file
-SESSION_FILE=$(get_session_file_path)
-
-if [[ ! -f "$SESSION_FILE" ]]; then
-  # No start time recorded, skip
-  exit 0
-fi
-
-# Read and immediately delete the temp file
-SESSION_START=$(cat "$SESSION_FILE" 2>/dev/null || echo "0")
-rm -f "$SESSION_FILE" 2>/dev/null || true
 
 if [[ "$SESSION_START" == "0" || ! "$SESSION_START" =~ ^[0-9]+$ ]]; then
   # Invalid timestamp, skip

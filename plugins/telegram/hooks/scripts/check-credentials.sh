@@ -14,6 +14,10 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/yaml-helpers.sh"
 
+# Clean up stale session file from previous force-quit sessions
+SESSION_FILE=$(get_session_file_path)
+rm -f "$SESSION_FILE" 2>/dev/null || true
+
 # Check if plugin is enabled (opt-in behavior with dual-scope support)
 # User config: ~/.claude/telegram.local.md (global defaults)
 # Project config: .claude/telegram.local.md (project overrides)

@@ -5,6 +5,13 @@ All notable changes to the Telegram plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-15
+
+### Added
+- **Transcript summaries**: Session-end notifications now include a brief summary of actions taken (edited files, created files, bash commands run)
+- New `summarize-transcript.sh` script extracts meaningful activity from session transcripts
+- New `extract_transcript_path()` function in session.sh library
+
 ## [1.3.0] - 2026-01-14
 
 ### Fixed

@@ -11,6 +11,15 @@ extract_session_id() {
   export CLAUDE_SESSION_ID=$(echo "$input" | jq -r '.session_id // empty')
 }
 
+# Extract transcript_path from hook input JSON
+# Only available in Stop/SubagentStop hooks
+# Usage: extract_transcript_path "$HOOK_INPUT"
+# Sets: TRANSCRIPT_PATH
+extract_transcript_path() {
+  local input="${1:-}"
+  TRANSCRIPT_PATH=$(echo "$input" | jq -r '.transcript_path // empty')
+}
+
 # Get session activity file path (tracks last user interaction)
 # Uses Claude's session_id to avoid multi-instance conflicts
 # Requires CLAUDE_SESSION_ID to be set via extract_session_id

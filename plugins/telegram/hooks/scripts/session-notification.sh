@@ -17,6 +17,7 @@ HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/session.sh"
 extract_session_id "$HOOK_INPUT"
+extract_transcript_path "$HOOK_INPUT"
 
 # Read session file early to ensure cleanup happens even if plugin is disabled
 # This handles cases where user disables plugin mid-session
@@ -56,16 +57,36 @@ if [[ $ELAPSED_MINUTES -lt $THRESHOLD ]]; then
   exit 0
 fi
 
+# Get project name (used in message and custom body resolution)
+PROJECT_NAME=$(basename "${CLAUDE_PROJECT_DIR:-$(pwd)}")
+
 # Get custom message (project body > user body)
 CUSTOM_MESSAGE=$(get_notification_body)
 
-# Build notification message
-if [[ -n "$CUSTOM_MESSAGE" ]]; then
-  MESSAGE="$CUSTOM_MESSAGE (${ELAPSED_MINUTES}m)"
-else
-  PROJECT_NAME=$(basename "${CLAUDE_PROJECT_DIR:-$(pwd)}")
-  MESSAGE="Claude Code session completed in $PROJECT_NAME (${ELAPSED_MINUTES}m)"
+# Get transcript summary if available
+TASK_SUMMARY=""
+if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
+  if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+    TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" 2>&1 || echo "")
+  else
+    TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
+  fi
 fi
+
+# Build notification message parts
+MESSAGE_PARTS=()
+if [[ -n "$CUSTOM_MESSAGE" ]]; then
+  MESSAGE_PARTS+=("$CUSTOM_MESSAGE (${ELAPSED_MINUTES}m)")
+else
+  MESSAGE_PARTS+=("Claude Code session completed in $PROJECT_NAME (${ELAPSED_MINUTES}m)")
+fi
+
+if [[ -n "$TASK_SUMMARY" ]]; then
+  MESSAGE_PARTS+=("$TASK_SUMMARY")
+fi
+
+# Join parts with newlines
+MESSAGE=$(printf '%s\n' "${MESSAGE_PARTS[@]}")
 
 # Send notification using shared script (handles JSON escaping and response validation)
 if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then

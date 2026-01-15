@@ -17,6 +17,7 @@ HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/session.sh"
 extract_session_id "$HOOK_INPUT"
+extract_cwd "$HOOK_INPUT"
 extract_transcript_path "$HOOK_INPUT"
 
 # Read session file early to ensure cleanup happens even if plugin is disabled
@@ -83,6 +84,14 @@ fi
 
 if [[ -n "$TASK_SUMMARY" ]]; then
   MESSAGE_PARTS+=("$TASK_SUMMARY")
+fi
+
+# Add session metadata
+if [[ -n "${CLAUDE_CWD:-}" ]]; then
+  MESSAGE_PARTS+=("Dir: ${CLAUDE_CWD}")
+fi
+if [[ -n "${CLAUDE_SESSION_ID:-}" ]]; then
+  MESSAGE_PARTS+=("Session: ${CLAUDE_SESSION_ID}")
 fi
 
 # Join parts with newlines

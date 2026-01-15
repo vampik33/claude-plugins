@@ -11,6 +11,14 @@ extract_session_id() {
   export CLAUDE_SESSION_ID=$(echo "$input" | jq -r '.session_id // empty')
 }
 
+# Extract and export cwd from hook input JSON
+# Usage: extract_cwd "$HOOK_INPUT"
+# Sets: CLAUDE_CWD (exported)
+extract_cwd() {
+  local input="${1:-}"
+  export CLAUDE_CWD=$(echo "$input" | jq -r '.cwd // empty')
+}
+
 # Extract transcript_path from hook input JSON
 # Only available in Stop/SubagentStop hooks
 # Usage: extract_transcript_path "$HOOK_INPUT"

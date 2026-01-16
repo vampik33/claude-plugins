@@ -14,7 +14,3 @@ Thumbs.db
 *.swp
 *.swo
 *~
-
-# FewWord context plugin
-.fewword/scratch/
-.fewword/index/

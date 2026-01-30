@@ -23,6 +23,17 @@ if ! command -v jq &> /dev/null; then
   exit 0
 fi
 
+# Try to extract Claude's session summary (most recent one)
+# The transcript contains type="summary" entries with natural language descriptions
+SESSION_SUMMARY=$(jq -r 'select(.type=="summary") | .summary' "$TRANSCRIPT_PATH" 2>/dev/null | tail -1)
+
+if [[ -n "$SESSION_SUMMARY" ]]; then
+  echo "$SESSION_SUMMARY"
+  exit 0
+fi
+
+# Fall through to tool-based extraction if no summary found
+
 # Extract tool usage from transcript
 # The transcript is JSONL with assistant messages containing tool_use content blocks
 

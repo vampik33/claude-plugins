@@ -33,6 +33,18 @@
       "category": "Notifications",
       "keywords": ["telegram", "notifications", "messaging", "alerts", "automation"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "explain-changes",
+      "description": "Explains code changes in detail - what was done and why. Uses explanatory style with educational insights.",
+      "version": "1.0.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/explain-changes",
+      "category": "Git Workflow",
+      "keywords": ["git", "diff", "explain", "changes", "code-review", "education"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

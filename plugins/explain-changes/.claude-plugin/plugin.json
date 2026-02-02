@@ -1,0 +1,14 @@
+{
+  "name": "explain-changes",
+  "version": "1.0.0",
+  "description": "Explains code changes in detail - what was done and why. Uses explanatory style with educational insights.",
+  "author": {
+    "name": "vampik33",
+    "email": "vampik33@users.noreply.github.com",
+    "url": "https://github.com/vampik33"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/vampik33/claude-plugins/tree/main/plugins/explain-changes",
+  "repository": "https://github.com/vampik33/claude-plugins",
+  "keywords": ["git", "diff", "explanation", "educational", "changes"]
+}

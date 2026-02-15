@@ -9,10 +9,23 @@ debug() {
   fi
 }
 
+# Check whether a directory exists and contains at least one .md file.
+has_md_files() {
+  local dir="$1"
+  [ -d "$dir" ] || return 1
+  for f in "$dir"/*.md; do
+    [ -f "$f" ] && return 0
+  done
+  return 1
+}
+
 # Read plansDirectory from a JSON settings file.
+# $1 = settings file path
+# $2 = base directory for resolving relative paths
 # Prints the resolved directory path if found and valid, or nothing.
 read_plans_dir_from_settings() {
   local file="$1"
+  local base_dir="$2"
   [ -f "$file" ] || return 0
 
   local dir
@@ -20,31 +33,46 @@ read_plans_dir_from_settings() {
     | head -1 | sed 's/.*"plansDirectory"[[:space:]]*:[[:space:]]*"//;s/"$//')
   [ -n "$dir" ] || return 0
 
-  # Resolve relative paths against project dir
+  # Resolve relative paths against the provided base directory
   if [[ "$dir" != /* ]]; then
-    dir="${CLAUDE_PROJECT_DIR:-.}/$dir"
+    dir="${base_dir}/$dir"
   fi
 
   [ -d "$dir" ] && echo "$dir"
 }
 
 # Locate the plans directory.
-# Checks: project settings > project ./plans > user ~/.claude/plans
+# Checks: project settings > user settings > project ./plans > user ~/.claude/plans
+# Only returns directories that actually contain .md files.
 find_plans_dir() {
-  local dir settings_file
+  local dir settings_file base_dir
+
+  # 1. Project-level settings (resolve relative paths against project dir)
   for settings_file in \
     "${CLAUDE_PROJECT_DIR:-.}/.claude/settings.local.json" \
     "${CLAUDE_PROJECT_DIR:-.}/.claude/settings.json"; do
-    dir=$(read_plans_dir_from_settings "$settings_file")
-    if [ -n "$dir" ]; then
+    dir=$(read_plans_dir_from_settings "$settings_file" "${CLAUDE_PROJECT_DIR:-.}")
+    if [ -n "$dir" ] && has_md_files "$dir"; then
       echo "$dir"
       return
     fi
   done
 
-  if [ -d "${CLAUDE_PROJECT_DIR:-.}/plans" ]; then
+  # 2. User-level settings (resolve relative paths against ~/.claude)
+  for settings_file in \
+    "$HOME/.claude/settings.local.json" \
+    "$HOME/.claude/settings.json"; do
+    dir=$(read_plans_dir_from_settings "$settings_file" "$HOME/.claude")
+    if [ -n "$dir" ] && has_md_files "$dir"; then
+      echo "$dir"
+      return
+    fi
+  done
+
+  # 3. Fallback: project plans dir, then user plans dir (only if they have files)
+  if has_md_files "${CLAUDE_PROJECT_DIR:-.}/plans"; then
     echo "${CLAUDE_PROJECT_DIR:-.}/plans"
-  elif [ -d "$HOME/.claude/plans" ]; then
+  elif has_md_files "$HOME/.claude/plans"; then
     echo "$HOME/.claude/plans"
   fi
 }

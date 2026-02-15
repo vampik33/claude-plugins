@@ -4,6 +4,13 @@ All notable changes to the plan-renamer plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-02-15
+
+### Fixed
+- Plans directory lookup now checks user-level settings (`~/.claude/settings.json`, `~/.claude/settings.local.json`)
+- Relative `plansDirectory` paths in user-level settings resolve against `~/.claude/` instead of project dir
+- Empty project `plans/` directory no longer intercepts lookup — directories must contain `.md` files
+
 ## [1.0.0] - 2026-02-15
 
 ### Added

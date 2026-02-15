@@ -89,8 +89,7 @@ extract_plan_title() {
 slugify() {
   echo "$1" \
     | tr '[:upper:]' '[:lower:]' \
-    | sed 's/[^a-z0-9]/-/g; s/-\{2,\}/-/g; s/^-//; s/-$//' \
-    | cut -c1-80
+    | sed 's/[^a-z0-9]/-/g; s/-\{2,\}/-/g; s/^-//; s/-$//'
 }
 
 # --- Main ---

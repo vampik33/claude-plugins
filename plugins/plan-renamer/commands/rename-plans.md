@@ -16,7 +16,7 @@ Batch-rename plan files from random generated names to meaningful titles.
 
 Check in order:
 1. `plansDirectory` in `.claude/settings.local.json` or `.claude/settings.json`
-2. `$PROJECT_DIR/plans`
+2. `$CLAUDE_PROJECT_DIR/plans`
 3. `~/.claude/plans`
 
 ### 2. Identify random-named files

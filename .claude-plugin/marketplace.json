@@ -45,6 +45,18 @@
       "category": "Git Workflow",
       "keywords": ["git", "diff", "explain", "changes", "code-review", "education"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "plan-renamer",
+      "description": "Auto-rename plan files from random names to meaningful titles extracted from content",
+      "version": "1.0.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/plan-renamer",
+      "category": "Workflow",
+      "keywords": ["plans", "rename", "organization", "workflow"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

@@ -27,19 +27,17 @@ Find `.md` files matching the pattern `^[a-z]+-[a-z]+-[a-z]+\.md$` (three lowerc
 
 Read the first line of each file. Extract the title after `# Plan: ` or `# `.
 
-### 4. Preview renames
+### 4. Execute renames
 
-Show the user a table of proposed renames:
+Rename each file immediately using Bash `mv` without asking for confirmation. Handle collisions by appending `-2`, `-3`, etc.
+
+After all renames are complete, show a summary table of what was renamed:
 
 ```
-| Current Name | New Name | Title |
+| Old Name | New Name | Title |
 |---|---|---|
 | scalable-moseying-papert.md | implement-auth-system.md | Implement Auth System |
 ```
-
-### 5. Execute renames
-
-After user confirms, rename each file using Bash `mv`. Handle collisions by appending `-2`, `-3`, etc.
 
 ### Edge Cases
 

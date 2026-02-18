@@ -1,0 +1,14 @@
+{
+  "name": "claudemd-gen",
+  "version": "1.0.0",
+  "description": "Interactive CLAUDE.md generator and auditor - encodes best practices for writing effective Claude Code memory files",
+  "author": {
+    "name": "vampik33",
+    "email": "vampik33@users.noreply.github.com",
+    "url": "https://github.com/vampik33"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/vampik33/claude-plugins/tree/main/plugins/claudemd-gen",
+  "repository": "https://github.com/vampik33/claude-plugins",
+  "keywords": ["claude-md", "memory", "documentation", "configuration", "best-practices", "generator"]
+}

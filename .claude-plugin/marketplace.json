@@ -57,6 +57,18 @@
       "category": "Workflow",
       "keywords": ["plans", "rename", "organization", "workflow"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "claudemd-gen",
+      "description": "Interactive CLAUDE.md generator and auditor - encodes best practices for writing effective Claude Code memory files",
+      "version": "1.0.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/claudemd-gen",
+      "category": "Documentation",
+      "keywords": ["claude-md", "memory", "documentation", "configuration", "best-practices"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

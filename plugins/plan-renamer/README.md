@@ -15,13 +15,7 @@ A PostToolUse hook on ExitPlanMode that automatically renames the plan file to m
 ## Installation
 
 ```bash
-claude plugin add vampik33/claude-plugins --plugin plan-renamer
-```
-
-Or for local development:
-
-```bash
-claude --plugin-dir /path/to/claude-plugins/plugins/plan-renamer
+claude plugin add vampik33/claude-plugins/plan-renamer
 ```
 
 ## How It Works

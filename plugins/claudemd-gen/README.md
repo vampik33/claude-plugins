@@ -4,17 +4,8 @@ Writing effective CLAUDE.md files is the highest-leverage activity for Claude Co
 
 ## Installation
 
-### From Marketplace (Recommended)
-
-```
-/plugin marketplace add vampik33/claude-plugins
-/plugin install claudemd-gen
-```
-
-### From local directory (development)
-
 ```bash
-claude --plugin-dir /path/to/claude-plugins/plugins/claudemd-gen
+claude plugin add vampik33/claude-plugins/claudemd-gen
 ```
 
 ## Usage

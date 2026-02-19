@@ -62,10 +62,8 @@ export TELEGRAM_CHAT_ID="project-chat"
 
 ## Installation
 
-Add to your Claude Code plugins or use `--plugin-dir`:
-
 ```bash
-claude --plugin-dir /path/to/telegram
+claude plugin add vampik33/claude-plugins/telegram
 ```
 
 ## Usage

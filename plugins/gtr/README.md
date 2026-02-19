@@ -16,34 +16,8 @@ Verify installation: `git gtr --version`
 
 ## Installation
 
-### Option 1: Install from Marketplace (Recommended)
-
-Add the marketplace and install:
-```
-/plugin marketplace add vampik33/claude-plugins
-/plugin install gtr
-```
-
-Or use the `/plugin` menu to browse and install.
-
-### Option 2: Install from local directory (development)
-
 ```bash
-claude --plugin-dir /path/to/claude-plugins/plugins/gtr
-```
-
-### Option 3: Add to project settings
-
-Add to your project's `.claude/settings.json`:
-
-```json
-{
-  "enabledPlugins": {
-    "gtr": {
-      "source": "/path/to/claude-plugins/plugins/gtr"
-    }
-  }
-}
+claude plugin add vampik33/claude-plugins/gtr
 ```
 
 ## Slash Commands

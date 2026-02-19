@@ -2,7 +2,7 @@
 skill: claudemd-gen
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "AskUserQuestion"]
 description: Generate, audit, or improve CLAUDE.md files with best practices
-argument-hint: "[--audit] [--rules] [--local] [--full]"
+argument-hint: "[--help] [--audit] [--rules] [--local] [--full]"
 ---
 
 ## Context
@@ -18,15 +18,20 @@ argument-hint: "[--audit] [--rules] [--local] [--full]"
 
 ## Mode Selection
 
-Parse `$ARGUMENTS` to determine mode:
+Parse `$ARGUMENTS` to determine mode. If multiple flags are provided, use the **first match** in this precedence order:
 
 | Argument | Mode | Action |
 |----------|------|--------|
-| (none) | **Generate** | Create or improve CLAUDE.md |
+| `--help` | **Help** | Print usage table and exit |
+| `--full` | **Full Setup** | Generate CLAUDE.md + rules + local |
 | `--audit` | **Audit** | Review existing CLAUDE.md against best practices |
 | `--rules` | **Rules** | Generate .claude/rules/ structure |
 | `--local` | **Local** | Generate CLAUDE.local.md template |
-| `--full` | **Full Setup** | Generate CLAUDE.md + rules + local |
+| (none) | **Generate** | Create or improve CLAUDE.md |
+
+## Mode: Help (--help)
+
+Print the mode selection table above and a brief description of each mode. Do not proceed with any generation.
 
 ## Mode: Generate (default)
 
@@ -42,12 +47,15 @@ Use the dynamic context above plus additional exploration:
 
 ### Step 2: Choose Template
 
-Based on analysis, select a template from `references/templates.md`:
-- **Minimal** — Small project, <10 source files
-- **Standard** — Typical single-package project
-- **Monorepo** — Workspace-based with multiple packages
+Detect project class using these rules (first match wins):
 
-Use AskUserQuestion to confirm template choice and ask about any unclear conventions.
+1. **Monorepo** — workspaces field in package.json, lerna.json, nx.json, turbo.json, pnpm-workspace.yaml, or multiple packages/apps directories → use Monorepo template
+2. **Minimal** — single manifest file AND fewer than 10 source files (count files in src/, lib/, app/, or root `*.{ts,js,py,rs,go}`) → use Minimal template
+3. **Standard** — everything else → use Standard template
+
+Templates are in `references/templates.md`.
+
+Use AskUserQuestion to confirm the detected template choice and ask about any unclear conventions.
 
 ### Step 3: Draft CLAUDE.md
 
@@ -65,15 +73,24 @@ Consult `references/best-practices.md` to ensure the draft follows all guideline
 - Reference existing docs, don't copy
 - Specific and actionable, not vague
 
-### Step 4: Review with User
+### Step 4: Verify (strict mode)
 
-Present the draft CLAUDE.md and use AskUserQuestion to ask:
+Before presenting to the user, verify every concrete claim in the draft:
+- **Commands**: Check that each build/test/lint command exists in the project's package manifest (package.json scripts, Cargo.toml, Makefile targets, pyproject.toml scripts, etc.). If a command cannot be verified, remove it and flag it.
+- **Paths**: Check that each referenced directory or file actually exists on disk. If a path doesn't exist, remove it and flag it.
+- **Conventions**: Confirm detected conventions by checking at least 2 source files that follow the pattern.
+
+If any items were removed, present the flagged items to the user via AskUserQuestion and ask them to provide the correct values. Do not write unverified commands or paths.
+
+### Step 5: Review with User
+
+Present the verified draft CLAUDE.md and use AskUserQuestion to ask:
 - "Does this look correct? Anything to add or remove?"
 - Offer to adjust sections
 
-### Step 5: Write File
+### Step 6: Write File
 
-If CLAUDE.md already exists, use AskUserQuestion to ask:
+If CLAUDE.md (or `.claude/CLAUDE.md`) already exists, use AskUserQuestion to ask:
 - **Overwrite** — Replace entirely
 - **Merge** — Combine new content with existing (prefer new for conflicts)
 - **Cancel** — Don't write
@@ -88,17 +105,7 @@ Read CLAUDE.md (and any subdirectory CLAUDE.md files, .claude/rules/, CLAUDE.loc
 
 ### Step 2: Check Against Anti-Patterns
 
-Read `references/anti-patterns.md` and check the existing file against each of the 10 anti-patterns:
-1. Command overload
-2. Universal truths
-3. Redundant detail
-4. Formatting mandates
-5. Stale references
-6. Kitchen sink
-7. Task-specific instructions
-8. Auto-generated verbosity
-9. Negative instruction overload
-10. Missing WHAT section
+Read `references/anti-patterns.md` and check the existing file against each anti-pattern listed there.
 
 ### Step 3: Check Best Practices
 
@@ -109,7 +116,23 @@ Read `references/best-practices.md` and verify:
 - References external docs
 - Appropriate size for project
 
-### Step 4: Report
+### Step 4: Verify Commands (strict mode)
+
+For every build/test/lint command mentioned in the existing CLAUDE.md:
+- Check that the command exists in the project's package manifest or Makefile
+- Flag commands that cannot be verified as "Stale reference" issues
+
+### Step 5: Report
+
+Score using this rubric (2 points each, 10 total):
+
+| Category | 2 pts | 1 pt | 0 pts |
+|----------|-------|------|-------|
+| **Commands accuracy** | All commands verified in manifests | Some unverified | Commands missing or stale |
+| **Architecture clarity** | Key dirs + entry points + WHY | Partial coverage | Missing or vague |
+| **Convention specificity** | Project-specific 80%-rule content | Mix of specific and generic | Generic truths only |
+| **Anti-pattern avoidance** | No anti-patterns detected | 1-2 minor anti-patterns | 3+ anti-patterns |
+| **Brevity & relevance** | Right-sized, no bloat | Slightly over/under | Kitchen sink or too sparse |
 
 Present findings as a structured report:
 
@@ -117,6 +140,14 @@ Present findings as a structured report:
 ## CLAUDE.md Audit
 
 ### Score: X/10
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| Commands accuracy | X/2 | ... |
+| Architecture clarity | X/2 | ... |
+| Convention specificity | X/2 | ... |
+| Anti-pattern avoidance | X/2 | ... |
+| Brevity & relevance | X/2 | ... |
 
 ### Issues Found
 - [Anti-pattern name]: [Description] → [Fix suggestion]
@@ -147,7 +178,7 @@ Read `examples/rules-structure.md` for the pattern. Use AskUserQuestion to confi
 
 ### Step 3: Generate Rule Files
 
-Create `.claude/rules/` directory with appropriate rule files, each with correct glob frontmatter.
+Create `.claude/rules/` directory with appropriate rule files, each with correct `paths` frontmatter.
 
 ## Mode: Local (--local)
 

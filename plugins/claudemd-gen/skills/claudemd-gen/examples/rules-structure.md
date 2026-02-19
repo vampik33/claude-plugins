@@ -19,8 +19,10 @@ Shows how to organize path-specific rules for a medium-to-large project.
 
 ```markdown
 ---
-globs: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"]
-description: Test file conventions and patterns
+paths:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
 ---
 
 Use `describe`/`it` blocks with clear descriptions.
@@ -34,8 +36,9 @@ Prefer `@testing-library/react` queries: `getByRole` > `getByTestId` > `getByTex
 
 ```markdown
 ---
-globs: ["src/routes/**", "src/middleware/**"]
-description: API route and middleware patterns
+paths:
+  - "src/routes/**"
+  - "src/middleware/**"
 ---
 
 Every route handler uses `asyncHandler` wrapper from `src/lib/async-handler.ts`.
@@ -49,8 +52,9 @@ Use HTTP status codes correctly: 201 for creation, 204 for deletion, 409 for con
 
 ```markdown
 ---
-globs: ["src/components/**/*.tsx", "src/components/**/*.ts"]
-description: React component conventions
+paths:
+  - "src/components/**/*.tsx"
+  - "src/components/**/*.ts"
 ---
 
 One component per file. File name matches component name: `UserCard.tsx` exports `UserCard`.
@@ -64,8 +68,10 @@ Storybook story lives next to component: `UserCard.stories.tsx`.
 
 ```markdown
 ---
-globs: ["src/db/**", "prisma/**", "drizzle/**"]
-description: Database and migration conventions
+paths:
+  - "src/db/**"
+  - "prisma/**"
+  - "drizzle/**"
 ---
 
 Never modify existing migration files — create new ones.
@@ -79,8 +85,9 @@ Seed data in `prisma/seed.ts`, run with `pnpm db:seed`.
 
 ```markdown
 ---
-globs: [".github/**/*.yml", ".github/**/*.yaml"]
-description: CI/CD workflow conventions
+paths:
+  - ".github/**/*.yml"
+  - ".github/**/*.yaml"
 ---
 
 Use reusable workflows from `.github/workflows/shared/`.

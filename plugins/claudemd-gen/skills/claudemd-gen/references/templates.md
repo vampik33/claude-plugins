@@ -1,5 +1,9 @@
 # CLAUDE.md Templates
 
+**Placement:** All templates below can be placed at either `CLAUDE.md` (project root) or `.claude/CLAUDE.md` (keeps root clean). Both locations are equivalent.
+
+**Package managers:** Templates use `<package-manager>` as placeholder. Replace with the project's actual manager: npm, pnpm, yarn, or bun.
+
 ## Minimal Template (~20 lines)
 
 For small projects with simple setup:
@@ -90,10 +94,10 @@ For workspace-based projects:
 ## Build & Test
 
 Root commands (run from project root):
-- `<pm> build` — Build all packages
-- `<pm> test` — Run all tests
-- `<pm> lint` — Lint all packages
-- `<pm> build --filter=<package>` — Build specific package
+- `<package-manager> build` — Build all packages
+- `<package-manager> test` — Run all tests
+- `<package-manager> lint` — Lint all packages
+- `<package-manager> build --filter=<package>` — Build specific package
 
 ### Package-Specific Commands
 
@@ -144,11 +148,11 @@ For `.claude/rules/*.md` files:
 
 ```markdown
 ---
-globs: ["<glob-pattern>"]
-description: <What this rule covers>
+paths:
+  - "<glob-pattern>"
 ---
 
-<Imperative instructions specific to files matching the glob.>
+<Imperative instructions specific to files matching the path pattern.>
 
 - <Rule 1>
 - <Rule 2>

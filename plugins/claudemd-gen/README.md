@@ -4,8 +4,17 @@ Writing effective CLAUDE.md files is the highest-leverage activity for Claude Co
 
 ## Installation
 
+### From Marketplace (Recommended)
+
+```
+/plugin marketplace add vampik33/claude-plugins
+/plugin install claudemd-gen
+```
+
+### From local directory (development)
+
 ```bash
-claude plugin add vampik33/claude-plugins/claudemd-gen
+claude --plugin-dir /path/to/claude-plugins/plugins/claudemd-gen
 ```
 
 ## Usage
@@ -18,6 +27,7 @@ claude plugin add vampik33/claude-plugins/claudemd-gen
 /claudemd-gen:generate --rules        # Generate .claude/rules/ with path-specific rules
 /claudemd-gen:generate --local        # Generate CLAUDE.local.md template
 /claudemd-gen:generate --full         # Complete setup: CLAUDE.md + rules + local
+/claudemd-gen:generate --help         # Print usage information
 ```
 
 ### Natural Language
@@ -26,15 +36,18 @@ The skill also activates naturally:
 - "Generate a CLAUDE.md for this project"
 - "Audit my CLAUDE.md"
 - "Help me improve my CLAUDE.md"
+- "Set up project instructions"
+- "Configure Claude Code for this project"
 - "Set up .claude/rules"
 
 ## What It Does
 
 1. **Analyzes your project** — Reads package manifests, directory structure, existing docs
-2. **Chooses a template** — Minimal, Standard, or Monorepo based on project size
+2. **Chooses a template** — Minimal, Standard, or Monorepo based on deterministic project detection
 3. **Generates content** — Fills template with real commands, paths, and conventions
-4. **Reviews with you** — Interactive confirmation before writing files
-5. **Follows best practices** — WHAT/WHY/HOW framework, 80% rule, imperative style
+4. **Verifies strictly** — Every command and path is checked against manifests and disk before writing
+5. **Reviews with you** — Interactive confirmation before writing files
+6. **Follows best practices** — WHAT/WHY/HOW framework, 80% rule, imperative style
 
 ## Built-In Knowledge
 

@@ -1,7 +1,7 @@
 ---
 name: claudemd-gen
-description: This skill should be used when the user wants to generate, audit, improve, or review a CLAUDE.md file, set up .claude/rules/ for path-specific instructions, create a CLAUDE.local.md for personal preferences, or needs guidance on Claude Code memory configuration and project instruction best practices.
-version: 1.0.0
+description: This skill should be used when the user wants to generate, create, write, audit, improve, or review a CLAUDE.md file, set up .claude/rules/ for path-specific instructions, create a CLAUDE.local.md for personal preferences, set up project instructions, configure Claude Code for a project, ask what should go in a CLAUDE.md, or needs guidance on Claude Code memory configuration and project instruction best practices.
+version: 1.1.0
 ---
 
 # CLAUDE.md Generator
@@ -14,18 +14,19 @@ Generate effective CLAUDE.md files that encode project-specific knowledge for Cl
 2. **80% rule** — If Claude would get something right 80%+ of the time without instruction, don't include it
 3. **Imperative, not descriptive** — Write instructions ("Use pnpm"), not descriptions ("This project uses pnpm")
 4. **Reference, don't copy** — Point to existing docs ("See docs/api.md for endpoints"), don't duplicate them
-5. **Keep it under 200 lines** — If longer, split into .claude/rules/ with glob patterns
+5. **Keep it concise** — Target under 200 lines for most projects (monorepo roots may reach 300). If longer, split into .claude/rules/ with path patterns
 
 ## Memory Hierarchy
 
 | Level | File | Scope | Use For |
 |-------|------|-------|---------|
-| 1 | `CLAUDE.md` (repo root) | All sessions, all users | Build commands, architecture, conventions |
+| 1 | `CLAUDE.md` or `.claude/CLAUDE.md` (repo root) | All sessions, all users | Build commands, architecture, conventions |
 | 2 | `CLAUDE.md` (subdirectory) | When working in that dir | Package-specific rules |
-| 3 | `.claude/rules/*.md` | Glob-matched to file paths | Path-specific rules (e.g., test patterns) |
+| 3 | `.claude/rules/*.md` | Path-matched to file patterns | Path-specific rules (e.g., test patterns) |
 | 4 | `CLAUDE.local.md` | Personal, gitignored | Individual preferences |
 | 5 | `~/.claude/CLAUDE.md` | All projects for this user | Global personal preferences |
-| 6 | Auto-memory | Claude-managed | Learned patterns across sessions (not user-editable) |
+| 5b | `~/.claude/rules/*.md` | All projects for this user | Global personal rules (lower priority than project rules) |
+| 6 | Auto-memory | Claude-managed per-project | Learned patterns across sessions (not user-editable) |
 
 ## Quick Decision Guide
 

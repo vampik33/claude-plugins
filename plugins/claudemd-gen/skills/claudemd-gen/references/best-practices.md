@@ -95,12 +95,14 @@ This keeps each file short and relevant.
 
 ## Size Guidelines
 
-| Project Size | Target Lines | Strategy |
-|-------------|-------------|----------|
-| Small (1-5 files) | 15-30 | Single CLAUDE.md, minimal |
+| Project Size | Target Lines (root CLAUDE.md) | Strategy |
+|-------------|-------------------------------|----------|
+| Small (<10 files) | 15-30 | Single CLAUDE.md, minimal template |
 | Medium (10-50 files) | 50-100 | CLAUDE.md + maybe 1-2 rules |
 | Large (50-200 files) | 100-200 | CLAUDE.md + subdirectory files + rules/ |
-| Monorepo (200+ files) | 150-300 root + per-package | Root CLAUDE.md + package CLAUDE.md + rules/ |
+| Monorepo (200+ files) | 200-300 root + per-package | Root CLAUDE.md + package CLAUDE.md + rules/ |
+
+**General guideline:** Keep under 200 lines for most projects. Only monorepo roots should exceed 200.
 
 ## Reference, Don't Copy
 

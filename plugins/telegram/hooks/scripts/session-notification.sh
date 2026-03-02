@@ -19,6 +19,7 @@ source "$SCRIPT_DIR/lib/session.sh"
 extract_session_id "$HOOK_INPUT"
 extract_cwd "$HOOK_INPUT"
 extract_transcript_path "$HOOK_INPUT"
+extract_last_assistant_message "$HOOK_INPUT"
 
 # Read session file early to ensure cleanup happens even if plugin is disabled
 # This handles cases where user disables plugin mid-session

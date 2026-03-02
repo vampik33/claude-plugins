@@ -13,6 +13,8 @@ claude --plugin-dir /path/to/claude-plugins/plugins/<plugin-name>
 ```
 claude-plugins/
 ├── .claude-plugin/marketplace.json   # Marketplace manifest (all plugins)
+├── .claude/                          # Project-level Claude config
+├── plans/                            # Implementation plans from Claude sessions
 └── plugins/
     ├── claudemd-gen/                 # CLAUDE.md generator and auditor
     ├── explain-changes/              # Git diff explainer with educational insights
@@ -28,6 +30,7 @@ Each plugin in `plugins/<name>/` follows this structure:
 ```
 <plugin>/
 ├── .claude-plugin/plugin.json        # Plugin manifest (name, version, description)
+├── agents/                           # Autonomous subagents — optional
 ├── commands/                         # Slash commands (markdown + YAML frontmatter)
 ├── hooks/                            # Event hooks (hooks.json + scripts/) — optional
 │   └── scripts/lib/                  # Shared shell libraries
@@ -78,14 +81,24 @@ Use markdown files with YAML frontmatter for user-facing config:
      "name": "<name>",
      "description": "What the plugin does",
      "version": "1.0.0",
+     "author": { "name": "vampik33" },
      "source": "./plugins/<name>",
-     "category": "Category Name"
+     "category": "Category Name",
+     "keywords": ["relevant", "tags"],
+     "homepage": "https://github.com/vampik33/claude-plugins"
    }
    ```
 
 3. Add commands in `commands/<command>.md` with YAML frontmatter
 4. Add `skills/<skill-name>/SKILL.md` with trigger description
 5. Create `CHANGELOG.md` with initial entry
+
+## Gotchas
+
+- **Version sync is mandatory**: `plugin.json` and `marketplace.json` versions must match exactly — easy to forget one
+- **Only telegram has hooks**: All other plugins are command+skill only; the `hooks/` directory pattern in the architecture template is optional
+- **The `scripts/lib/` shared libraries are telegram-specific**: `config.sh`, `session.sh`, `yaml.sh` live under telegram's hooks — they are not cross-plugin shared code
+- **gtr has no CHANGELOG.md**: Unlike other plugins, gtr is missing its changelog
 
 ## Updating a Plugin
 

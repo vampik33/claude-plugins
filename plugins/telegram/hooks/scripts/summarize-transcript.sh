@@ -23,26 +23,26 @@ if ! command -v jq &> /dev/null; then
   exit 0
 fi
 
-# Tier 1: Extract summary from Claude's last assistant message (Stop hook field)
+# Tier 1: Use Claude's last assistant message directly (Stop hook field)
 # The Stop hook provides last_assistant_message with Claude's final response text.
-# When instructed via CLAUDE.md, Claude typically ends with a "## Summary" section.
 LAST_MSG="${LAST_ASSISTANT_MESSAGE:-}"
 
 if [[ -n "$LAST_MSG" ]]; then
-  # Extract text between "## Summary" (or # Summary / ### Summary) heading
-  # and the next heading, insight block, or end of message
-  SESSION_SUMMARY=$(echo "$LAST_MSG" | awk '
-    /^#{1,3} Summary/ { found=1; next }
-    found && /^#{1,3} / { exit }
-    found && /^`★/ { exit }
-    found && /^`───/ { exit }
-    found { print }
-  ' | sed 's/\*\*//g; /^[[:space:]]*$/d' | head -10)
+  # Strip markdown formatting for cleaner Telegram output
+  SESSION_SUMMARY=$(echo "$LAST_MSG" | sed 's/\*\*//g; s/^#{1,3} //g' | head -20)
 
   if [[ -n "$SESSION_SUMMARY" ]]; then
-    # Truncate for concise notifications (500 char limit)
-    if [[ ${#SESSION_SUMMARY} -gt 500 ]]; then
-      echo "${SESSION_SUMMARY:0:500}..."
+    # Truncate to last complete sentence within 1000 chars
+    if [[ ${#SESSION_SUMMARY} -gt 1000 ]]; then
+      TRUNCATED="${SESSION_SUMMARY:0:1000}"
+      # Find last sentence-ending punctuation (.!?) within the limit
+      LAST_SENTENCE=$(echo "$TRUNCATED" | grep -oP '.*[.!?]' | tail -1)
+      if [[ -n "$LAST_SENTENCE" ]]; then
+        echo "$LAST_SENTENCE"
+      else
+        # No sentence boundary found — cut at last space to avoid mid-word
+        echo "${TRUNCATED% *}..."
+      fi
     else
       echo "$SESSION_SUMMARY"
     fi

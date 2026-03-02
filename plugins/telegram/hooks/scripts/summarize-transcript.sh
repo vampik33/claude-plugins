@@ -28,21 +28,27 @@ fi
 LAST_MSG="${LAST_ASSISTANT_MESSAGE:-}"
 
 if [[ -n "$LAST_MSG" ]]; then
-  # Strip markdown formatting for cleaner Telegram output
-  SESSION_SUMMARY=$(echo "$LAST_MSG" | sed 's/\*\*//g; s/^#{1,3} //g' | head -20)
+  # Strip markdown formatting for cleaner Telegram output:
+  # - Remove bold/italic markers, heading prefixes
+  # - Remove markdown table rows (separators and data rows with |)
+  # - Remove backticks, insight blocks, horizontal rules
+  # - Collapse multiple blank lines
+  SESSION_SUMMARY=$(echo "$LAST_MSG" \
+    | sed 's/`//g' \
+    | awk '/^★/{skip=1} /^─+$/{skip=0; next} skip{next} 1' \
+    | sed -E \
+      -e 's/\*\*//g' \
+      -e 's/^#{1,6} //' \
+      -e '/^\|[-:| ]*\|$/d' \
+      -e '/^\| /d' \
+      -e '/^[[:space:]]*$/d' \
+    | head -15)
 
   if [[ -n "$SESSION_SUMMARY" ]]; then
-    # Truncate to last complete sentence within 1000 chars
+    # Truncate at last word boundary within 1000 chars
     if [[ ${#SESSION_SUMMARY} -gt 1000 ]]; then
       TRUNCATED="${SESSION_SUMMARY:0:1000}"
-      # Find last sentence-ending punctuation (.!?) within the limit
-      LAST_SENTENCE=$(echo "$TRUNCATED" | grep -oP '.*[.!?]' | tail -1)
-      if [[ -n "$LAST_SENTENCE" ]]; then
-        echo "$LAST_SENTENCE"
-      else
-        # No sentence boundary found — cut at last space to avoid mid-word
-        echo "${TRUNCATED% *}..."
-      fi
+      echo "${TRUNCATED% *}..."
     else
       echo "$SESSION_SUMMARY"
     fi

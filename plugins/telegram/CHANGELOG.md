@@ -5,6 +5,13 @@ All notable changes to the Telegram plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-03-02
+
+### Fixed
+- **Broken sentence-boundary truncation**: `grep -oP '.*[.!?]' | tail -1` discarded all content except the last line containing a dot — file path dots (e.g. `lib.rs`) were treated as sentence endings, producing garbage like `| runtime/src/lib.`
+- **Aggressive markdown stripping**: Now removes table rows, backticks, insight blocks (★...─), and heading markers (was broken due to BRE vs ERE regex)
+- Simplified truncation to word-boundary cut at 500 chars instead of flawed sentence detection
+
 ## [1.6.2] - 2026-03-02
 
 ### Fixed

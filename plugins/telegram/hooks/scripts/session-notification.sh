@@ -95,8 +95,9 @@ if [[ -n "${CLAUDE_SESSION_ID:-}" ]]; then
   MESSAGE_PARTS+=("Session: ${CLAUDE_SESSION_ID}")
 fi
 
-# Join parts with newlines
-MESSAGE=$(printf '%s\n' "${MESSAGE_PARTS[@]}")
+# Join parts with blank lines between sections
+MESSAGE=$(printf '%s\n\n' "${MESSAGE_PARTS[@]}")
+MESSAGE="${MESSAGE%$'\n\n'}"
 
 # Send notification using shared script (handles JSON escaping and response validation)
 if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then

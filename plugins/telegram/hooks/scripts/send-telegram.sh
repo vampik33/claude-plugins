@@ -33,7 +33,7 @@ fi
 JSON_PAYLOAD=$(jq -n \
   --arg chat_id "$TELEGRAM_CHAT_ID" \
   --arg text "$MESSAGE" \
-  '{chat_id: $chat_id, text: $text}')
+  '{chat_id: $chat_id, text: $text, parse_mode: "HTML"}')
 
 if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
   echo "Payload: $JSON_PAYLOAD" >&2

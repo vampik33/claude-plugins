@@ -11,6 +11,9 @@ set -euo pipefail
 # - Display: Created files show up to 2 names, otherwise count
 # - Display: Bash commands show up to 3 command types
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/html.sh"
+
 TRANSCRIPT_PATH="${1:-}"
 
 if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then
@@ -48,10 +51,9 @@ if [[ -n "$LAST_MSG" ]]; then
     # Truncate at last word boundary within 1000 chars
     if [[ ${#SESSION_SUMMARY} -gt 1000 ]]; then
       TRUNCATED="${SESSION_SUMMARY:0:1000}"
-      echo "${TRUNCATED% *}..."
-    else
-      echo "$SESSION_SUMMARY"
+      SESSION_SUMMARY="${TRUNCATED% *}..."
     fi
+    escape_html "$SESSION_SUMMARY"
     exit 0
   fi
 fi
@@ -95,7 +97,7 @@ else
 fi
 if [[ "$EDIT_COUNT" -gt 0 ]]; then
   if [[ "$EDIT_COUNT" -le 3 ]]; then
-    EDIT_LIST=$(echo "$EDITED_FILES" | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+    EDIT_LIST=$(echo "$EDITED_FILES" | while IFS= read -r f; do escape_html "$f"; done | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
     SUMMARY_PARTS+=("Edited: $EDIT_LIST")
   else
     SUMMARY_PARTS+=("Edited $EDIT_COUNT files")
@@ -110,7 +112,7 @@ else
 fi
 if [[ "$CREATE_COUNT" -gt 0 ]]; then
   if [[ "$CREATE_COUNT" -le 2 ]]; then
-    CREATE_LIST=$(echo "$CREATED_FILES" | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+    CREATE_LIST=$(echo "$CREATED_FILES" | while IFS= read -r f; do escape_html "$f"; done | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
     SUMMARY_PARTS+=("Created: $CREATE_LIST")
   else
     SUMMARY_PARTS+=("Created $CREATE_COUNT files")
@@ -125,7 +127,7 @@ else
 fi
 if [[ "$CMD_COUNT" -gt 0 ]]; then
   # Extract first word of each command for summary
-  CMD_SUMMARY=$(echo "$BASH_COMMANDS" | awk '{print $1}' | sort -u | head -3 | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+  CMD_SUMMARY=$(echo "$BASH_COMMANDS" | awk '{print $1}' | sort -u | head -3 | while IFS= read -r c; do escape_html "$c"; done | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
   if [[ -n "$CMD_SUMMARY" ]]; then
     SUMMARY_PARTS+=("Ran: $CMD_SUMMARY")
   fi

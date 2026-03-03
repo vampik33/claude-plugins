@@ -12,10 +12,11 @@ Send a notification message via Telegram Bot API.
 
 If `$ARGUMENTS` is empty or not provided, set the message "Task completed".
 
-Send the message using the shared script:
+Escape the message for HTML and send using the shared script:
 
 ```bash
-MESSAGE="${ARGUMENTS:-Task completed}"
+source "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/lib/html.sh"
+MESSAGE=$(escape_html "${ARGUMENTS:-Task completed}")
 bash "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/send-telegram.sh" "$MESSAGE"
 ```
 

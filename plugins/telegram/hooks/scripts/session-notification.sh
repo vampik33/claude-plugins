@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/session.sh"
+source "$SCRIPT_DIR/lib/html.sh"
 extract_session_id "$HOOK_INPUT"
 extract_cwd "$HOOK_INPUT"
 extract_transcript_path "$HOOK_INPUT"
@@ -78,21 +79,22 @@ fi
 # Build notification message parts
 MESSAGE_PARTS=()
 if [[ -n "$CUSTOM_MESSAGE" ]]; then
-  MESSAGE_PARTS+=("$CUSTOM_MESSAGE (${ELAPSED_MINUTES}m)")
+  MESSAGE_PARTS+=("<b>$(escape_html "$CUSTOM_MESSAGE") (${ELAPSED_MINUTES}m)</b>")
 else
-  MESSAGE_PARTS+=("Claude Code session completed in $PROJECT_NAME (${ELAPSED_MINUTES}m)")
+  MESSAGE_PARTS+=("<b>Claude Code session completed in $(escape_html "$PROJECT_NAME") (${ELAPSED_MINUTES}m)</b>")
 fi
 
+# Summary is already HTML-escaped by summarize-transcript.sh
 if [[ -n "$TASK_SUMMARY" ]]; then
   MESSAGE_PARTS+=("$TASK_SUMMARY")
 fi
 
 # Add session metadata
 if [[ -n "${CLAUDE_CWD:-}" ]]; then
-  MESSAGE_PARTS+=("Dir: ${CLAUDE_CWD}")
+  MESSAGE_PARTS+=("<i>Dir: $(escape_html "${CLAUDE_CWD}")</i>")
 fi
 if [[ -n "${CLAUDE_SESSION_ID:-}" ]]; then
-  MESSAGE_PARTS+=("Session: ${CLAUDE_SESSION_ID}")
+  MESSAGE_PARTS+=("<i>Session: $(escape_html "${CLAUDE_SESSION_ID}")</i>")
 fi
 
 # Join parts with blank lines between sections

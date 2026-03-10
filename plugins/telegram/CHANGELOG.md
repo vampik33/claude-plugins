@@ -5,6 +5,16 @@ All notable changes to the Telegram plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-03-10
+
+### Added
+- **Configuration reference**: New `references/configuration.md` for progressive disclosure of setup details
+- **Inline credentials and config**: SKILL.md now includes credentials and configuration sections directly, so Claude can answer setup questions without loading the README
+
+### Changed
+- **Improved skill trigger description**: Rewritten with explicit trigger phrases for better skill matching accuracy
+- **Troubleshooting links**: Updated to reference the new configuration reference doc
+
 ## [1.7.0] - 2026-03-03
 
 ### Added

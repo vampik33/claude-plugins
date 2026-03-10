@@ -1,7 +1,6 @@
 ---
 name: plan-renamer
 description: This skill should be used when the user asks to "rename plans", "fix plan names", "rename plan files", "clean up plan names", "organize plans", "give plans better names", or wants to rename randomly-named plan files (like scalable-moseying-papert.md) to meaningful slugified titles extracted from the file content.
-version: 1.0.0
 ---
 
 # Plan Renamer Skill

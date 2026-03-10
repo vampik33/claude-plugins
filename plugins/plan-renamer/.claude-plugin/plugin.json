@@ -1,6 +1,6 @@
 {
   "name": "plan-renamer",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Rename plan files from random names to meaningful titles extracted from content",
   "author": {
     "name": "vampik33",

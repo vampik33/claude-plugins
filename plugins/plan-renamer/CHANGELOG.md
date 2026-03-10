@@ -4,6 +4,16 @@ All notable changes to the plan-renamer plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.2] - 2026-03-10
+
+### Fixed
+- Removed stale "Automatic Behavior" section referencing PostToolUse hook that was removed in v1.2.0
+- Removed outdated 80-character truncation rule from naming rules (removed in v1.1.1)
+
+### Changed
+- Improved skill description with broader trigger phrases and action-first wording
+- Added output example showing the summary table format
+
 ## [1.2.1] - 2026-02-18
 
 ### Changed

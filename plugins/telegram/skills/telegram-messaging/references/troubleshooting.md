@@ -1,6 +1,6 @@
 # Telegram Plugin Troubleshooting
 
-Common issues and solutions. For setup instructions, see [README.md](../../../README.md).
+Common issues and solutions. For setup instructions, see [configuration.md](configuration.md) or the [plugin README](../../../README.md) (at `plugins/telegram/README.md`).
 
 ## Credential Issues
 
@@ -64,7 +64,7 @@ If it occurs, check `retry_after` in response for wait time.
 
 ### Credentials not persisting
 
-`export` only works for current shell session. See [README - Credentials Setup](../../../README.md#credentials-setup) for persistence options.
+`export` only works for current shell session. See [configuration.md](configuration.md) or [README - Credentials Setup](../../../README.md#credentials-setup) for persistence options.
 
 ### Different credentials per project
 
@@ -86,4 +86,4 @@ Use [direnv](https://direnv.net/) with `.envrc` file in project root.
 
 ### Debug mode
 
-See [README - Debug Mode](../../../README.md#debug-mode) for verbose output options.
+See [configuration.md](configuration.md#debug-mode) or [README - Debug Mode](../../../README.md#debug-mode) for verbose output options.

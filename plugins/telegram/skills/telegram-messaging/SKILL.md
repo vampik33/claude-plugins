@@ -1,6 +1,6 @@
 ---
 name: Telegram Messaging
-description: Send Telegram messages via /telegram command or automatic session notifications. Helps with Bot API setup, credential configuration, and troubleshooting delivery issues.
+description: This skill should be used when the user asks about sending Telegram messages, setting up Telegram notifications, configuring Telegram bot tokens or chat IDs, enabling automatic session notifications, troubleshooting "chat not found" or "unauthorized" errors, fixing notifications not sending, or using the /telegram command. Covers credential setup, telegram.local.md configuration, idle threshold tuning, and debug mode.
 ---
 
 # Telegram Messaging
@@ -13,7 +13,29 @@ Send messages to Telegram using the Bot API. The plugin provides both manual (`/
 /telegram Your message here
 ```
 
-For setup instructions (credentials, configuration), see the [plugin README](../../README.md).
+## Credentials
+
+Set two environment variables (add to `~/.bashrc` or `~/.zshrc` for persistence):
+
+```bash
+export TELEGRAM_BOT_TOKEN="your-bot-token"   # from @BotFather
+export TELEGRAM_CHAT_ID="your-chat-id"       # from @userinfobot
+```
+
+## Configuration
+
+Create `.claude/telegram.local.md` (project) or `~/.claude/telegram.local.md` (global):
+
+```markdown
+---
+enabled: true
+session_threshold_minutes: 10
+---
+
+Your custom notification message here
+```
+
+See `examples/telegram.local.md.example` for a working config template.
 
 ## Plugin Behavior
 
@@ -23,5 +45,6 @@ For setup instructions (credentials, configuration), see the [plugin README](../
 
 ## Resources
 
-- **Full documentation:** [README.md](../../README.md)
+- **Full documentation:** [README.md](../../README.md) (at `plugins/telegram/README.md`)
+- **Configuration details:** [references/configuration.md](references/configuration.md)
 - **Troubleshooting:** [references/troubleshooting.md](references/troubleshooting.md)

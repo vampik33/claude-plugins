@@ -1,7 +1,6 @@
 ---
 name: claudemd-gen
-description: This skill should be used when the user wants to generate, create, write, audit, improve, or review a CLAUDE.md file, set up .claude/rules/ for path-specific instructions, create a CLAUDE.local.md for personal preferences, set up project instructions, configure Claude Code for a project, ask what should go in a CLAUDE.md, or needs guidance on Claude Code memory configuration and project instruction best practices.
-version: 1.1.0
+description: This skill should be used when the user wants to generate, create, write, audit, improve, or review a CLAUDE.md file, set up .claude/rules/ for path-specific instructions, create a CLAUDE.local.md for personal preferences, set up project instructions, configure Claude Code for a project, ask what should go in a CLAUDE.md, or needs guidance on Claude Code memory configuration and project instruction best practices. Also trigger when the user wants to initialize Claude Code in a repo, bootstrap Claude config, set up project memory, or asks how to make Claude work better with their codebase — even if they don't mention "CLAUDE.md" explicitly.
 ---
 
 # CLAUDE.md Generator
@@ -28,12 +27,14 @@ Generate effective CLAUDE.md files that encode project-specific knowledge for Cl
 | 5b | `~/.claude/rules/*.md` | All projects for this user | Global personal rules (lower priority than project rules) |
 | 6 | Auto-memory | Claude-managed per-project | Learned patterns across sessions (not user-editable) |
 
+**Tip:** CLAUDE.md supports `@path` imports (e.g., `@docs/architecture.md`) to pull in external files inline. Useful for sharing rules across tools or keeping CLAUDE.md lean. See `references/memory-system.md` for details.
+
 ## Quick Decision Guide
 
 | Situation | Action |
 |-----------|--------|
 | New project, no CLAUDE.md | Generate with `/claudemd-gen:generate` |
-| Existing CLAUDE.md, unsure if good | Audit with `/claudemd-gen:generate --audit` |
+| Existing CLAUDE.md, unsure if good | Audit and auto-fix with `/claudemd-gen:generate --audit` |
 | Large project, need path-specific rules | Generate rules with `/claudemd-gen:generate --rules` |
 | Want personal preferences separate | Create local with `/claudemd-gen:generate --local` |
 | Full setup from scratch | Complete setup with `/claudemd-gen:generate --full` |

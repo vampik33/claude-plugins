@@ -1,5 +1,12 @@
 # Claude Code Memory System
 
+## Contents
+
+- [Complete Hierarchy](#complete-hierarchy) — Priority order of all instruction sources
+- [@import Syntax](#import-syntax) — How to import files into CLAUDE.md
+- [.claude/rules/ Directory](#clauderules-directory) — Path-specific rules structure and decision matrix
+- [Practical Tips](#practical-tips) — When to split, how to organize
+
 ## Complete Hierarchy
 
 Claude Code reads instructions from multiple sources, merged in priority order:

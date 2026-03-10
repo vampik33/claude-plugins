@@ -61,7 +61,7 @@
     {
       "name": "claudemd-gen",
       "description": "Interactive CLAUDE.md generator and auditor - encodes best practices for writing effective Claude Code memory files",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": {
         "name": "vampik33"
       },

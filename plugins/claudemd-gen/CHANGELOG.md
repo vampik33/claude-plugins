@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-03-10
+
+### Changed
+
+- Expanded skill trigger description to catch indirect requests ("initialize Claude Code in a repo", "bootstrap Claude config", "make Claude work better with my codebase")
+- Audit mode description updated to "audit and auto-fix" (offers to apply fixes after reporting)
+- Removed unused `version` field from SKILL.md frontmatter
+
+### Added
+
+- `@path` import tip in Memory Hierarchy section of SKILL.md
+- Table of contents in `references/memory-system.md` for easier navigation
+
 ## [1.1.0] - 2026-02-19
 
 ### Fixed

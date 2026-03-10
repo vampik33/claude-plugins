@@ -24,7 +24,7 @@ Parse `$ARGUMENTS` to determine mode. If multiple flags are provided, use the **
 |----------|------|--------|
 | `--help` | **Help** | Print usage table and exit |
 | `--full` | **Full Setup** | Generate CLAUDE.md + rules + local |
-| `--audit` | **Audit** | Review existing CLAUDE.md against best practices |
+| `--audit` | **Audit** | Review existing CLAUDE.md against best practices, then offer to auto-fix |
 | `--rules` | **Rules** | Generate .claude/rules/ structure |
 | `--local` | **Local** | Generate CLAUDE.local.md template |
 | (none) | **Generate** | Create or improve CLAUDE.md |

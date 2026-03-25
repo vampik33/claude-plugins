@@ -1,6 +1,6 @@
-# Telegram Plugin Configuration
+# Telegram Notifier Plugin Configuration
 
-Extracted from the [plugin README](../../../README.md) (at `plugins/telegram/README.md`).
+Extracted from the [plugin README](../../../README.md) (at `plugins/telegram-notifier/README.md`).
 
 ## Credentials
 
@@ -36,8 +36,8 @@ The plugin supports two configuration scopes:
 
 | Scope | Location | Purpose |
 |-------|----------|---------|
-| User (global) | `~/.claude/telegram.local.md` | Default settings for all projects |
-| Project | `.claude/telegram.local.md` | Project-specific overrides |
+| User (global) | `~/.claude/telegram-notifier.local.md` | Default settings for all projects |
+| Project | `.claude/telegram-notifier.local.md` | Project-specific overrides |
 
 ### Merge Behavior
 
@@ -72,7 +72,7 @@ Add to your project's `.gitignore`:
 Enable verbose output for troubleshooting:
 
 ```bash
-export TELEGRAM_DEBUG=1
+export TELEGRAM_NOTIFIER_DEBUG=1
 ```
 
 This shows API requests and responses.

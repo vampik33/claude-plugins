@@ -5,7 +5,7 @@ set -euo pipefail
 # Checks session duration against threshold from settings
 
 # Debug mode support
-if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   set -x
   exec 2>&1
 fi
@@ -69,7 +69,7 @@ CUSTOM_MESSAGE=$(get_notification_body)
 # Get transcript summary if available
 TASK_SUMMARY=""
 if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
-  if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+  if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
     TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" 2>&1 || echo "")
   else
     TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
@@ -102,7 +102,7 @@ MESSAGE=$(printf '%s\n\n' "${MESSAGE_PARTS[@]}")
 MESSAGE="${MESSAGE%$'\n\n'}"
 
 # Send notification using shared script (handles JSON escaping and response validation)
-if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   echo "Sending notification: $MESSAGE" >&2
   bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" || echo "Warning: Failed to send session notification" >&2
 else

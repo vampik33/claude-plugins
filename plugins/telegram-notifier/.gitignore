@@ -2,4 +2,4 @@
 .claude/*.local.md
 
 # Runtime artifacts
-.claude/.telegram-session-start
+.claude/.telegram-notifier-session-start

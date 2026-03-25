@@ -3,10 +3,10 @@ set -euo pipefail
 
 # Check if Telegram credentials are set (opt-in based on config file)
 # Runs on SessionStart to validate environment
-# Only blocks if telegram.local.md exists with enabled: true
+# Only blocks if telegram-notifier.local.md exists with enabled: true
 
 # Debug mode support
-if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   set -x
   exec 2>&1
 fi
@@ -25,13 +25,13 @@ SESSION_FILE=$(get_session_file_path)
 rm -f "$SESSION_FILE" 2>/dev/null || true
 
 # Check if plugin is enabled (opt-in behavior with dual-scope support)
-# User config: ~/.claude/telegram.local.md (global defaults)
-# Project config: .claude/telegram.local.md (project overrides)
+# User config: ~/.claude/telegram-notifier.local.md (global defaults)
+# Project config: .claude/telegram-notifier.local.md (project overrides)
 ENABLED_STATUS=$(is_plugin_enabled)
 
 if [[ "$ENABLED_STATUS" == "unconfigured" ]]; then
   # No config at either level
-  echo '{"systemMessage": "Telegram plugin: No config found. Create ~/.claude/telegram.local.md (global) or .claude/telegram.local.md (project) with enabled: true to enable notifications."}'
+  echo '{"systemMessage": "Telegram Notifier plugin: No config found. Create ~/.claude/telegram-notifier.local.md (global) or .claude/telegram-notifier.local.md (project) with enabled: true to enable notifications."}'
   exit 0
 fi
 
@@ -52,7 +52,7 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
   cat >&2 <<EOF
 {
   "error": "Missing dependencies: $DEPS_LIST",
-  "systemMessage": "Telegram plugin: Missing required dependencies ($DEPS_LIST). Install them to use Telegram notifications:\n\n- jq: https://jqlang.github.io/jq/download/\n- curl: Usually pre-installed on most systems"
+  "systemMessage": "Telegram Notifier plugin: Missing required dependencies ($DEPS_LIST). Install them to use Telegram notifications:\n\n- jq: https://jqlang.github.io/jq/download/\n- curl: Usually pre-installed on most systems"
 }
 EOF
   exit 2
@@ -68,12 +68,12 @@ if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
   cat >&2 <<EOF
 {
   "error": "Missing Telegram credentials: $CREDS_LIST",
-  "systemMessage": "Telegram plugin: Missing required environment variables ($CREDS_LIST). See README.md for setup instructions."
+  "systemMessage": "Telegram Notifier plugin: Missing required environment variables ($CREDS_LIST). See README.md for setup instructions."
 }
 EOF
   exit 2
 fi
 
 # Success message
-echo '{"systemMessage": "Telegram plugin: Ready. Use /telegram to send messages."}'
+echo '{"systemMessage": "Telegram Notifier plugin: Ready. Use /telegram to send messages."}'
 exit 0

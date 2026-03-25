@@ -1,4 +1,4 @@
-# Telegram Plugin for Claude Code
+# Telegram Notifier Plugin for Claude Code
 
 Send Telegram notifications from Claude Code sessions - manually via command or automatically after periods of inactivity.
 
@@ -15,8 +15,8 @@ Send Telegram notifications from Claude Code sessions - manually via command or 
 1. Install dependencies: `jq` and `curl`
 2. Set up credentials (see below)
 3. Create config file to enable the plugin:
-   - Global: `~/.claude/telegram.local.md`
-   - Per-project: `.claude/telegram.local.md`
+   - Global: `~/.claude/telegram-notifier.local.md`
+   - Per-project: `.claude/telegram-notifier.local.md`
 4. Use `/telegram` or wait for automatic notifications
 
 ## Prerequisites
@@ -63,7 +63,7 @@ export TELEGRAM_CHAT_ID="project-chat"
 ## Installation
 
 ```bash
-claude plugin add vampik33/claude-plugins/telegram
+claude plugin add vampik33/claude-plugins/telegram-notifier
 ```
 
 ## Usage
@@ -79,7 +79,7 @@ If no message provided, defaults to "Task completed".
 ### Automatic Notifications
 
 The plugin sends notifications when:
-1. `.claude/telegram.local.md` exists with `enabled: true`
+1. `.claude/telegram-notifier.local.md` exists with `enabled: true`
 2. Idle time (since last interaction) exceeds the configured threshold
 3. Credentials are properly set
 
@@ -89,8 +89,8 @@ The plugin supports two configuration scopes, similar to CLAUDE.md:
 
 | Scope | Location | Purpose |
 |-------|----------|---------|
-| User (global) | `~/.claude/telegram.local.md` | Default settings for all projects |
-| Project | `.claude/telegram.local.md` | Project-specific overrides |
+| User (global) | `~/.claude/telegram-notifier.local.md` | Default settings for all projects |
+| Project | `.claude/telegram-notifier.local.md` | Project-specific overrides |
 
 ### Merge Behavior
 
@@ -101,7 +101,7 @@ The plugin supports two configuration scopes, similar to CLAUDE.md:
 
 ### Example Setup
 
-**User config** (`~/.claude/telegram.local.md`) - global defaults:
+**User config** (`~/.claude/telegram-notifier.local.md`) - global defaults:
 
 ```markdown
 ---
@@ -112,7 +112,7 @@ session_threshold_minutes: 15
 Claude Code task completed
 ```
 
-**Project override** (`.claude/telegram.local.md`):
+**Project override** (`.claude/telegram-notifier.local.md`):
 
 ```markdown
 ---
@@ -150,7 +150,7 @@ Add to your project's `.gitignore` (user-level config in `~/.claude/` is not in 
 For troubleshooting, enable debug mode:
 
 ```bash
-export TELEGRAM_DEBUG=1
+export TELEGRAM_NOTIFIER_DEBUG=1
 ```
 
 This shows verbose output including API requests and responses.
@@ -161,7 +161,7 @@ See [troubleshooting guide](skills/telegram-messaging/references/troubleshooting
 
 **Quick checks:**
 - Credentials set? `echo $TELEGRAM_BOT_TOKEN`
-- Config exists? `cat ~/.claude/telegram.local.md` or `cat .claude/telegram.local.md`
+- Config exists? `cat ~/.claude/telegram-notifier.local.md` or `cat .claude/telegram-notifier.local.md`
 - Test manually: `/telegram Test message`
 
 ## License

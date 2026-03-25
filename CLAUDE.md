@@ -20,7 +20,7 @@ claude-plugins/
     ├── explain-changes/              # Git diff explainer with educational insights
     ├── gtr/                          # Git worktree management (wraps git-worktree-runner)
     ├── plan-renamer/                 # Rename plan files to meaningful titles
-    └── telegram/                     # Telegram session notifications (has hooks)
+    └── telegram-notifier/             # Telegram session notifications (has hooks)
 ```
 
 ## Plugin Architecture
@@ -96,8 +96,8 @@ Use markdown files with YAML frontmatter for user-facing config:
 ## Gotchas
 
 - **Version sync is mandatory**: `plugin.json` and `marketplace.json` versions must match exactly — easy to forget one
-- **Only telegram has hooks**: All other plugins are command+skill only; the `hooks/` directory pattern in the architecture template is optional
-- **The `scripts/lib/` shared libraries are telegram-specific**: `config.sh`, `session.sh`, `yaml.sh` live under telegram's hooks — they are not cross-plugin shared code
+- **Only telegram-notifier has hooks**: All other plugins are command+skill only; the `hooks/` directory pattern in the architecture template is optional
+- **The `scripts/lib/` shared libraries are telegram-notifier-specific**: `config.sh`, `session.sh`, `yaml.sh` live under telegram-notifier's hooks — they are not cross-plugin shared code
 - **gtr has no CHANGELOG.md**: Unlike other plugins, gtr is missing its changelog
 
 ## Updating a Plugin

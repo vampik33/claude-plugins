@@ -7,12 +7,12 @@ source "$LIB_DIR/yaml.sh"
 
 # Get user-level config path
 get_user_config_path() {
-  echo "${HOME}/.claude/telegram.local.md"
+  echo "${HOME}/.claude/telegram-notifier.local.md"
 }
 
 # Get project-level config path
 get_project_config_path() {
-  echo "${CLAUDE_PROJECT_DIR:-.}/.claude/telegram.local.md"
+  echo "${CLAUDE_PROJECT_DIR:-.}/.claude/telegram-notifier.local.md"
 }
 
 # Resolve config value with dual-scope support

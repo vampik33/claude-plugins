@@ -1,6 +1,6 @@
-# Telegram Plugin Troubleshooting
+# Telegram Notifier Plugin Troubleshooting
 
-Common issues and solutions. For setup instructions, see [configuration.md](configuration.md) or the [plugin README](../../../README.md) (at `plugins/telegram/README.md`).
+Common issues and solutions. For setup instructions, see [configuration.md](configuration.md) or the [plugin README](../../../README.md) (at `plugins/telegram-notifier/README.md`).
 
 ## Credential Issues
 
@@ -15,14 +15,14 @@ Common issues and solutions. For setup instructions, see [configuration.md](conf
 ### Automatic notifications not sending
 
 **Checklist:**
-1. `.claude/telegram.local.md` exists?
+1. `.claude/telegram-notifier.local.md` exists?
 2. Contains `enabled: true` in frontmatter?
 3. Idle time exceeded `session_threshold_minutes`?
 4. Credentials are set?
 
 **Debug:**
 ```bash
-export TELEGRAM_DEBUG=1
+export TELEGRAM_NOTIFIER_DEBUG=1
 # Then run your session and check output
 ```
 

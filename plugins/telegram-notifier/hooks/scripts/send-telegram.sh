@@ -5,10 +5,10 @@ set -euo pipefail
 # Usage: send-telegram.sh "message"
 # Returns: 0 on success, 1 on failure
 # Output: JSON response on success, error message on failure
-# Debug: Set TELEGRAM_DEBUG=1 for verbose output
+# Debug: Set TELEGRAM_NOTIFIER_DEBUG=1 for verbose output
 
 # Debug mode support
-if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   set -x
 fi
 
@@ -35,7 +35,7 @@ JSON_PAYLOAD=$(jq -n \
   --arg text "$MESSAGE" \
   '{chat_id: $chat_id, text: $text, parse_mode: "HTML"}')
 
-if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   echo "Payload: $JSON_PAYLOAD" >&2
 fi
 
@@ -49,9 +49,9 @@ RESPONSE=$(curl -s -m 10 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOK
   exit 1
 }
 # Re-enable tracing if debug mode is on
-if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then set -x; fi
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then set -x; fi
 
-if [[ "${TELEGRAM_DEBUG:-}" == "1" ]]; then
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   echo "Response: $RESPONSE" >&2
 fi
 

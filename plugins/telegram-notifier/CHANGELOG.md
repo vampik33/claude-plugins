@@ -1,9 +1,29 @@
 # Changelog
 
-All notable changes to the Telegram plugin will be documented in this file.
+All notable changes to the Telegram Notifier plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.9.0] - 2026-03-25
+
+### Changed
+- **BREAKING: Plugin renamed from `telegram` to `telegram-notifier`** to avoid conflict with Anthropic's official telegram plugin
+- Config file renamed: `telegram.local.md` → `telegram-notifier.local.md`
+- Debug env var renamed: `TELEGRAM_DEBUG` → `TELEGRAM_NOTIFIER_DEBUG`
+- Session temp files renamed: `claude-telegram-session-*` → `claude-telegram-notifier-session-*`
+- Install command: `claude plugin add vampik33/claude-plugins/telegram-notifier`
+- Plugin status messages now say "Telegram Notifier plugin" instead of "Telegram plugin"
+
+### Unchanged
+- `/telegram` slash command name (kept short for convenience)
+- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` env vars (Telegram API credentials, not plugin-specific)
+- `skills/telegram-messaging/` directory name
+
+### Migration
+1. Rename config files: `mv ~/.claude/telegram.local.md ~/.claude/telegram-notifier.local.md`
+2. Update env var in shell profile: `TELEGRAM_DEBUG` → `TELEGRAM_NOTIFIER_DEBUG`
+3. Re-install the plugin: `claude plugin add vampik33/claude-plugins/telegram-notifier`
 
 ## [1.8.0] - 2026-03-10
 

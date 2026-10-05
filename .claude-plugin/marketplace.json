@@ -69,6 +69,66 @@
       "category": "Documentation",
       "keywords": ["claude-md", "memory", "documentation", "configuration", "best-practices", "generator"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "cache-timer",
+      "description": "A real-time countdown to the prompt cache's expiry above the prompt, green to yellow to red as it runs out",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/cache-timer",
+      "category": "Workflow",
+      "keywords": ["cache", "prompt-cache", "timer", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "prompt-clock",
+      "description": "Send time on each typed prompt and start → end times on each turn's duration line",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/prompt-clock",
+      "category": "Workflow",
+      "keywords": ["time", "transcript", "prompts", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "fleet",
+      "description": "A side pane with the session's subagents, background shells and worktrees, with alerts when they finish or fail",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/fleet",
+      "category": "Workflow",
+      "keywords": ["agents", "subagents", "worktrees", "background", "notifications", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "codex-review",
+      "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/codex-review",
+      "category": "Code Review",
+      "keywords": ["codex", "code-review", "adversarial-review", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "continuity",
+      "description": "Live context gauge and session length; handover note, compaction and continue past a threshold; resume after a usage limit",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/continuity",
+      "category": "Workflow",
+      "keywords": ["context", "compaction", "handover", "rate-limit", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

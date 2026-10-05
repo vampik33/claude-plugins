@@ -14,3 +14,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Types Claude Code lays beside a loaded mod
+plugins/*/.claude-plugin/types/

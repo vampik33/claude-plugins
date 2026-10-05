@@ -1,0 +1,21 @@
+{
+  "name": "continuity",
+  "version": "0.1.0",
+  "description": "A live context gauge and session length above the prompt; past a threshold it writes a handover note, compacts at the end of the turn and continues from the note, and it resumes after a 5-hour limit resets.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "threshold": {
+      "type": "number",
+      "title": "Handover at (% of context)",
+      "description": "When the context fill reaches this percentage at the end of a turn, write the handover note, compact, and continue",
+      "default": 75
+    },
+    "resumeAfterLimit": {
+      "type": "boolean",
+      "title": "Continue after the 5-hour limit resets",
+      "description": "When a turn stops at the 5-hour usage limit, wait for the reset and continue by itself (a countdown shows while blocked)",
+      "default": true
+    }
+  }
+}

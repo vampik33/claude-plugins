@@ -10,6 +10,7 @@ import {
   emptyCx,
   fmtElapsed,
   isPushCommand,
+  isSafeRef,
   parseArgs,
   preselect,
   readOutcome,
@@ -98,13 +99,15 @@ async function startJob(
     return `Not a git repository: ${req.cwd ?? "the session's directory"}`;
   const root = top.stdout.trim();
   const base = req.base || (await detectBase($, root));
+  if (!isSafeRef(base)) return `Not a branch name: ${base}`;
   const id = `cx-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const dir = `${home}/.cache/codex-review/${id}`;
   const made = await run($, ["mkdir", "-p", dir]);
   if (made?.exitCode !== 0) return `Cannot create ${dir}`;
 
   const sub = req.mode === "adversarial" ? "adversarial-review" : "review";
-  const focus = req.mode === "adversarial" && req.focus ? [req.focus] : [];
+  // after "--" the focus is free text, never an option of the companion's
+  const focus = req.mode === "adversarial" && req.focus ? ["--", req.focus] : [];
   // read-only: never --write; detached so the review outlives this call and a reload
   const started = await run($, [
     "sh",

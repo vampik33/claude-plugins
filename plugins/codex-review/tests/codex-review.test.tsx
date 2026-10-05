@@ -7,6 +7,7 @@ import {
   chooseBase,
   companionJobId,
   isPushCommand,
+  isSafeRef,
   parseArgs,
   preselect,
   readOutcome,
@@ -103,6 +104,15 @@ describe("arguments", () => {
     expect(
       chooseBase(undefined, "https://github.com/vampik33/claude-plugins"),
     ).toBe("main");
+  });
+
+  test("a base that could be read as an option is refused", () => {
+    expect(isSafeRef("develop")).toBe(true);
+    expect(isSafeRef("release/1.19")).toBe(true);
+    expect(isSafeRef("--write")).toBe(false);
+    expect(isSafeRef("-C/tmp")).toBe(false);
+    expect(isSafeRef("a b")).toBe(false);
+    expect(isSafeRef("main..evil")).toBe(false);
   });
 
   test("push detection", () => {

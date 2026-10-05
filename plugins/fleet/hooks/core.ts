@@ -157,7 +157,8 @@ export function summary(f: FleetState, repo: string, now: number): string {
     lines.push(`All done in ${fmtElapsed(now - batch)}`);
   }
   for (const s of shells)
-    lines.push(`Background: ${s.command} ${isFailed(s.status) ? "✗" : "✓"}`);
+    // the command's head alone leaves the device: its arguments may hold a secret
+    lines.push(`Background: ${firstWord(s.command)} ${isFailed(s.status) ? "✗" : "✓"}`);
   return lines.join("\n");
 }
 

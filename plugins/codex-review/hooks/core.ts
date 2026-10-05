@@ -46,6 +46,9 @@ export function chooseBase(
   return /[/:]greentic(ai|-biz)\//.test(remoteUrl) ? "develop" : "main";
 }
 
+/** A branch name the companion can take as --base: no leading dash, no spaces or shell-ish characters. */
+export const isSafeRef = (ref: string) => /^[A-Za-z0-9._/][A-Za-z0-9._/-]*$/.test(ref) && !ref.includes("..");
+
 /** A git push or gh pr create, the moments a review is worth suggesting. */
 export const isPushCommand = (command: string) =>
   /(^|[;&|]\s*|\s)(git\s+push|gh\s+pr\s+create)\b/.test(command);

@@ -1,0 +1,33 @@
+{
+  "name": "fleet",
+  "version": "0.1.0",
+  "description": "A side pane with this session's subagents, background shells and the repo's worktrees, with alerts when they finish or fail.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open the pane by itself",
+      "description": "Open the fleet pane when 2 or more agents run at once (unasked panes need a terminal 144 columns wide); /fleet opens it any time",
+      "default": true
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "Sound on failure and all done",
+      "description": "A short chime (paplay with the freedesktop sounds) when an agent or shell fails, and when everything has finished",
+      "default": true
+    },
+    "telegram": {
+      "type": "boolean",
+      "title": "Telegram summary when away",
+      "description": "Send an all-done summary through telegram-notifier's bot (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) when you have not typed for idleMinutes",
+      "default": true
+    },
+    "idleMinutes": {
+      "type": "number",
+      "title": "Away after (minutes)",
+      "description": "How long since your last prompt before the Telegram summary is sent",
+      "default": 5
+    }
+  }
+}

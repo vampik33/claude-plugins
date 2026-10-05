@@ -1,0 +1,22 @@
+{
+  "name": "codex-review",
+  "version": "0.1.0",
+  "description": "Codex reviews as background jobs: /cx starts one, a band shows its progress, a pane lists the findings to pick and send to Claude; Claude gets a CodexReview tool.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "suggestAfterPush": {
+      "type": "boolean",
+      "title": "Suggest /cx adv after a push",
+      "description": "After a successful git push or gh pr create, propose /cx adv as the prompt box's suggestion (Tab takes it)",
+      "default": true
+    },
+    "preselect": {
+      "type": "string",
+      "title": "Findings ticked by default",
+      "description": "Which findings start ticked in the pane",
+      "default": "medium+",
+      "options": ["medium+", "all", "none"]
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "description": "fleet: agent.spawn, tool.call and task notifications track subagents and background shells; a 2 s poll of $.agent.list while any run; the pane draws through a Client that ticks elapsed times",
+  "modules": ["./register.tsx"]
+}

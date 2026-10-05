@@ -1,0 +1,34 @@
+{
+  "name": "cache-timer",
+  "version": "0.1.0",
+  "description": "A real-time countdown to the prompt cache's expiry above the prompt, green to yellow to red as it runs out.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "ttl": {
+      "type": "string",
+      "title": "Cache lifetime",
+      "description": "auto follows Claude Code's rules (FORCE_PROMPT_CACHING_5M, CLAUDE_CODE_PROMPT_CACHE_TTL, promptCacheTtl, ENABLE_PROMPT_CACHING_1H, then 1h on a subscription, 5m otherwise) and corrects itself from request timing; 5m or 1h pins it",
+      "default": "auto",
+      "options": ["auto", "5m", "1h"]
+    },
+    "yellowAt": {
+      "type": "number",
+      "title": "Yellow at (share left)",
+      "description": "The timer turns yellow when this share of the cache lifetime is left (0.25 = 15:00 of a 1h cache)",
+      "default": 0.25
+    },
+    "redAt": {
+      "type": "number",
+      "title": "Red at (share left)",
+      "description": "The timer turns red, and one toast shows, when this share of the cache lifetime is left (0.1 = 6:00 of a 1h cache)",
+      "default": 0.1
+    },
+    "toast": {
+      "type": "boolean",
+      "title": "Toast when it turns red",
+      "description": "One toast per cache entry when the timer turns red",
+      "default": true
+    }
+  }
+}

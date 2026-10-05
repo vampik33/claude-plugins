@@ -1,0 +1,21 @@
+{
+  "name": "prompt-clock",
+  "version": "0.1.0",
+  "description": "Shows when you sent each prompt, and when each turn started and ended, in the transcript.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "seconds": {
+      "type": "boolean",
+      "title": "Show seconds",
+      "description": "16:42:07 instead of 16:42",
+      "default": true
+    },
+    "turnRange": {
+      "type": "boolean",
+      "title": "Start and end on the turn line",
+      "description": "Adds 16:42:07 → 16:45:11 after \"Baked for 3m 4s\"",
+      "default": true
+    }
+  }
+}

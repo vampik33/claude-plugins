@@ -16,10 +16,15 @@ claude-plugins/
 ├── .claude/                          # Project-level Claude config
 ├── plans/                            # Implementation plans from Claude sessions
 └── plugins/
+    ├── cache-timer/                  # Mod: prompt-cache countdown above the prompt
     ├── claudemd-gen/                 # CLAUDE.md generator and auditor
+    ├── codex-review/                 # Mod: background Codex reviews, findings pane, CodexReview tool
+    ├── continuity/                   # Mod: context gauge, handover + compact + continue
     ├── explain-changes/              # Git diff explainer with educational insights
+    ├── fleet/                        # Mod: agents / shells / worktrees pane with alerts
     ├── gtr/                          # Git worktree management (wraps git-worktree-runner)
     ├── plan-renamer/                 # Rename plan files to meaningful titles
+    ├── prompt-clock/                 # Mod: send times on prompts and turn lines
     └── telegram-notifier/             # Telegram session notifications (has hooks)
 ```
 
@@ -41,6 +46,23 @@ Each plugin in `plugins/<name>/` follows this structure:
 ├── CHANGELOG.md
 └── README.md
 ```
+
+## Mods (function-hook plugins)
+
+cache-timer, codex-review, continuity, fleet and prompt-clock are TypeScript mods, not shell hooks:
+
+```
+<mod>/
+├── .claude-plugin/plugin.json        # + "types" and "userConfig"
+├── hooks/hooks.json                  # { "modules": ["./register.tsx"] }
+├── hooks/register.tsx                # register(on, options); pure logic in core.ts
+├── types/index.d.ts                  # $.state contract (PluginState)
+└── tests/*.test.tsx                  # claude plugin test <dir>
+```
+
+- Check: `claude plugin validate <dir>` and `claude plugin test <dir>`; `tsc -p <dir>` once the engine has loaded the mod (it lays `.claude-plugin/types/`, gitignored)
+- A function that takes `$` must be top-level (the validator refuses closures)
+- Helpers are copied per mod, not shared: each mod installs alone
 
 ## Conventions
 
@@ -96,7 +118,7 @@ Use markdown files with YAML frontmatter for user-facing config:
 ## Gotchas
 
 - **Version sync is mandatory**: `plugin.json` and `marketplace.json` versions must match exactly — easy to forget one
-- **Only telegram-notifier has hooks**: All other plugins are command+skill only; the `hooks/` directory pattern in the architecture template is optional
+- **Only telegram-notifier has shell hooks**: the mods' `hooks/` hold a TypeScript module instead; the other plugins are command+skill only
 - **The `scripts/lib/` shared libraries are telegram-notifier-specific**: `config.sh`, `session.sh`, `yaml.sh` live under telegram-notifier's hooks — they are not cross-plugin shared code
 - **gtr has no CHANGELOG.md**: Unlike other plugins, gtr is missing its changelog
 

@@ -88,9 +88,31 @@ describe("words", () => {
         "🤖 fleet · deployer",
         "All 2 agents done in 9m40s",
         "✓ 1 completed   ✗ 1 failed (Explore: map snapshot callers)",
-        "Background: cargo test --workspace ✓",
+        "Background shells: ✓ 1",
       ].join("\n"),
     );
+  });
+
+  test("the summary carries no shell command text", () => {
+    const secrets = [
+      "curl -u user:SYNTHETIC_SECRET https://example.invalid",
+      "TOKEN=SYNTHETIC_SECRET ./deploy.sh",
+      "git push https://x:SYNTHETIC_SECRET@example.invalid/r.git",
+    ];
+    const f: FleetState = {
+      ...emptyFleet(),
+      batchStart: T0,
+      shells: secrets.map((command, i) => ({
+        id: `s${i}`,
+        command,
+        startedAt: T0,
+        status: i === 0 ? "failed" : "completed",
+      })),
+    };
+    const text = summary(f, "deployer", T0 + 1_000);
+    expect(text).not.toContain("SYNTHETIC_SECRET");
+    expect(text).not.toContain("curl");
+    expect(text).toContain("Background shells: ✓ 2   ✗ 1");
   });
 });
 

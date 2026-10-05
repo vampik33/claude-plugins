@@ -156,9 +156,13 @@ export function summary(f: FleetState, repo: string, now: number): string {
   } else {
     lines.push(`All done in ${fmtElapsed(now - batch)}`);
   }
-  for (const s of shells)
-    // the command's head alone leaves the device: its arguments may hold a secret
-    lines.push(`Background: ${firstWord(s.command)} ${isFailed(s.status) ? "✗" : "✓"}`);
+  // no command text leaves the device: any word of it may hold a secret
+  if (shells.length) {
+    const bad = shells.filter((s) => isFailed(s.status)).length;
+    lines.push(
+      `Background shells: ✓ ${shells.length - bad}${bad ? `   ✗ ${bad}` : ""}`,
+    );
+  }
   return lines.join("\n");
 }
 

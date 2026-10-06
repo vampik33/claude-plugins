@@ -3,7 +3,11 @@
 Codex reviews as background jobs, and findings you pick and send to Claude.
 
 ```
-codex adversarial-review ⏳ 3m12s · reviewing · deployer → develop · /cx cancel
+codex · needs-attention · 3 findings (1 high) · 12m ago   [ open ]  [ review ]
+```
+
+```
+codex adversarial-review ⏳ 3m12s · reviewing · deployer → develop   [ cancel ]
 ```
 
 ```
@@ -34,6 +38,10 @@ claude plugin install codex-review@vampik-plugins
 - `/cx cancel`: stop running reviews
 
 The base is the PR's base branch, else `develop` for the greenticai/greentic-biz orgs, else `main`. After a `git push` or `gh pr create`, `/cx adv` is proposed in the prompt box (Tab takes it).
+
+## The line
+
+Always drawn above the prompt on its own row, a blank row above it: the running review with `cancel`, else the session's last finished review (`no review yet` before one) with `open` and `review`. `review` runs what `/cx adv` runs. While the band is focused (ctrl+x tab), `x` presses `review`/`cancel` and `o` presses `open`. Reviews Claude ran through the tool count as the last result too.
 
 ## CodexReview tool
 

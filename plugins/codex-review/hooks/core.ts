@@ -64,6 +64,43 @@ export function fmtElapsed(ms: number): string {
   return m > 0 ? `${m}m${String(s).padStart(2, "0")}s` : `${s}s`;
 }
 
+/** just now, 12m ago, 3h ago, 2d ago */
+export function fmtAgo(ms: number): string {
+  const m = Math.floor(Math.max(0, ms) / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
+}
+
+/** The newest finished review, the one /cx last and the idle line show; a cancelled one is skipped. */
+export const lastResult = (jobs: CxJob[]): CxJob | undefined =>
+  [...jobs]
+    .reverse()
+    .find((j) => j.status === "completed" || j.status === "failed");
+
+/** "needs-attention · 3 findings (1 high)", "failed · not logged in", "review ready" */
+export function resultText(job: CxJob): string {
+  if (job.status === "failed") {
+    const why = (job.error ?? "").trim().split("\n")[0] || "no output";
+    return `failed · ${why.length > 60 ? `${why.slice(0, 59)}…` : why}`;
+  }
+  if (!job.review) return "review ready";
+  const { verdict, findings } = job.review;
+  const n = findings.length;
+  const top = (["critical", "high"] as const)
+    .map((sev) => [findings.filter((f) => f.severity === sev).length, sev])
+    .filter(([k]) => k)
+    .map(([k, sev]) => `${k} ${sev}`);
+  return `${verdict} · ${n} finding${n === 1 ? "" : "s"}${top.length ? ` (${top.join(", ")})` : ""}`;
+}
+
+export type LastResult = { text: string; endedAt: number };
+
+/** The idle line after "codex": the last result and how long ago, or that there is none. */
+export const idleText = (last: LastResult | null, now: number) =>
+  last ? `${last.text} · ${fmtAgo(now - last.endedAt)}` : "no review yet";
+
 const SEVERITIES = ["critical", "high", "medium", "low"];
 
 function isFinding(f: unknown): f is CxFinding {

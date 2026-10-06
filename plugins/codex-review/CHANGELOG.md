@@ -4,6 +4,17 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-10-06
+
+### Added
+- The codex line above the prompt is always drawn: the last finished review of the session (`codex · needs-attention · 3 findings (1 high) · 12m ago`), or `no review yet`
+- Buttons on the line: `review` starts `/cx adv` (hotkey `x`), `open` opens the last findings (`o`), `cancel` stops a running review (`x`)
+
+### Changed
+- The line has a blank row above it, like the other mods' lines
+- The running line drops its `/cx cancel` hint for the `cancel` button
+- A second start while one is still launching is refused instead of starting two reviews
+
 ## [0.1.2] - 2026-10-06
 
 ### Fixed

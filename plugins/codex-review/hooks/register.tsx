@@ -9,15 +9,19 @@ import {
   companionJobId,
   emptyCx,
   fmtElapsed,
+  idleText,
   isPushCommand,
   isSafeRef,
+  lastResult,
   parseArgs,
   preselect,
   readOutcome,
+  resultText,
   toolText,
   trimJobs,
   where,
 } from "./core.ts";
+import type { BandProps } from "./band.tsx";
 
 const PANE = "codex-review";
 const TOOL = "mcp__codex-review__CodexReview";
@@ -33,6 +37,8 @@ type Tracker = {
   preselect: unknown;
   poll: { cancel: () => void } | undefined;
   suggestPending: boolean;
+  /** A start is between the press and the job landing in the state: a second press waits */
+  starting: boolean;
 };
 
 type StartRequest = {
@@ -240,6 +246,42 @@ function ensurePoll($: EngineInterface, t: Tracker) {
   if (!t.poll) t.poll = $.clock.every(POLL_MS, () => void pollJobs($, t));
 }
 
+/** Starts a review from /cx or the line's button; what to tell the person. */
+async function startReview(
+  $: EngineInterface,
+  t: Tracker,
+  mode: CxMode,
+  focus: string,
+): Promise<string> {
+  if (t.starting) return "A Codex review is already starting.";
+  t.starting = true;
+  let job: CxJob | string;
+  try {
+    const cwd = await $.session.cwd().catch(() => undefined);
+    job = await startJob($, t, { mode, focus, cwd, byTool: false });
+  } finally {
+    t.starting = false;
+  }
+  if (typeof job === "string") return job;
+  return `Codex ${mode} review started in the background: ${job.repo} → ${job.base}${focus ? ` · "${focus}"` : ""}. /cx cancel stops it.`;
+}
+
+/** Opens the pane on the last finished review; false when there is none. */
+async function openLast($: EngineInterface, t: Tracker): Promise<boolean> {
+  const last = lastResult((await read($, cx)).jobs);
+  if (!last) return false;
+  await update($, cx, (x) => ({
+    ...x,
+    shown: last.id,
+    picked:
+      x.shown === last.id
+        ? x.picked
+        : preselect(last.review?.findings ?? [], t.preselect),
+  }));
+  await $.ui.open({ id: PANE, title: "Codex review" });
+  return true;
+}
+
 /** Stops running jobs: the companion's own cancel, then the process. */
 async function cancelJobs($: EngineInterface, ids?: string[]): Promise<number> {
   const running = (await read($, cx)).jobs.filter(
@@ -305,6 +347,7 @@ export const register: Register = (on, options) => {
     preselect: options.preselect,
     poll: undefined,
     suggestPending: false,
+    starting: false,
   };
 
   on("session.start", async ($, e, next) => {
@@ -360,34 +403,13 @@ export const register: Register = (on, options) => {
           : "No Codex review is running.",
       };
     }
-    if (cmd.action === "last") {
-      const s = await read($, cx);
-      const last = [...s.jobs]
-        .reverse()
-        .find((j) => j.status === "completed" || j.status === "failed");
-      if (!last) return { text: "No finished Codex review in this session." };
-      await update($, cx, (x) => ({
-        ...x,
-        shown: last.id,
-        picked:
-          x.shown === last.id
-            ? x.picked
-            : preselect(last.review?.findings ?? [], t.preselect),
-      }));
-      await $.ui.open({ id: PANE, title: "Codex review" });
-      return { text: "Codex findings opened." };
-    }
-    const cwd = await $.session.cwd().catch(() => undefined);
-    const job = await startJob($, t, {
-      mode: cmd.mode,
-      focus: cmd.focus,
-      cwd,
-      byTool: false,
-    });
-    if (typeof job === "string") return { text: job };
-    return {
-      text: `Codex ${cmd.mode} review started in the background: ${job.repo} → ${job.base}${cmd.focus ? ` · "${cmd.focus}"` : ""}. /cx cancel stops it.`,
-    };
+    if (cmd.action === "last")
+      return {
+        text: (await openLast($, t))
+          ? "Codex findings opened."
+          : "No finished Codex review in this session.",
+      };
+    return { text: await startReview($, t, cmd.mode, cmd.focus) };
   });
 
   on("tool.call", { tool: TOOL }, async ($, e, next) => {
@@ -439,35 +461,83 @@ export const register: Register = (on, options) => {
     return r;
   });
 
+  // always its own line under the other bands: the running review, else the last result
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
-    const running = (await read($, cx)).jobs.filter(
-      (j) => j.status === "running",
-    );
-    if (e.props.hasSurvey || running.length === 0) return next(e);
-    const job = running[running.length - 1]!;
+    if (e.props.hasSurvey) return next(e);
+    const jobs = (await read($, cx)).jobs;
+    const running = jobs.filter((j) => j.status === "running");
+    const job = running.at(-1);
+    const last = lastResult(jobs);
+    const props: BandProps = job
+      ? {
+          kind: "running",
+          label: `codex ${job.mode === "adversarial" ? "adversarial-review" : "review"}`,
+          startedAt: job.startedAt,
+          detail: `${job.phase ?? "starting"} · ${job.repo} → ${job.base}${running.length > 1 ? ` · +${running.length - 1} more` : ""}`,
+        }
+      : {
+          kind: "idle",
+          last: last
+            ? { text: resultText(last), endedAt: last.endedAt ?? last.startedAt }
+            : null,
+        };
     const below = await next(e);
-    const label = `codex ${job.mode === "adversarial" ? "adversarial-review" : "review"}`;
-    const more = running.length > 1 ? ` · +${running.length - 1} more` : "";
-    const detail = `${job.phase ?? "starting"} · ${job.repo} → ${job.base}${more} · /cx cancel`;
+    const { Box, Button, Text } = $.ui.resolve(e);
+    let line;
     if (e.surface === "terminal" || e.surface === "desktop") {
-      const { Box, Client } = $.ui.resolve(e);
-      // a line of its own under the other bands
-      return (
-        <Box flexDirection="column">
-          {below}
-          <Client
-            key="codex-band"
-            module="./band.tsx"
-            props={{ label, startedAt: job.startedAt, detail }}
-          />
-        </Box>
+      const { Client } = $.ui.resolve(e);
+      line = <Client key="codex-band" module="./band.tsx" props={props} />;
+    } else {
+      line = (
+        <Text dimColor>
+          {props.kind === "running"
+            ? `${props.label} · ${props.detail}`
+            : `codex · ${idleText(props.last, Date.now())}`}
+        </Text>
       );
     }
-    const { Box, Text } = $.ui.resolve(e);
     return (
       <Box flexDirection="column">
         {below}
-        <Text dimColor>{`${label} · ${detail}`}</Text>
+        <Box
+          key="codex-line"
+          flexDirection="row"
+          columnGap={2}
+          marginTop={1}
+        >
+          {line}
+          {!job && last && (
+            <Button
+              key="codex-open"
+              hotkey="o"
+              dimColor
+              onPress={() => openLast($, t)}
+            >
+              open
+            </Button>
+          )}
+          {job ? (
+            <Button
+              key="codex-cancel"
+              hotkey="x"
+              dimColor
+              onPress={() => cancelJobs($)}
+            >
+              cancel
+            </Button>
+          ) : (
+            <Button
+              key="codex-review"
+              hotkey="x"
+              dimColor
+              onPress={async () =>
+                $.ui.toast(await startReview($, t, "adversarial", ""))
+              }
+            >
+              review
+            </Button>
+          )}
+        </Box>
       </Box>
     );
   });

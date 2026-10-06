@@ -1,4 +1,4 @@
 {
-  "description": "codex-review: /cx and the CodexReview tool start codex-companion reviews detached; a 10 s poll follows them; AbovePrompt shows the running job through a ticking Client; the Pane lists findings to send to Claude",
+  "description": "codex-review: /cx and the CodexReview tool start codex-companion reviews detached; a 10 s poll follows them; AbovePrompt always draws a line (the running job, else the last result) through a ticking Client, with review/open/cancel buttons; the Pane lists findings to send to Claude",
   "modules": ["./register.tsx"]
 }

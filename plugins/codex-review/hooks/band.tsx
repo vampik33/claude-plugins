@@ -1,14 +1,13 @@
 import type { ClientModule } from "claude-code";
 
-import { fmtElapsed } from "./core.ts";
+import { fmtElapsed, idleText } from "./core.ts";
+import type { LastResult } from "./core.ts";
 
-export type BandProps = {
-  label: string;
-  startedAt: number;
-  detail: string;
-};
+export type BandProps =
+  | { kind: "running"; label: string; startedAt: number; detail: string }
+  | { kind: "idle"; last: LastResult | null };
 
-/** The running review's line above the prompt; elapsed time ticks with no hook call. */
+/** The codex line above the prompt; elapsed and "ago" tick with no hook call. */
 const CodexBand: ClientModule<BandProps, number> = (props, surface) => {
   if (surface.state === undefined) {
     surface.every(1000, () => surface.setState(Date.now()));
@@ -16,6 +15,13 @@ const CodexBand: ClientModule<BandProps, number> = (props, surface) => {
   }
   const { Text } = surface.elements;
   const now = surface.state ?? Date.now();
+  if (props.kind === "idle")
+    return (
+      <Text>
+        <Text color="cyan">codex</Text>
+        <Text dimColor>{` · ${idleText(props.last, now)}`}</Text>
+      </Text>
+    );
   return (
     <Text>
       <Text color="cyan">{props.label}</Text>

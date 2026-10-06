@@ -7,11 +7,15 @@ import {
   buildRawPrompt,
   chooseBase,
   companionJobId,
+  fmtAgo,
+  idleText,
   isPushCommand,
   isSafeRef,
+  lastResult,
   parseArgs,
   preselect,
   readOutcome,
+  resultText,
   toolText,
   trimJobs,
 } from "../hooks/core.ts";
@@ -238,6 +242,67 @@ describe("output", () => {
   });
 });
 
+describe("the line", () => {
+  test("ago is coarse", () => {
+    expect(fmtAgo(59_999)).toBe("just now");
+    expect(fmtAgo(-5)).toBe("just now");
+    expect(fmtAgo(12 * 60_000)).toBe("12m ago");
+    expect(fmtAgo(3 * 3_600_000 + 59 * 60_000)).toBe("3h ago");
+    expect(fmtAgo(50 * 3_600_000)).toBe("2d ago");
+  });
+
+  test("the last result is the newest finished job, never a cancelled or running one", () => {
+    expect(lastResult([])).toBeUndefined();
+    const jobs = [
+      job({ id: "a", status: "completed" }),
+      job({ id: "b", status: "failed" }),
+      job({ id: "c", status: "cancelled" }),
+      job({ id: "d" }),
+    ];
+    expect(lastResult(jobs)?.id).toBe("b");
+    expect(lastResult([job(), job({ status: "cancelled" })])).toBeUndefined();
+  });
+
+  test("result text: verdict, findings and the severe ones; a failure's first line", () => {
+    const review = asReview(REAL.result)!;
+    expect(resultText(job({ status: "completed", review }))).toBe(
+      "needs-attention · 2 findings (1 high)",
+    );
+    const crit = {
+      ...review,
+      findings: [{ ...review.findings[0]!, severity: "critical" as const }],
+    };
+    expect(resultText(job({ status: "completed", review: crit }))).toBe(
+      "needs-attention · 1 finding (1 critical)",
+    );
+    expect(
+      resultText(
+        job({
+          status: "completed",
+          review: { ...review, verdict: "approve", findings: [] },
+        }),
+      ),
+    ).toBe("approve · 0 findings");
+    expect(resultText(job({ status: "completed", raw: "- [P1] bug" }))).toBe(
+      "review ready",
+    );
+    expect(
+      resultText(job({ status: "failed", error: "not logged in\nmore" })),
+    ).toBe("failed · not logged in");
+    expect(resultText(job({ status: "failed" }))).toBe("failed · no output");
+    const long = resultText(job({ status: "failed", error: "x".repeat(80) }));
+    expect(long.length).toBe("failed · ".length + 60);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  test("idle text", () => {
+    expect(idleText(null, 0)).toBe("no review yet");
+    expect(
+      idleText({ text: "approve · 0 findings", endedAt: 0 }, 5 * 60_000),
+    ).toBe("approve · 0 findings · 5m ago");
+  });
+});
+
 describe("companion", () => {
   test("our running job is the process we started, never another session's", () => {
     const status = JSON.stringify({
@@ -289,12 +354,17 @@ describe("companion", () => {
 });
 
 /** The engine's side for a /cx run: git, the companion, its output file. */
-function engine(on: any, out: string) {
+function engine(
+  on: any,
+  out: string,
+  opts: { repo?: boolean } = {},
+) {
   const seen = {
     toasts: [] as string[],
     submitted: [] as string[],
     opened: 0,
     alive: true,
+    started: 0,
   };
   const clock = mock.clock(on, { now: Date.now() });
   mock.env(on, { HOME: "/h" });
@@ -333,12 +403,16 @@ function engine(on: any, out: string) {
         isStderrTruncated: false,
       },
     });
-    if (cmd === "git" && rest[0] === "rev-parse") return ok("/r/deployer\n");
+    if (cmd === "git" && rest[0] === "rev-parse")
+      return opts.repo === false ? fail() : ok("/r/deployer\n");
     if (cmd === "git" && rest[0] === "remote")
       return ok("git@github.com:greenticai/deployer.git\n");
     if (cmd === "gh") return fail();
     if (cmd === "mkdir") return ok();
-    if (cmd === "sh") return ok("4242\n");
+    // the detached launch answers its pid; the wait loop answers that Codex exited
+    if (cmd === "sh" && rest[1]?.startsWith("cd "))
+      return (seen.started++, ok("4242\n"));
+    if (cmd === "sh") return ok();
     if (cmd === "kill") return seen.alive ? ok() : fail();
     if (cmd === "node") return ok(JSON.stringify({ running: [] }));
     return fail();
@@ -371,6 +445,18 @@ const PANE_PROPS = {
   scroll: { offset: 0, bodyRows: 30 },
 } as never;
 
+const BAND = {
+  component: "AbovePrompt" as const,
+  props: {
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 10,
+    bodyColumns: 120,
+    scroll: { offset: 0, bodyRows: 10 },
+    view: {},
+  } as never,
+};
+
 describe("session", () => {
   test("/cx runs in the background; when it ends the pane offers the picked findings", async ($, on) => {
     const { seen, clock } = engine(on, JSON.stringify(REAL));
@@ -394,10 +480,13 @@ describe("session", () => {
       } as never,
     });
     expect(await band.find({ key: "codex-band" })).toBeDefined();
-    // its own line under the other bands, never beside them
+    // its own line under the other bands, never beside them, a blank row between
     const drawn: any = await band.drawn();
     expect(drawn.props.flexDirection).toBe("column");
-    expect(drawn.children.at(-1).type).toBe("Client");
+    const row = drawn.children.at(-1);
+    expect(row.props.key).toBe("codex-line");
+    expect(row.props.marginTop).toBe(1);
+    expect(row.children[0].type).toBe("Client");
     await band.unmount();
 
     seen.alive = false;
@@ -434,6 +523,108 @@ describe("session", () => {
     await ui.press({ key: "send" });
     expect(seen.submitted.length).toBe(1);
     expect(seen.submitted[0]).toContain("returned 2 finding(s)");
+    await ui.unmount();
+  });
+
+  test("the line is always there: no review yet, then running, then the last result", async ($, on) => {
+    const { seen, clock } = engine(on, JSON.stringify(REAL));
+    const mount = () =>
+      $.ui.mount({ plugin: "codex-review", surface: "terminal", ...BAND });
+    const clientProps = async (ui: any) =>
+      (await ui.find({ key: "codex-band" }))?.props.props;
+
+    let ui = await mount();
+    expect(await clientProps(ui)).toEqual({ kind: "idle", last: null });
+    expect(await ui.find({ key: "codex-open" })).toBeUndefined();
+    expect(await ui.find({ key: "codex-cancel" })).toBeUndefined();
+    await ui.press({ key: "codex-review" });
+    expect(seen.started).toBe(1);
+    expect(seen.toasts.at(-1)).toContain(
+      "Codex adversarial review started in the background: deployer → develop",
+    );
+    await ui.unmount();
+
+    ui = await mount();
+    expect((await clientProps(ui)).kind).toBe("running");
+    expect(await ui.find({ key: "codex-review" })).toBeUndefined();
+    expect(await ui.find({ key: "codex-open" })).toBeUndefined();
+    expect(await ui.find({ key: "codex-cancel" })).toBeDefined();
+    await ui.unmount();
+
+    seen.alive = false;
+    await clock.advance(10_000);
+    const opened = seen.opened;
+    ui = await mount();
+    const idle = await clientProps(ui);
+    expect(idle.kind).toBe("idle");
+    expect(idle.last.text).toBe("needs-attention · 2 findings (1 high)");
+    expect(await ui.find({ key: "codex-review" })).toBeDefined();
+    await ui.press({ key: "codex-open" });
+    expect(seen.opened).toBe(opened + 1);
+    await ui.unmount();
+  });
+
+  test("cancel on the line stops the review; a cancelled one is not the last result", async ($, on) => {
+    const { seen } = engine(on, JSON.stringify(REAL));
+    await $.command.run({ command: "cx", args: "" } as never);
+    const ui = await $.ui.mount({
+      plugin: "codex-review",
+      surface: "terminal",
+      ...BAND,
+    });
+    await ui.press({ key: "codex-cancel" });
+    await ui.unmount();
+    const again = await $.ui.mount({
+      plugin: "codex-review",
+      surface: "terminal",
+      ...BAND,
+    });
+    expect(
+      (await again.find({ key: "codex-band" }))?.props.props,
+    ).toEqual({ kind: "idle", last: null });
+    expect(await again.find({ key: "codex-review" })).toBeDefined();
+    await again.unmount();
+    expect(seen.toasts.length).toBe(0);
+  });
+
+  test("a double press starts one review", async ($, on) => {
+    const { seen } = engine(on, JSON.stringify(REAL));
+    const ui = await $.ui.mount({
+      plugin: "codex-review",
+      surface: "terminal",
+      ...BAND,
+    });
+    await Promise.all([
+      ui.press({ key: "codex-review" }),
+      ui.press({ key: "codex-review" }),
+    ]);
+    expect(seen.started).toBe(1);
+    expect(seen.toasts).toContain("A Codex review is already starting.");
+    await ui.unmount();
+  });
+
+  test("the button outside a git repository says why in a toast", async ($, on) => {
+    const { seen } = engine(on, "", { repo: false });
+    const ui = await $.ui.mount({
+      plugin: "codex-review",
+      surface: "terminal",
+      ...BAND,
+    });
+    await ui.press({ key: "codex-review" });
+    expect(seen.started).toBe(0);
+    expect(seen.toasts.at(-1)).toBe("Not a git repository: /r/deployer");
+    await ui.unmount();
+  });
+
+  test("under a survey: no line", async ($, on) => {
+    engine(on, "");
+    const ui = await $.ui.mount({
+      plugin: "codex-review",
+      surface: "terminal",
+      ...BAND,
+      props: { ...(BAND.props as object), hasSurvey: true } as never,
+    });
+    expect(await ui.find({ key: "codex-line" })).toBeUndefined();
     await ui.unmount();
   });
 

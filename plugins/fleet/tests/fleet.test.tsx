@@ -199,6 +199,8 @@ function engine(on: any, list: { id: string; status: string }[]) {
     isOpen: false,
     placeNext: true,
     isPlaced: false,
+    /** False while another tab is in front of the pane. */
+    isShown: true,
   };
   const clock = mock.clock(on, { now: Date.now() });
   mock.env(on, {});
@@ -241,7 +243,7 @@ function engine(on: any, list: { id: string; status: string }[]) {
   on("ui.close", () => (seen.closed++, (seen.isOpen = false), { value: undefined }));
   on("ui.panes", () => ({
     value: seen.isOpen
-      ? [{ id: "fleet", title: "Fleet", isShown: true, isFocused: false, isPlaced: seen.isPlaced }]
+      ? [{ id: "fleet", title: "Fleet", isShown: seen.isShown, isFocused: false, isPlaced: seen.isPlaced }]
       : [],
   }));
   on("agent.list", () => ({
@@ -350,6 +352,26 @@ describe("session", () => {
     await ui.press({ key: "fleet-toggle" });
     expect(seen.closed).toBe(1);
     await ui.unmount();
+  });
+
+  test("the band's toggle shows and hides the pane on every press", async ($, on) => {
+    const { seen } = engine(on, [{ id: "a1", status: "running" }]);
+    seen.isShown = false; // the engine's isShown says nothing of the toggle
+    await spawn($, "map callers");
+    const mount = () => $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
+    const press = async (label: string) => {
+      const ui = await mount();
+      expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe(label);
+      await ui.press({ key: "fleet-toggle" });
+      await ui.unmount();
+    };
+    for (let i = 0; i < 3; i++) {
+      await press("show");
+      expect(seen.isOpen).toBe(true);
+      await press("hide");
+      expect(seen.isOpen).toBe(false);
+    }
+    expect([seen.opened, seen.closed]).toEqual([3, 3]);
   });
 
   test("an auto-open that waits undrawn still offers show, and show draws it", async ($, on) => {

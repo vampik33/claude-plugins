@@ -64,9 +64,10 @@ async function sendTelegram($: EngineInterface, text: string): Promise<void> {
     });
 }
 
-async function isPaneShown($: EngineInterface): Promise<boolean> {
+/** Whether the engine draws the pane: `isShown` is false behind other tabs, so not asked. */
+async function isPaneDrawn($: EngineInterface): Promise<boolean> {
   const panes = await $.ui.panes().catch(() => []);
-  return panes.some((p) => p.id === PANE && p.isShown && p.isPlaced);
+  return panes.some((p) => p.id === PANE && p.isPlaced);
 }
 
 async function refreshTrees($: EngineInterface, t: Tracker): Promise<void> {
@@ -188,10 +189,11 @@ async function openPane($: EngineInterface, t: Tracker) {
   return opened;
 }
 
-/** Closes the pane if drawn (undefined), opens it if not (how it opened). */
+/** Closes the pane if the stored state says shown (undefined), opens it if not (how it opened). */
 async function togglePane($: EngineInterface, t: Tracker) {
-  if (await isPaneShown($)) {
+  if (await read($, pane)) {
     await $.ui.close({ id: PANE });
+    await update($, pane, () => false);
     return undefined;
   }
   return openPane($, t);
@@ -236,12 +238,15 @@ export const register: Register = (on, options) => {
     const cwd = await $.session.cwd().catch(() => "");
     t.repo = (t.root ?? cwd).split("/").pop() || "session";
     // a reload keeps an open pane
-    const shown = await isPaneShown($);
-    await update($, pane, () => shown);
+    const drawn = await isPaneDrawn($);
+    await update($, pane, () => drawn);
     $.clock.every(15_000, async () => {
-      const shown = await isPaneShown($);
+      let shown = await read($, pane);
       // a waiting pane gets drawn once the terminal widens
-      if (shown !== (await read($, pane))) await update($, pane, () => shown);
+      if (!shown && (await isPaneDrawn($))) {
+        shown = true;
+        await update($, pane, () => true);
+      }
       if (shown) await refreshTrees($, t);
     });
     // a reload while agents run: pick the poll up again
@@ -301,7 +306,7 @@ export const register: Register = (on, options) => {
       };
     });
     ensurePoll($, t);
-    if (open && !(await isPaneShown($))) void openPane($, t);
+    if (open && !(await read($, pane))) void openPane($, t);
     return r;
   });
 

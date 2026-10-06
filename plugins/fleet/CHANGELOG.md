@@ -4,6 +4,12 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] - 2026-10-06
+
+### Fixed
+- The band's `show`/`hide` button and `/fleet` work on every press: they toggle on the stored shown/hidden state, not on the engine's `isShown`, which can be false while the pane is open (it is false for a pane behind another tab)
+- The 15 s check no longer flips the stored state back to hidden; it only marks a pane that waited undrawn as shown once the engine draws it
+
 ## [0.2.2] - 2026-10-06
 
 ### Changed

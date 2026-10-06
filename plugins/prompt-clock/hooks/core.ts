@@ -68,7 +68,10 @@ export function cap(
 ): Record<string, number> {
   const entries = Object.entries(record);
   if (entries.length <= keep) return record;
-  return Object.fromEntries(entries.sort((a, b) => a[1] - b[1]).slice(-keep));
+  // slice(-keep) would keep everything at keep = 0
+  return Object.fromEntries(
+    entries.sort((a, b) => a[1] - b[1]).slice(entries.length - keep),
+  );
 }
 
 export const emptyTimes = (): PromptClockTimes => ({

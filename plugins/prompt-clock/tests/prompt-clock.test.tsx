@@ -97,17 +97,35 @@ describe("transcript", () => {
       "c",
     ]);
   });
+
+  test("cap to zero keeps nothing", () => {
+    expect(cap({ a: 1, b: 3 }, 0)).toEqual({});
+  });
 });
 
 describe("rows", () => {
   test("a resumed session's typed prompt gets its send time; a notification's does not", async ($, on) => {
-    const row = { type: "user", uuid: "row-1", timestamp: new Date().toISOString(), message: { content: "run the tests" } };
+    const row = {
+      type: "user",
+      uuid: "row-1",
+      timestamp: new Date().toISOString(),
+      message: { content: "run the tests" },
+    };
     on("fs.read", () => ({ value: JSON.stringify(row) + "\n" }));
     on("classic.SessionStart", () => ({}));
-    on("ui.render", (_$, e) =>
-      h("Text", null, (e.props as { text?: string }).text ?? "engine") as never,
+    on(
+      "ui.render",
+      (_$, e) =>
+        h(
+          "Text",
+          null,
+          (e.props as { text?: string }).text ?? "engine",
+        ) as never,
     );
-    await $.classic.SessionStart({ source: "resume", transcript_path: "/t.jsonl" } as never);
+    await $.classic.SessionStart({
+      source: "resume",
+      transcript_path: "/t.jsonl",
+    } as never);
 
     for (const surface of ["terminal", "desktop"] as const) {
       const ui = await $.ui.mount({

@@ -73,7 +73,7 @@
     {
       "name": "prompt-clock",
       "description": "Send time on each typed prompt and start → end times on each turn's duration line",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "vampik33"
       },

@@ -4,6 +4,14 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-10-06
+
+### Added
+- A search field at the top of the pane: typing filters every group to the items whose name or description holds each word typed (any case), hiding groups with no match and opening folded ones that have one; Enter puts the first match in the prompt
+
+### Fixed
+- An item with no description no longer draws an empty text node under its name
+
 ## [0.2.0] - 2026-10-06
 
 ### Added

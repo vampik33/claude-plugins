@@ -5,6 +5,8 @@ A side pane listing this session's agents, skills and commands. Click one to put
 ```
 Click to put it in the prompt ↻
 
+Search: type to filter
+
 ▾ most used (2)
 
   /think
@@ -36,6 +38,7 @@ claude plugin install palette@vampik-plugins
 - A command or skill goes to the start of the prompt as `/<name> ` (a slash command only runs from there), replacing a leading command and keeping the rest of your draft.
 - An agent goes in at the cursor as `@agent-<name> `.
 - Nothing is sent: you finish the prompt and press Enter.
+- Type in the search field (click it, or focus the pane) to filter: an item stays when its name or description holds every word you typed, any case. Groups with no match hide, folded ones with a match open. Enter puts the first match in the prompt.
 - Click a group header to fold it; `↻` re-reads the lists (after `/reload-plugins`, say).
 
 Groups: `most used` on top (the 10 items used most, also still listed under their source), then `project` (`.claude/` in the working directory), `user`, one per plugin, and `mcp`. Built-in commands and agents are left out.

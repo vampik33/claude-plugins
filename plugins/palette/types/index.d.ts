@@ -30,6 +30,8 @@ declare module "claude-code" {
       agentInfo: Record<string, string>;
       /** Uses across sessions, as `$.store` keeps them. */
       usage: Usage;
+      /** What the search field holds; items are filtered by it. */
+      query: string;
     };
   }
 }

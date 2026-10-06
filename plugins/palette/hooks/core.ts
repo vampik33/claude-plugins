@@ -128,6 +128,27 @@ export function mostUsed(
     : undefined;
 }
 
+/**
+ * The groups with only the items whose name or description holds every word
+ * of `query` (any case); groups left empty are dropped. A blank query keeps all.
+ */
+export function filterGroups(
+  groups: PaletteGroup[],
+  query: string,
+  info: Record<string, string> = {},
+): PaletteGroup[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return groups;
+  const hit = (item: PaletteItem) => {
+    const text =
+      `${item.name} ${item.description || info[item.name] || ""}`.toLowerCase();
+    return words.every((w) => text.includes(w));
+  };
+  return groups
+    .map((g) => ({ ...g, items: g.items.filter(hit) }))
+    .filter((g) => g.items.length > 0);
+}
+
 /** What a row reads: `@<name>` for an agent, `/<name>` for a command or skill. */
 export const label = (item: PaletteItem) =>
   `${item.kind === "agent" ? "@" : "/"}${item.name}`;

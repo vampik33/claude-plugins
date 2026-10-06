@@ -1,6 +1,6 @@
 {
   "name": "palette",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A side pane listing the session's agents, skills and commands; click one to put it in the prompt box.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts"

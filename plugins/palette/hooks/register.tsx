@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from "claude-code";
 import type { PaletteGroup, PaletteItem, Usage } from "../types";
 import {
   buildGroups,
+  filterGroups,
   fillFor,
   label,
   MOST_USED,
@@ -30,6 +31,7 @@ const agentInfo = atom(
 );
 const usage = atom({ plugin: "palette", key: "usage" } as const, {} as Usage);
 const USAGE = "usage";
+const query = atom({ plugin: "palette", key: "query" } as const, "");
 
 const stored = async ($: EngineInterface) =>
   ((await $.store.get(USAGE)) as Usage | undefined) ?? {};
@@ -149,12 +151,16 @@ export const register: Register = (on) => {
   });
 
   on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e);
+    const els = $.ui.resolve(e);
+    const { Box, Button, Text } = els;
+    const Input = "Input" in els ? els.Input : undefined;
     const listed = await read($, groups);
     const top = mostUsed(listed, await read($, usage));
-    const all = top ? [top, ...listed] : listed;
-    const shut = new Set(await read($, folded));
     const info = await read($, agentInfo);
+    const q = await read($, query);
+    const all = filterGroups(top ? [top, ...listed] : listed, q, info);
+    // while searching every group with a match shows open
+    const shut = new Set(q.trim() ? [] : await read($, folded));
     const toggle = (id: string) =>
       update($, folded, (f) =>
         f.includes(id) ? f.filter((x) => x !== id) : [...f, id],
@@ -173,8 +179,29 @@ export const register: Register = (on) => {
             ↻
           </Button>
         </Box>
+        {Input && (
+          <Box marginTop={1}>
+            <Input
+              key="palette-search"
+              label="Search: "
+              placeholder="type to filter"
+              value={q}
+              autoFocus
+              submitLabel="put first"
+              onInput={(v) => update($, query, () => v)}
+              onSubmit={() => {
+                const first = all[0]?.items[0];
+                if (first) void press($, first);
+              }}
+            />
+          </Box>
+        )}
         {all.length === 0 && (
-          <Text dimColor>No agents, skills or commands.</Text>
+          <Text dimColor>
+            {q.trim()
+              ? `Nothing matches "${q.trim()}".`
+              : "No agents, skills or commands."}
+          </Text>
         )}
         {all.map((g) => (
           <Box key={`section:${g.id}`} flexDirection="column" marginTop={1}>
@@ -195,7 +222,7 @@ export const register: Register = (on) => {
                     <Button key={id} plain onPress={() => press($, item)}>
                       {label(item)}
                     </Button>
-                    {about && (
+                    {about !== "" && (
                       <Box marginLeft={2}>
                         <Text dimColor wrap="truncate-end">
                           {about}

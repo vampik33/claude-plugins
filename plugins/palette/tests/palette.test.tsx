@@ -3,6 +3,7 @@ import { describe, expect, test } from "claude-code/testing";
 import type { PaletteGroup, PaletteItem } from "../types";
 import {
   buildGroups,
+  filterGroups,
   fillFor,
   label,
   mostUsed,
@@ -175,6 +176,49 @@ describe("usage", () => {
     const usage = { "command:x:a": { count: 2, last: 0 } };
     const top = mostUsed(groups, { ...usage, "command:x:b": { count: 1, last: 0 } }, 1);
     expect(top!.items.map(label)).toEqual(["/x:a"]);
+  });
+});
+
+describe("search", () => {
+  const groups: PaletteGroup[] = [
+    {
+      id: "user",
+      title: "user",
+      items: [
+        { kind: "agent", name: "rust-engineer", description: "" },
+        { kind: "command", name: "think", description: "Deep Reasoning" },
+      ],
+    },
+    {
+      id: "plugin:hookify",
+      title: "plugin:hookify",
+      items: [{ kind: "command", name: "hookify:list", description: "List rules" }],
+    },
+  ];
+  const names = (gs: PaletteGroup[]) => gs.flatMap((g) => g.items.map(label));
+
+  test("a blank query keeps everything", () => {
+    expect(filterGroups(groups, "")).toBe(groups);
+    expect(filterGroups(groups, "   ")).toBe(groups);
+  });
+
+  test("matches name or description, any case; empty groups dropped", () => {
+    expect(names(filterGroups(groups, "HOOK"))).toEqual(["/hookify:list"]);
+    expect(filterGroups(groups, "hook").map((g) => g.id)).toEqual([
+      "plugin:hookify",
+    ]);
+    expect(names(filterGroups(groups, "reasoning"))).toEqual(["/think"]);
+  });
+
+  test("every word must match", () => {
+    expect(names(filterGroups(groups, "list rules"))).toEqual(["/hookify:list"]);
+    expect(filterGroups(groups, "list think")).toEqual([]);
+  });
+
+  test("agent descriptions from agent.offer are searched", () => {
+    expect(
+      names(filterGroups(groups, "rust expert", { "rust-engineer": "Rust expert" })),
+    ).toEqual(["@rust-engineer"]);
   });
 });
 
@@ -358,6 +402,34 @@ describe("pane", () => {
     expect(await ui.find({ key: "command:think" })).toBeDefined();
     await ui.press({ key: "top:command:think" });
     expect(seen.fills).toEqual([{ text: "/think ", mode: "replace" }]);
+    await ui.unmount();
+  });
+
+  test("typing filters the items, opening folded groups; Enter puts the first", async ($, on) => {
+    const { seen } = engine(on);
+    await $.command.run({ command: "palette", args: "" } as never);
+    const ui = await $.ui.mount({
+      plugin: "palette",
+      surface: "terminal",
+      ...PANE,
+    });
+    await ui.press({ key: "group:plugin:hookify" });
+    expect(await ui.find({ key: "command:hookify:list" })).toBeUndefined();
+
+    await ui.input({ key: "palette-search", text: "hook", kind: "change" });
+    expect(await ui.find({ key: "command:hookify:list" })).toBeDefined();
+    expect(await ui.find({ key: "command:think" })).toBeUndefined();
+    expect(await ui.find({ key: "agent:rust-engineer" })).toBeUndefined();
+
+    await ui.input({ key: "palette-search", text: "hook", kind: "submit" });
+    expect(seen.fills).toEqual([{ text: "/hookify:list ", mode: "replace" }]);
+
+    await ui.input({ key: "palette-search", text: "nope", kind: "change" });
+    expect(await ui.find({ type: "Text", text: 'Nothing matches "nope".' })).toBeDefined();
+
+    await ui.input({ key: "palette-search", text: "", kind: "change" });
+    expect(await ui.find({ key: "command:think" })).toBeDefined();
+    expect(await ui.find({ key: "command:hookify:list" })).toBeUndefined();
     await ui.unmount();
   });
 });

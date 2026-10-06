@@ -8,18 +8,19 @@ FLEET · deployer
 AGENTS  2 running · 1 done · 0 failed
 ▶ rust-reviewer      6m12s
    review plan · Bash cargo clippy
-✓ Explore            2m03s
+✓ Explore            2m03s · 10:42
    map snapshot callers
 
 BACKGROUND
 ▶ cargo test --workspace     2m03s
+✓ cargo build                41s · 10:38
 
 WORKTREES
   main               clean
   p31-snap           ●3 changed ↑2
 ```
 
-Read-only. Elapsed times tick live.
+Read-only. Elapsed times tick live; a finished agent or shell also shows when it finished (with the date when not today).
 
 ## Installation
 

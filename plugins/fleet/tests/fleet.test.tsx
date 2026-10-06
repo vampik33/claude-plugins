@@ -5,6 +5,7 @@ import {
   applyStatuses,
   emptyFleet,
   endShell,
+  fmtClock,
   fmtElapsed,
   parseNotification,
   parseStatus,
@@ -14,6 +15,7 @@ import {
   toolLabel,
   trim,
 } from "../hooks/core.ts";
+import { drawFleet } from "../hooks/view.tsx";
 
 const T0 = 1_000_000_000_000;
 const agent = (over: Partial<FleetAgent> = {}): FleetAgent => ({
@@ -31,6 +33,14 @@ describe("words", () => {
     expect(fmtElapsed(45_000)).toBe("45s");
     expect(fmtElapsed(372_000)).toBe("6m12s");
     expect(fmtElapsed(3_840_000)).toBe("1h04m");
+  });
+
+  test("clock: hours and minutes today, with the date on another day", () => {
+    const at = new Date(2026, 9, 6, 9, 5, 30).getTime();
+    expect(fmtClock(at, new Date(2026, 9, 6, 23, 0).getTime())).toBe("09:05");
+    expect(fmtClock(at, new Date(2026, 9, 7, 0, 10).getTime())).toBe(
+      "Oct 6 09:05",
+    );
   });
 
   test("a tool call in a few words", () => {
@@ -427,5 +437,77 @@ describe("session", () => {
       ).toBeDefined();
       await ui.unmount();
     }
+  });
+
+  test("the pane shows when an ended agent finished", async ($, on) => {
+    engine(on, [{ id: "a1", status: "running" }]);
+    await spawn($, "map callers");
+    await $.turn.complete({
+      answer: "",
+      durationMs: 1,
+      isAborted: false,
+      turnId: "t",
+      reason: "answer",
+      agentId: "a1",
+    } as never);
+    const ui = await $.ui.mount({
+      plugin: "fleet",
+      surface: "terminal",
+      component: "Pane",
+      requestId: "fleet",
+      props: {
+        title: "Fleet",
+        isFocused: false,
+        bodyColumns: 50,
+        placement: "dock",
+        scroll: { offset: 0, bodyRows: 20 },
+      } as never,
+    });
+    const clock = fmtClock(Date.now(), Date.now());
+    expect(
+      await ui.find({
+        in: "fleet-body",
+        type: "Text",
+        text: new RegExp(`Explore +\\d+s · ${clock}$`),
+      }),
+    ).toBeDefined();
+    await ui.unmount();
+  });
+});
+
+/** Every line of text a drawing holds, one per outer Text. */
+function lines(node: any): string[] {
+  const flat = (n: any): string =>
+    typeof n === "string" ? n : (n?.children ?? []).map(flat).join("");
+  if (node?.type === "Text") return [flat(node)];
+  return (node?.children ?? []).flatMap(lines);
+}
+
+describe("view", () => {
+  test("ended agents and shells show when they finished; live ones do not", () => {
+    const at = new Date(2026, 9, 6, 16, 42).getTime();
+    const tree = drawFleet(
+      { Box: "Box", Text: "Text" },
+      {
+        repo: "r",
+        width: 50,
+        agents: [
+          agent({ id: "a", startedAt: at - 372_000, endedAt: at, status: "completed" }),
+          agent({ id: "b", type: "Plan", startedAt: at, status: "running" }),
+        ],
+        shells: [
+          { id: "s1", command: "cargo test", startedAt: at - 5_000, endedAt: at, status: "failed" },
+          { id: "s2", command: "cargo build", startedAt: at, status: "running" },
+        ],
+        trees: [],
+      },
+      at + 45_000,
+    );
+    const text = lines(tree);
+    expect(text).toContain(`✓ ${"Explore".padEnd(18)} 6m12s · 16:42`);
+    expect(text).toContain(`▶ ${"Plan".padEnd(18)} 45s`);
+    expect(text.find((l) => l.includes("cargo test"))).toMatch(/^✗ cargo test +5s · 16:42$/);
+    expect(text.find((l) => l.includes("cargo build"))).toMatch(/^▶ cargo build +45s$/);
+    expect(text.every((l) => l.length <= 50)).toBe(true);
   });
 });

@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-10-06
+
+### Added
+- The pane shows when each finished agent and background shell ended, after its run time: `6m12s · 16:42`, with the date in front when it ended on another day
+
 ## [0.2.3] - 2026-10-06
 
 ### Fixed

@@ -32,6 +32,32 @@ export function fmtElapsed(ms: number): string {
   return m > 0 ? `${m}m${String(s).padStart(2, "0")}s` : `${s}s`;
 }
 
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** 16:42, with "Oct 4 " in front when it is not today. */
+export function fmtClock(at: number, now: number): string {
+  const d = new Date(at);
+  const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toDateString() === new Date(now).toDateString()
+    ? clock
+    : `${MONTHS[d.getMonth()]} ${d.getDate()} ${clock}`;
+}
+
 /** Keeps every live item and the newest ended ones, `keep` in all. */
 export function trim<T extends { status: string; startedAt: number }>(
   items: T[],

@@ -4,7 +4,7 @@
  */
 
 import type { FleetAgent, FleetShell, FleetTree } from "../types";
-import { fmtElapsed, isFailed, isLive } from "./core.ts";
+import { fmtClock, fmtElapsed, isFailed, isLive } from "./core.ts";
 
 export type FleetView = {
   repo: string;
@@ -20,8 +20,11 @@ type Elements = { Box: any; Text: any };
 const fit = (s: string, n: number) =>
   s.length > n ? `${s.slice(0, Math.max(1, n - 1))}…` : s.padEnd(n);
 
-const elapsed = (i: { startedAt: number; endedAt?: number }, now: number) =>
-  fmtElapsed((i.endedAt ?? now) - i.startedAt);
+/** "6m12s" while live; "6m12s · 16:42" once ended, with when it ended. */
+const timing = (i: { startedAt: number; endedAt?: number }, now: number) =>
+  i.endedAt === undefined
+    ? fmtElapsed(now - i.startedAt)
+    : `${fmtElapsed(i.endedAt - i.startedAt)} · ${fmtClock(i.endedAt, now)}`;
 
 /** Live ones first, then the most recently ended. */
 const order = <
@@ -67,7 +70,7 @@ export function drawFleet(els: Elements, v: FleetView, now: number) {
         <Box key={a.id} flexDirection="column">
           <Text>
             {mark(Text, a.status)}
-            {` ${fit(a.type, name)} ${elapsed(a, now)}`}
+            {` ${fit(a.type, name)} ${timing(a, now)}`}
           </Text>
           <Text dimColor>
             {"   " +
@@ -82,12 +85,15 @@ export function drawFleet(els: Elements, v: FleetView, now: number) {
       ))}
       {v.shells.length > 0 && <Text> </Text>}
       {v.shells.length > 0 && <Text dimColor>BACKGROUND</Text>}
-      {order(v.shells).map((s) => (
-        <Text key={s.id}>
-          {mark(Text, s.status)}
-          {` ${fit(s.command, w - 10)} ${elapsed(s, now)}`}
-        </Text>
-      ))}
+      {order(v.shells).map((s) => {
+        const time = timing(s, now);
+        return (
+          <Text key={s.id}>
+            {mark(Text, s.status)}
+            {` ${fit(s.command, Math.max(8, w - 4 - time.length))} ${time}`}
+          </Text>
+        );
+      })}
       {v.trees.length > 0 && <Text> </Text>}
       {v.trees.length > 0 && <Text dimColor>WORKTREES</Text>}
       {v.trees.map((t) => (

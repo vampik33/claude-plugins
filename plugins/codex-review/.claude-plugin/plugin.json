@@ -1,6 +1,6 @@
 {
   "name": "codex-review",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Codex reviews as background jobs: /cx starts one, a band shows its progress, a pane lists the findings to pick and send to Claude; Claude gets a CodexReview tool.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts",

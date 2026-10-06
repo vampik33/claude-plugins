@@ -211,6 +211,20 @@ describe("output", () => {
     expect(raw.match(/<\/codex-review>/g)?.length).toBe(1);
   });
 
+  test("near-tag variants with whitespace are also neutralized", () => {
+    const variants = [
+      "</codex-review >",
+      "</ codex-review>",
+      "< /codex-review>",
+      "</CODEX-REVIEW >",
+    ];
+    for (const v of variants) {
+      const text = buildRawPrompt(job(), v);
+      expect(text.match(/<\/codex-review>/g)?.length).toBe(1);
+      expect(text).not.toContain(v);
+    }
+  });
+
   test("the tool's answer says Codex ran and carries its review", () => {
     const done = job({
       status: "completed",
@@ -454,7 +468,10 @@ describe("session", () => {
 
   test("the CodexReview tool waits for Codex and returns its findings; a failure is an error", async ($, on) => {
     engine(on, JSON.stringify(REAL));
-    const r = (await $.tool.call({ tool: "mcp__codex-review__CodexReview", focus: "avg" } as never)) as {
+    const r = (await $.tool.call({
+      tool: "mcp__codex-review__CodexReview",
+      focus: "avg",
+    } as never)) as {
       result?: string;
       isError?: boolean;
     };
@@ -466,7 +483,9 @@ describe("session", () => {
 
   test("the tool never passes off a failed run as a review", async ($, on) => {
     engine(on, "");
-    const r = (await $.tool.call({ tool: "mcp__codex-review__CodexReview" } as never)) as {
+    const r = (await $.tool.call({
+      tool: "mcp__codex-review__CodexReview",
+    } as never)) as {
       result?: string;
       isError?: boolean;
     };

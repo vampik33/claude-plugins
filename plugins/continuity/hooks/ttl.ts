@@ -112,6 +112,7 @@ export function colorFor(
   yellowAt: number,
   redAt: number,
 ): Color {
+  if (lifeMs <= 0) return "red";
   const share = leftMs / lifeMs;
   if (share <= redAt) return "red";
   return share <= yellowAt ? "yellow" : "green";

@@ -77,6 +77,9 @@ describe("countdown", () => {
     expect(colorFor(7 * 60_000, life, 0.25, 0.1)).toBe("yellow");
     expect(colorFor(6 * 60_000, life, 0.25, 0.1)).toBe("red");
     expect(colorFor(1_000, 300_000, 0.25, 0.1)).toBe("red");
+    expect(colorFor(5_000, 0, 0.25, 0.1)).toBe("red");
+    expect(colorFor(0, 0, 0.25, 0.1)).toBe("red");
+    expect(colorFor(100, -1, 0.25, 0.1)).toBe("red");
   });
 
   test("clock format", () => {
@@ -99,7 +102,6 @@ const BAND = {
   },
 };
 
-
 /** The engine's side: an empty band, a subscription, and one request's usage. */
 function engine(
   on: any,
@@ -108,7 +110,9 @@ function engine(
 ) {
   mock.clock(on, { now: Date.now() });
   on("ui.render", () => below);
-  on("session.measure", (_$: unknown, e: { changed: string[] }) => ({ changed: e.changed }));
+  on("session.measure", (_$: unknown, e: { changed: string[] }) => ({
+    changed: e.changed,
+  }));
   on("session.usage", () => ({
     value: {
       startedAt: 0,
@@ -143,7 +147,12 @@ const measure = ($: any) =>
   } as never);
 
 async function step($: any) {
-  const stream = $.turn.step({ turnId: "t1", index: 0, model: "claude-opus-5-5", messageCount: 1 });
+  const stream = $.turn.step({
+    turnId: "t1",
+    index: 0,
+    model: "claude-opus-5-5",
+    messageCount: 1,
+  });
   for await (const _ of stream) {
     // drain
   }
@@ -156,9 +165,15 @@ describe("band", () => {
   test("no clock before the first request", async ($, on) => {
     engine(on, null);
     await measure($);
-    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "terminal",
+      ...BAND,
+    });
     expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
-    expect(await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK })).toBeUndefined();
+    expect(
+      await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
+    ).toBeUndefined();
     await ui.unmount();
   });
 
@@ -168,7 +183,11 @@ describe("band", () => {
     await step($);
     for (const surface of ["terminal", "desktop"] as const) {
       const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
-      const text = await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK });
+      const text = await ui.find({
+        in: "continuity-gauge",
+        type: "Text",
+        text: CLOCK,
+      });
       expect(text?.props.color).toBe("green");
       await ui.unmount();
     }
@@ -178,30 +197,55 @@ describe("band", () => {
     engine(on, { read: 0, write: 0 });
     await measure($);
     await step($);
-    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
-    expect(await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK })).toBeUndefined();
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "terminal",
+      ...BAND,
+    });
+    expect(
+      await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
+    ).toBeUndefined();
     await ui.unmount();
   });
 
   test("a subagent's request leaves the clock alone", async ($, on) => {
     engine(on, { read: 80_000, write: 1_000 });
     await measure($);
-    const stream = $.turn.step({ turnId: "t1", index: 0, model: "claude-opus-5-5", messageCount: 1, agentId: "a1" } as never);
+    const stream = $.turn.step({
+      turnId: "t1",
+      index: 0,
+      model: "claude-opus-5-5",
+      messageCount: 1,
+      agentId: "a1",
+    } as never);
     for await (const _ of stream) {
       // drain
     }
-    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
-    expect(await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK })).toBeUndefined();
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "terminal",
+      ...BAND,
+    });
+    expect(
+      await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
+    ).toBeUndefined();
     await ui.unmount();
   });
 
   test("its lines stack over other bands, a blank row above them", async ($, on) => {
     engine(on, { read: 80_000, write: 1_000 }, h("Text", null, "Heads up"));
     await measure($);
-    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "terminal",
+      ...BAND,
+    });
     const outer: any = await ui.drawn();
     expect(outer.type).toBe("Box");
-    expect(outer.props).toMatchObject({ flexDirection: "column", marginTop: 1 });
+    expect(outer.props).toMatchObject({
+      flexDirection: "column",
+      marginTop: 1,
+    });
     expect(outer.children.map((c: any) => c.type)).toEqual(["Client", "Text"]);
     await ui.unmount();
   });

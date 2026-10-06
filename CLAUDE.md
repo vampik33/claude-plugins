@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Claude Code Plugin Marketplace — a collection of plugins installable via `claude plugin add vampik33/claude-plugins`.
+Claude Code Plugin Marketplace (`vampik-plugins`) — add with `/plugin marketplace add vampik33/claude-plugins`, then `/plugin install <name>@vampik-plugins`.
 
 ## Testing Locally
 
@@ -15,7 +15,7 @@ All checks (Lean proofs, property + differential tests, mod tests, telegram-noti
 ```
 claude-plugins/
 ├── .claude-plugin/marketplace.json   # Marketplace manifest (all plugins)
-├── .claude/                          # Project-level Claude config
+├── .claude/                          # Local Claude state (gitignored)
 ├── plans/                            # Implementation plans from Claude sessions
 ├── verification/                     # Lean proofs, fast-check + differential tests, run.sh
 └── plugins/
@@ -28,7 +28,7 @@ claude-plugins/
     ├── palette/                      # Mod: clickable agents / skills / commands pane
     ├── plan-renamer/                 # Rename plan files to meaningful titles
     ├── prompt-clock/                 # Mod: send times on prompts and turn lines
-    └── telegram-notifier/             # Telegram session notifications (has hooks)
+    └── telegram-notifier/            # Telegram session notifications (has hooks)
 ```
 
 ## Plugin Architecture
@@ -97,7 +97,8 @@ Use markdown files with YAML frontmatter for user-facing config:
    {
      "name": "<name>",
      "version": "1.0.0",
-     "description": "What the plugin does"
+     "description": "What the plugin does",
+     "author": { "name": "vampik33" }
    }
    ```
 
@@ -123,7 +124,7 @@ Use markdown files with YAML frontmatter for user-facing config:
 
 - **Version sync is mandatory**: `plugin.json` and `marketplace.json` versions must match exactly — easy to forget one
 - **Only telegram-notifier has shell hooks**: the mods' `hooks/` hold a TypeScript module instead; the other plugins are command+skill only
-- **The `scripts/lib/` shared libraries are telegram-notifier-specific**: `config.sh`, `session.sh`, `yaml.sh` live under telegram-notifier's hooks — they are not cross-plugin shared code
+- **The `scripts/lib/` shared libraries are telegram-notifier-specific**: `config.sh`, `html.sh`, `session.sh`, `yaml.sh` live under telegram-notifier's hooks — they are not cross-plugin shared code
 - **gtr has no CHANGELOG.md**: Unlike other plugins, gtr is missing its changelog
 
 ## Updating a Plugin

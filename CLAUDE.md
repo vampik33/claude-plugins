@@ -56,7 +56,7 @@ codex-review, continuity, fleet, palette and prompt-clock are TypeScript mods, n
 
 ```
 <mod>/
-├── .claude-plugin/plugin.json        # + "types" and "userConfig"
+├── .claude-plugin/plugin.json        # + "types" (and "userConfig" if configurable)
 ├── hooks/hooks.json                  # { "modules": ["./register.tsx"] }
 ├── hooks/register.tsx                # register(on, options); pure logic in core.ts
 ├── types/index.d.ts                  # $.state contract (PluginState)
@@ -66,6 +66,7 @@ codex-review, continuity, fleet, palette and prompt-clock are TypeScript mods, n
 - Check: `claude plugin validate <dir>` and `claude plugin test <dir>`; `tsc -p <dir>` once the engine has loaded the mod (it lays `.claude-plugin/types/`, gitignored)
 - A function that takes `$` must be top-level (the validator refuses closures)
 - Helpers are copied per mod, not shared: each mod installs alone
+- New mod: add it to the hardcoded `for mod in …` loop in `verification/run.sh`, and add `verification/props/<mod>.prop.test.ts` for pure functions in its `core.ts`
 
 ## Conventions
 
@@ -87,7 +88,7 @@ Use markdown files with YAML frontmatter for user-facing config:
 
 - Semantic versioning in `plugin.json`
 - CHANGELOG.md following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format
-- Commit messages: `type(plugin-name): description` (conventional commits)
+- Commit messages: `type(plugin-name): description (vX.Y.Z)` (conventional commits; the version suffix is the bumped plugin version)
 
 ## Adding a New Plugin
 

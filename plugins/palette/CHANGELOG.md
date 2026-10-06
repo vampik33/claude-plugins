@@ -4,6 +4,15 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-10-06
+
+### Added
+- A line of its own under the other bands above the prompt, always there: `palette` with a `show` / `hide` toggle (hotkey `p` while the band holds the keys)
+- A `✕` beside the search field while it holds text: clears it and gives the field the keys back
+
+### Changed
+- `/palette` opens the pane with the keyboard on the search field, so typing filters at once (granted while the prompt is empty, as it is after the command runs)
+
 ## [0.3.0] - 2026-10-06
 
 ### Added

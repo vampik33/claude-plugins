@@ -34,11 +34,12 @@ claude plugin install palette@vampik-plugins
 
 ## Behaviour
 
-- `/palette` shows or hides the pane. It docks beside the transcript in the fullscreen layout (110+ columns), inline above the prompt otherwise.
+- `/palette` shows or hides the pane, with the keyboard on the search field so you can type right away. It docks beside the transcript in the fullscreen layout (110+ columns), inline above the prompt otherwise.
+- A `palette  show` line always sits above the prompt: `show` / `hide` toggles the pane (hotkey `p` once the band has the keys, ctrl+x tab or a click).
 - A command or skill goes to the start of the prompt as `/<name> ` (a slash command only runs from there), replacing a leading command and keeping the rest of your draft.
 - An agent goes in at the cursor as `@agent-<name> `.
 - Nothing is sent: you finish the prompt and press Enter.
-- Type in the search field (click it, or focus the pane) to filter: an item stays when its name or description holds every word you typed, any case. Groups with no match hide, folded ones with a match open. Enter puts the first match in the prompt.
+- Type in the search field (click it, or focus the pane) to filter: an item stays when its name or description holds every word you typed, any case. Groups with no match hide, folded ones with a match open. Enter puts the first match in the prompt; `✕` clears the search.
 - Click a group header to fold it; `↻` re-reads the lists (after `/reload-plugins`, say).
 
 Groups: `most used` on top (the 10 items used most, also still listed under their source), then `project` (`.claude/` in the working directory), `user`, one per plugin, and `mcp`. Built-in commands and agents are left out.

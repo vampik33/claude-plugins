@@ -222,6 +222,18 @@ describe("search", () => {
   });
 });
 
+const BAND = {
+  component: "AbovePrompt" as const,
+  props: {
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 10,
+    bodyColumns: 120,
+    scroll: { offset: 0, bodyRows: 10 },
+    view: {},
+  } as never,
+};
+
 const PANE = {
   component: "Pane" as const,
   requestId: "palette",
@@ -241,6 +253,7 @@ function engine(on: any) {
     opened: 0,
     closed: 0,
     isOpen: false,
+    openArgs: [] as unknown[],
   };
   const draft = { text: "", cursor: 0 };
   const store = new Map<string, unknown>();
@@ -282,7 +295,12 @@ function engine(on: any) {
   });
   on(
     "ui.open",
-    () => (seen.opened++, (seen.isOpen = true), { value: { isPlaced: true } }),
+    (_$: unknown, e: unknown) => (
+      seen.opened++,
+      seen.openArgs.push(e),
+      (seen.isOpen = true),
+      { value: { isPlaced: true } }
+    ),
   );
   on(
     "ui.close",
@@ -430,6 +448,62 @@ describe("pane", () => {
     await ui.input({ key: "palette-search", text: "", kind: "change" });
     expect(await ui.find({ key: "command:think" })).toBeDefined();
     expect(await ui.find({ key: "command:hookify:list" })).toBeUndefined();
+    await ui.unmount();
+  });
+
+  test("/palette asks for the keyboard; the search field takes it", async ($, on) => {
+    const { seen } = engine(on);
+    await $.command.run({ command: "palette", args: "" } as never);
+    expect(seen.openArgs[0]).toMatchObject({ id: "palette", focus: true });
+    const ui = await $.ui.mount({
+      plugin: "palette",
+      surface: "terminal",
+      ...PANE,
+    });
+    const drawn = JSON.stringify(await ui.drawn());
+    expect(drawn).toContain('"key":"palette-search"');
+    expect(drawn).toContain('"autoFocus":true');
+    await ui.unmount();
+  });
+
+  // the kit has no implementation of $.ui.focus: the refocus is not asserted
+  test("✕ clears the search", async ($, on) => {
+    engine(on);
+    await $.command.run({ command: "palette", args: "" } as never);
+    const ui = await $.ui.mount({
+      plugin: "palette",
+      surface: "terminal",
+      ...PANE,
+    });
+    expect(await ui.find({ key: "palette-search-clear" })).toBeUndefined();
+    await ui.input({ key: "palette-search", text: "hook", kind: "change" });
+    expect(await ui.find({ key: "command:think" })).toBeUndefined();
+
+    await ui.press({ key: "palette-search-clear" });
+    expect(await ui.find({ key: "command:think" })).toBeDefined();
+    expect(await ui.find({ key: "palette-search-clear" })).toBeUndefined();
+    await ui.unmount();
+  });
+
+  test("the band line shows and hides the pane", async ($, on) => {
+    const { seen } = engine(on);
+    const mount = () =>
+      $.ui.mount({ plugin: "palette", surface: "terminal", ...BAND });
+
+    let ui = await mount();
+    expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
+    await ui.press({ key: "palette-toggle" });
+    expect(seen.opened).toBe(1);
+    await ui.unmount();
+
+    ui = await mount();
+    expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("hide");
+    await ui.press({ key: "palette-toggle" });
+    expect(seen.closed).toBe(1);
+    await ui.unmount();
+
+    ui = await mount();
+    expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
     await ui.unmount();
   });
 });

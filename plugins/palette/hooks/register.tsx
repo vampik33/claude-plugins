@@ -14,6 +14,7 @@ import {
 } from "./core.ts";
 
 const PANE = "palette";
+const SEARCH = "palette-search";
 const SELF = "palette";
 
 const groups = atom(
@@ -75,7 +76,8 @@ async function refresh($: EngineInterface): Promise<void> {
 }
 
 async function openPane($: EngineInterface) {
-  const opened = await $.ui.open({ id: PANE, title: "Palette" });
+  // focus is granted only over an empty prompt; the search field takes it (autoFocus)
+  const opened = await $.ui.open({ id: PANE, title: "Palette", focus: true });
   await update($, pane, () => opened.isPlaced);
   await refresh($);
   return opened;
@@ -89,6 +91,12 @@ async function togglePane($: EngineInterface) {
     return undefined;
   }
   return openPane($);
+}
+
+async function clearSearch($: EngineInterface) {
+  await update($, query, () => "");
+  // the ✕ goes with the text: give the keys back to the field
+  await $.ui.focus({ requestId: PANE, key: SEARCH }).catch(() => {});
 }
 
 async function press($: EngineInterface, item: PaletteItem) {
@@ -180,9 +188,9 @@ export const register: Register = (on) => {
           </Button>
         </Box>
         {Input && (
-          <Box marginTop={1}>
+          <Box flexDirection="row" columnGap={1} marginTop={1}>
             <Input
-              key="palette-search"
+              key={SEARCH}
               label="Search: "
               placeholder="type to filter"
               value={q}
@@ -194,6 +202,16 @@ export const register: Register = (on) => {
                 if (first) void press($, first);
               }}
             />
+            {q !== "" && (
+              <Button
+                key="palette-search-clear"
+                plain
+                dimColor
+                onPress={() => clearSearch($)}
+              >
+                ✕
+              </Button>
+            )}
           </Box>
         )}
         {all.length === 0 && (
@@ -234,6 +252,30 @@ export const register: Register = (on) => {
               })}
           </Box>
         ))}
+      </Box>
+    );
+  });
+
+  // its own line under the other bands: a show/hide toggle
+  on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e);
+    const open = await read($, pane);
+    const below = await next(e);
+    const { Box, Button, Text } = $.ui.resolve(e);
+    return (
+      <Box flexDirection="column">
+        {below}
+        <Box flexDirection="row" columnGap={2} marginTop={1}>
+          <Text dimColor>palette</Text>
+          <Button
+            key="palette-toggle"
+            hotkey="p"
+            dimColor
+            onPress={() => togglePane($)}
+          >
+            {open ? "hide" : "show"}
+          </Button>
+        </Box>
       </Box>
     );
   });

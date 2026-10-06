@@ -12,6 +12,7 @@ set -euo pipefail
 # - Display: Bash commands show up to 3 command types
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/html.sh
 source "$SCRIPT_DIR/lib/html.sh"
 
 TRANSCRIPT_PATH="${1:-}"

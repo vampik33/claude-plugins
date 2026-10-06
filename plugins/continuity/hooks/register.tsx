@@ -197,11 +197,12 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
     const r = await $.session.compact({
       instructions: compactInstructions(note),
     });
+    // a skip counts as a handover: retrying every turn would write a note each time
+    t.turnsSinceHandover = 0;
     if (r.skip !== undefined) {
       $.ui.toast(`Handover written, compaction skipped: ${r.skip}`);
       return `Handover written to ${path}; compaction skipped: ${r.skip}`;
     }
-    t.turnsSinceHandover = 0;
     await setPhase($, "idle");
     await $.prompt.submit({ text: continuePrompt(path, note) });
     return `Handover written to ${path}, compacted, continuing.`;

@@ -145,6 +145,13 @@ Add to your project's `.gitignore` (user-level config in `~/.claude/` is not in 
 .claude/*.local.md
 ```
 
+## Testing
+
+```bash
+shellcheck -x -P SCRIPTDIR plugins/telegram-notifier/hooks/scripts/*.sh plugins/telegram-notifier/hooks/scripts/lib/*.sh
+bats plugins/telegram-notifier/tests
+```
+
 ## Debug Mode
 
 For troubleshooting, enable debug mode:

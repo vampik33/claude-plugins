@@ -5,6 +5,16 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-10-06
+
+### Fixed
+- HTML escaping on bash 5.2+ turned `<` and `>` into `<lt;` and `>gt;` (`&` in a `${var//…/…}` replacement means the matched text), breaking Telegram's HTML parse
+- A `#` inside a config value (with no space before it) was stripped as a comment
+- `extract_body` used a bare `((dash_count++))`, which fails under `set -e` when the count is 0
+
+### Added
+- shellcheck-clean scripts and a bats suite (`bats plugins/telegram-notifier/tests`), with `curl` stubbed
+
 ## [1.9.0] - 2026-03-25
 
 ### Changed

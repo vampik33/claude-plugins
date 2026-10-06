@@ -1,0 +1,6 @@
+{"type":"human","message":{"content":"Fix the bug in main.rs"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/home/user/project/src/main.rs"}},{"type":"tool_use","name":"Read","input":{"file_path":"/home/user/project/src/lib.rs"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/home/user/project/src/main.rs","old_string":"let x = 1;","new_string":"let x = 2;"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/home/user/project/tests/test_main.rs","content":"#[test] fn it_works() { assert!(true); }"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cargo test"}},{"type":"tool_use","name":"Bash","input":{"command":"cargo clippy"}}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"All done. The bug was in main.rs line 5."}]}}

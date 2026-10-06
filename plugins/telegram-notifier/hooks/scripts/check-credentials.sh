@@ -15,7 +15,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Read hook input before sourcing (stdin must be captured first)
 HOOK_INPUT=$(cat)
+# shellcheck source=lib/config.sh
 source "$SCRIPT_DIR/lib/config.sh"
+# shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
 extract_session_id "$HOOK_INPUT"
 

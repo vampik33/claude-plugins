@@ -8,6 +8,8 @@ Claude Code Plugin Marketplace — a collection of plugins installable via `clau
 claude --plugin-dir /path/to/claude-plugins/plugins/<plugin-name>
 ```
 
+All checks (Lean proofs, property + differential tests, mod tests, telegram-notifier shellcheck + bats): `verification/run.sh`. See `verification/README.md`.
+
 ## Repository Structure
 
 ```
@@ -15,6 +17,7 @@ claude-plugins/
 ├── .claude-plugin/marketplace.json   # Marketplace manifest (all plugins)
 ├── .claude/                          # Project-level Claude config
 ├── plans/                            # Implementation plans from Claude sessions
+├── verification/                     # Lean proofs, fast-check + differential tests, run.sh
 └── plugins/
     ├── claudemd-gen/                 # CLAUDE.md generator and auditor
     ├── codex-review/                 # Mod: background Codex reviews, findings pane, CodexReview tool

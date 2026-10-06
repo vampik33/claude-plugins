@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "devDependencies": {
+    "fast-check": "^3.22.0"
+  },
+  "scripts": {
+    "test": "bun test props"
+  }
+}

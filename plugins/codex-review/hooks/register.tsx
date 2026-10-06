@@ -451,8 +451,9 @@ export const register: Register = (on, options) => {
     const detail = `${job.phase ?? "starting"} · ${job.repo} → ${job.base}${more} · /cx cancel`;
     if (e.surface === "terminal" || e.surface === "desktop") {
       const { Box, Client } = $.ui.resolve(e);
+      // a line of its own under the other bands
       return (
-        <Box flexDirection="row" columnGap={3}>
+        <Box flexDirection="column">
           {below}
           <Client
             key="codex-band"
@@ -464,7 +465,7 @@ export const register: Register = (on, options) => {
     }
     const { Box, Text } = $.ui.resolve(e);
     return (
-      <Box flexDirection="row" columnGap={3}>
+      <Box flexDirection="column">
         {below}
         <Text dimColor>{`${label} · ${detail}`}</Text>
       </Box>

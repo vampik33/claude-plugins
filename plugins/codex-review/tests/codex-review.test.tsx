@@ -380,6 +380,10 @@ describe("session", () => {
       } as never,
     });
     expect(await band.find({ key: "codex-band" })).toBeDefined();
+    // its own line under the other bands, never beside them
+    const drawn: any = await band.drawn();
+    expect(drawn.props.flexDirection).toBe("column");
+    expect(drawn.children.at(-1).type).toBe("Client");
     await band.unmount();
 
     seen.alive = false;

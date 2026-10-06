@@ -4,6 +4,11 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-10-06
+
+### Fixed
+- The running review's band draws on its own line under other bands instead of beside them
+
 ## [0.1.0] - 2026-10-05
 
 ### Added

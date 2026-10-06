@@ -6,8 +6,8 @@
 # Must escape & first to avoid double-escaping
 escape_html() {
   local text="${1:-}"
-  text="${text//&/&amp;}"
-  text="${text//</&lt;}"
-  text="${text//>/&gt;}"
+  text="${text//&/\&amp;}"
+  text="${text//</\&lt;}"
+  text="${text//>/\&gt;}"
   echo "$text"
 }

@@ -18,12 +18,12 @@ parse_yaml_field() {
   local default="$2"
   local frontmatter="$3"
 
-  # Extract line matching field, strip comment, extract value, remove quotes/whitespace
+  # Extract line matching field, strip inline comment (space + #), extract value, remove quotes/whitespace
   local value
   value=$(echo "$frontmatter" \
     | grep "^${field}:" \
     | head -1 \
-    | sed -e 's/#.*//' -e "s/${field}:[[:space:]]*//" \
+    | sed -e 's/ #.*//' -e "s/${field}:[[:space:]]*//" \
     | tr -d ' "'"'" \
     || echo "")
 
@@ -35,13 +35,12 @@ parse_yaml_field() {
 # Returns: Body content with collapsed whitespace
 extract_body() {
   local file="$1"
-  local in_body=0
   local dash_count=0
   local result=""
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" == "---" ]]; then
-      ((dash_count++))
+      dash_count=$((dash_count + 1))
       continue
     fi
     if [[ $dash_count -ge 2 ]]; then

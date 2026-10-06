@@ -3,6 +3,7 @@
 # Similar to CLAUDE.md behavior: user as default, project overrides
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=yaml.sh
 source "$LIB_DIR/yaml.sh"
 
 # Get user-level config path

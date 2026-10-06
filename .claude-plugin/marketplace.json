@@ -85,7 +85,7 @@
     {
       "name": "fleet",
       "description": "A side pane with the session's subagents, background shells and worktrees, with alerts when they finish or fail",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "author": {
         "name": "vampik33"
       },

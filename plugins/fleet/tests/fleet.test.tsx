@@ -7,6 +7,8 @@ import {
   endShell,
   fmtClock,
   fmtElapsed,
+  loseShells,
+  mayNotify,
   parseNotification,
   parseStatus,
   parseWorktrees,
@@ -103,6 +105,18 @@ describe("words", () => {
     );
   });
 
+  test("the summary counts lost shells apart", () => {
+    const shell = (id: string, status: string) => ({ id, command: "x", startedAt: T0, status });
+    const f: FleetState = {
+      ...emptyFleet(),
+      batchStart: T0,
+      shells: [shell("a", "completed"), shell("b", "failed"), shell("c", "lost")],
+    };
+    expect(summary(f, "r", T0 + 1_000).split("\n").at(-1)).toBe(
+      "Background shells: ✓ 1   ✗ 1   ? 1",
+    );
+  });
+
   test("the summary carries no shell command text", () => {
     const secrets = [
       "curl -u user:SYNTHETIC_SECRET https://example.invalid",
@@ -148,6 +162,23 @@ describe("transitions", () => {
     expect(endShell(shells, "zz", "completed", T0).ended).toBeUndefined();
   });
 
+  test("a live shell the engine no longer has in flight is lost; its late notification still ends it", () => {
+    const shells = [
+      { id: "b1", command: "sleep 9", startedAt: T0, status: "running" },
+      { id: "b2", command: "sleep 8", startedAt: T0, status: "running" },
+      { id: "b3", command: "true", startedAt: T0, endedAt: T0 + 1, status: "completed" },
+    ];
+    const lost = loseShells(shells, new Set(["b2"]), T0 + 5_000);
+    expect(lost.map((s) => [s.id, s.status, s.endedAt])).toEqual([
+      ["b1", "lost", T0 + 5_000],
+      ["b2", "running", undefined],
+      ["b3", "completed", T0 + 1],
+    ]);
+    const late = endShell(lost, "b1", "failed", T0 + 9_000);
+    expect(late.ended?.status).toBe("failed");
+    expect(late.ended?.endedAt).toBe(T0 + 5_000);
+  });
+
   test("trim keeps live items and the newest ended", () => {
     const items = [
       agent({ id: "1", status: "completed" }),
@@ -164,6 +195,17 @@ describe("transitions", () => {
       ),
     ).toEqual({ id: "bjl2", status: "failed" });
     expect(parseNotification("just text")).toBeUndefined();
+  });
+
+  test("a notification comes as a user row, or an attachment a running turn absorbed", () => {
+    expect(mayNotify({ type: "user" })).toBe(true);
+    expect(mayNotify({ type: "attachment", name: "queued_command" })).toBe(
+      true,
+    );
+    expect(mayNotify({ type: "attachment", name: "nested_memory" })).toBe(
+      false,
+    );
+    expect(mayNotify({ type: "assistant" })).toBe(false);
   });
 });
 
@@ -325,6 +367,41 @@ describe("session", () => {
       expect(allDone()).toBe(true);
       // the band above the prompt carries the counts; the status line stays free
       expect(seen.status).toEqual([]);
+    },
+  );
+
+  test(
+    "a turn's end marks lost the shells no longer in flight",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { seen, clock } = engine(on, []);
+      let n = 0;
+      on("tool.call", () => ({ result: { backgroundTaskId: `b${++n}` } }));
+      on("classic.Stop", () => ({}));
+      const task = (id: string) => ({ id, type: "shell", status: "running", description: "" });
+      const stop = (ids: string[]) =>
+        $.classic.Stop({ stop_hook_active: false, background_tasks: ids.map(task) } as never);
+      const line = async () => {
+        const ui = await $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
+        const text = (await ui.find({ type: "Text" }))?.text;
+        await ui.unmount();
+        return text;
+      };
+
+      await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
+      await $.tool.call({ tool: "Bash", command: "cargo bench" } as never);
+      expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+
+      await $.classic.Stop({ stop_hook_active: false } as never); // no list: nothing known
+      expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+      await stop(["b2"]);
+      expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+      await stop([]);
+      expect(await line()).toBe("fleet"); // nothing live: the batch closed
+      // no toast of its own for a lost shell; the batch's all-done counts it
+      expect(seen.toasts).toEqual([]);
+      await clock.advance(2_100);
+      expect(seen.toasts).toEqual(["All done in 0s · Background shells: ✓ 0   ? 2"]);
     },
   );
 
@@ -498,6 +575,7 @@ describe("view", () => {
         shells: [
           { id: "s1", command: "cargo test", startedAt: at - 5_000, endedAt: at, status: "failed" },
           { id: "s2", command: "cargo build", startedAt: at, status: "running" },
+          { id: "s3", command: "cargo doc", startedAt: at - 3_000, endedAt: at, status: "lost" },
         ],
         trees: [],
       },
@@ -508,6 +586,7 @@ describe("view", () => {
     expect(text).toContain(`▶ ${"Plan".padEnd(18)} 45s`);
     expect(text.find((l) => l.includes("cargo test"))).toMatch(/^✗ cargo test +5s · 16:42$/);
     expect(text.find((l) => l.includes("cargo build"))).toMatch(/^▶ cargo build +45s$/);
+    expect(text.find((l) => l.includes("cargo doc"))).toMatch(/^\? cargo doc +3s · 16:42$/);
     expect(text.every((l) => l.length <= 50)).toBe(true);
   });
 });

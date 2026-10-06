@@ -4,6 +4,14 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-10-06
+
+### Added
+- A background shell that ends with no notification (a restart, a kill) no longer stays running: at each main turn's end, a live shell missing from the engine's in-flight task list is marked lost, drawn `?` in the pane, with no toast and counted apart in the all-done summary (`? 1`); a notification that arrives later still sets its real status
+
+### Fixed
+- Background shells that finish while a turn is running are marked ended: their notification arrives as a `queued_command` attachment row, not a user row, and was ignored, so the pane and the band's `bg N` kept them running forever
+
 ## [0.3.0] - 2026-10-06
 
 ### Added

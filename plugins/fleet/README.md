@@ -40,7 +40,7 @@ Named agents (agent teams) go idle between turns: they show as done without a to
 
 ## How It Works
 
-`agent.spawn` and `tool.call` record agents and their last tool; `$.agent.list()` is polled every 2 s while any runs; a turn's end and task notifications report finishes at once; worktrees come from `git worktree list` every 15 s while the pane is shown.
+`agent.spawn` and `tool.call` record agents and their last tool; `$.agent.list()` is polled every 2 s while any runs; a turn's end and task notifications report finishes at once; at each turn's end a background shell no longer in the engine's in-flight list is marked lost (`?`), its exit unknown; worktrees come from `git worktree list` every 15 s while the pane is shown.
 
 ## Configuration
 

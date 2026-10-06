@@ -4,7 +4,7 @@
  */
 
 import type { FleetAgent, FleetShell, FleetTree } from "../types";
-import { fmtClock, fmtElapsed, isFailed, isLive } from "./core.ts";
+import { fmtClock, fmtElapsed, isFailed, isLive, LOST } from "./core.ts";
 
 export type FleetView = {
   repo: string;
@@ -40,6 +40,7 @@ const order = <
 
 function mark(Text: any, status: string) {
   if (isLive(status)) return <Text color="cyan">▶</Text>;
+  if (status === LOST) return <Text dimColor>?</Text>;
   return isFailed(status) ? (
     <Text color="red">✗</Text>
   ) : (

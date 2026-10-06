@@ -10,6 +10,8 @@ import {
   isFailed,
   isLive,
   liveCount,
+  loseShells,
+  mayNotify,
   parseNotification,
   parseStatus,
   parseWorktrees,
@@ -347,9 +349,23 @@ export const register: Register = (on, options) => {
   // a background task's notification: a shell or an agent finished
   on("session.append", async ($, e, next) => {
     const r = await next(e);
-    if (e.message.type !== "user") return r;
+    if (!mayNotify(e.message)) return r;
     const note = parseNotification(textOf(e.message.content));
     if (note) await endTask($, t, note.id, note.status);
+    return r;
+  });
+
+  // a main turn's end lists the tasks still in flight: a live shell missing
+  // from it ended with no notification (a restart, a kill), so it is lost
+  on("classic.Stop", async ($, e, next) => {
+    const r = await next(e);
+    if (!e.background_tasks) return r;
+    const inFlight = new Set(e.background_tasks.map((b) => b.id));
+    await update($, fleet, (f) => ({
+      ...f,
+      shells: loseShells(f.shells, inFlight, Date.now()),
+    }));
+    await settle($, t);
     return r;
   });
 

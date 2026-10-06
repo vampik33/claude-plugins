@@ -86,6 +86,13 @@ export function toolLabel(tool: string, input: unknown): string {
   return label.length > 40 ? `${label.slice(0, 39)}…` : label;
 }
 
+/**
+ * Whether a kept row may carry a task notification: a user row when the
+ * session is idle, a queued_command attachment when a running turn absorbs it.
+ */
+export const mayNotify = (m: { type: string; name?: string }) =>
+  m.type === "user" || (m.type === "attachment" && m.name === "queued_command");
+
 /** A task notification's id and status, from the row's text. */
 export function parseNotification(
   text: string,
@@ -121,7 +128,13 @@ export function applyStatuses(
   return { agents: next, ended };
 }
 
-/** Marks a shell ended by its task id; answers it, or undefined if it is not a live one. */
+/** A shell the engine stopped tracking with no notification: its exit is unknown. */
+export const LOST = "lost";
+
+/**
+ * Marks a shell ended by its task id; answers it, or undefined if it is not a
+ * live or lost one. A lost one's late notification still sets its real status.
+ */
 export function endShell(
   shells: FleetShell[],
   id: string,
@@ -130,11 +143,24 @@ export function endShell(
 ): { shells: FleetShell[]; ended?: FleetShell } {
   let ended: FleetShell | undefined;
   const next = shells.map((s) => {
-    if (s.id !== id || !isLive(s.status)) return s;
-    ended = { ...s, status, endedAt: now };
+    if (s.id !== id || !(isLive(s.status) || s.status === LOST)) return s;
+    ended = { ...s, status, endedAt: s.endedAt ?? now };
     return ended;
   });
   return { shells: next, ended };
+}
+
+/** Marks lost each live shell the engine no longer has in flight. */
+export function loseShells(
+  shells: FleetShell[],
+  inFlight: ReadonlySet<string>,
+  now: number,
+): FleetShell[] {
+  return shells.map((s) =>
+    isLive(s.status) && !inFlight.has(s.id)
+      ? { ...s, status: LOST, endedAt: now }
+      : s,
+  );
 }
 
 export const liveCount = (f: FleetState) =>
@@ -185,8 +211,9 @@ export function summary(f: FleetState, repo: string, now: number): string {
   // no command text leaves the device: any word of it may hold a secret
   if (shells.length) {
     const bad = shells.filter((s) => isFailed(s.status)).length;
+    const lost = shells.filter((s) => s.status === LOST).length;
     lines.push(
-      `Background shells: ✓ ${shells.length - bad}${bad ? `   ✗ ${bad}` : ""}`,
+      `Background shells: ✓ ${shells.length - bad - lost}${bad ? `   ✗ ${bad}` : ""}${lost ? `   ? ${lost}` : ""}`,
     );
   }
   return lines.join("\n");

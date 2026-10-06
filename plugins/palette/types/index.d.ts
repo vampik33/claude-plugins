@@ -12,6 +12,12 @@ export type PaletteGroup = {
   items: PaletteItem[];
 };
 
+/** How often an item was used, and when last (ms since epoch). */
+export type Use = { count: number; last: number };
+
+/** Uses by `<kind>:<name>` (`command:think`, `agent:rust-engineer`). */
+export type Usage = Record<string, Use>;
+
 declare module "claude-code" {
   interface PluginState {
     palette: {
@@ -22,6 +28,8 @@ declare module "claude-code" {
       folded: string[];
       /** Agent descriptions by type, as `agent.offer` last carried them. */
       agentInfo: Record<string, string>;
+      /** Uses across sessions, as `$.store` keeps them. */
+      usage: Usage;
     };
   }
 }

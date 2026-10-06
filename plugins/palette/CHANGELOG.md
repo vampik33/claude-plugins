@@ -4,6 +4,14 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-10-06
+
+### Added
+- A `most used` group on top: the 10 items used most, counted across sessions in the plugin's store from commands run, skills invoked (typed or through the Skill tool) and agents spawned
+
+### Changed
+- Each item takes two lines, its name then its description indented below, with a blank line between items; items are indented under their group header
+
 ## [0.1.0] - 2026-10-06
 
 ### Added

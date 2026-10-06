@@ -3,7 +3,7 @@
  * they come from, and what a press writes into the prompt box.
  */
 
-import type { PaletteGroup, PaletteItem } from "../types";
+import type { PaletteGroup, PaletteItem, Usage } from "../types";
 
 /** One slash command or skill as `$.command.list()` gives it. */
 export type RawCommand = {
@@ -84,6 +84,48 @@ export function buildGroups(
       ),
     }))
     .sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id));
+}
+
+/** Where an item's uses are kept: `<kind>:<name>`. */
+export const useKey = (item: Pick<PaletteItem, "kind" | "name">) =>
+  `${item.kind}:${item.name}`;
+
+/** A typed skill is reported twice (`command.run`, `skill.prompt`): once counts. */
+export const REPEAT_MS = 5_000;
+
+/** `usage` with one more use of `key` at `now`; unchanged within REPEAT_MS of the last. */
+export function recordUse(usage: Usage, key: string, now: number): Usage {
+  const was = usage[key];
+  if (was && now - was.last < REPEAT_MS) return usage;
+  return { ...usage, [key]: { count: (was?.count ?? 0) + 1, last: now } };
+}
+
+export const MOST_USED = "most used";
+
+/**
+ * The `n` most used items listed in `groups`, most first (ties: the latest
+ * use, then by name); undefined while none has a use.
+ */
+export function mostUsed(
+  groups: PaletteGroup[],
+  usage: Usage,
+  n = 10,
+): PaletteGroup | undefined {
+  const seen = new Map<string, PaletteItem>();
+  for (const item of groups.flatMap((g) => g.items))
+    if (usage[useKey(item)]) seen.set(useKey(item), item);
+  const items = [...seen.values()]
+    .sort((a, b) => {
+      const ua = usage[useKey(a)]!;
+      const ub = usage[useKey(b)]!;
+      return (
+        ub.count - ua.count || ub.last - ua.last || a.name.localeCompare(b.name)
+      );
+    })
+    .slice(0, n);
+  return items.length
+    ? { id: MOST_USED, title: MOST_USED, items }
+    : undefined;
 }
 
 /** What a row reads: `@<name>` for an agent, `/<name>` for a command or skill. */

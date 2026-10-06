@@ -1,8 +1,16 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { PaletteGroup, PaletteItem } from "../types";
-import { buildGroups, fillFor, label, projectPaths } from "./core.ts";
+import type { PaletteGroup, PaletteItem, Usage } from "../types";
+import {
+  buildGroups,
+  fillFor,
+  label,
+  MOST_USED,
+  mostUsed,
+  projectPaths,
+  recordUse,
+} from "./core.ts";
 
 const PANE = "palette";
 const SELF = "palette";
@@ -20,6 +28,26 @@ const agentInfo = atom(
   { plugin: "palette", key: "agentInfo" } as const,
   {} as Record<string, string>,
 );
+const usage = atom({ plugin: "palette", key: "usage" } as const, {} as Usage);
+const USAGE = "usage";
+
+const stored = async ($: EngineInterface) =>
+  ((await $.store.get(USAGE)) as Usage | undefined) ?? {};
+
+/** Counts one use in the store (shared by every session) and in `usage`. */
+async function addUse($: EngineInterface, key: string): Promise<void> {
+  const was = await stored($);
+  const now = recordUse(was, key, await $.clock.now());
+  if (now !== was) await $.store.set(USAGE, now);
+  await update($, usage, () => now);
+}
+
+// one at a time, so parallel spawns don't overwrite each other's count
+let counting = Promise.resolve();
+function countUse($: EngineInterface, key: string): Promise<void> {
+  counting = counting.then(() => addUse($, key)).catch(() => {});
+  return counting;
+}
 
 /** Reads the session's commands, skills and custom agents into `groups`. */
 async function refresh($: EngineInterface): Promise<void> {
@@ -80,6 +108,8 @@ export const register: Register = (on) => {
     const panes = await $.ui.panes().catch(() => []);
     const isOpen = panes.some((p) => p.id === PANE && p.isPlaced);
     await update($, pane, () => isOpen);
+    const kept = await stored($).catch(() => ({}));
+    await update($, usage, () => kept);
     if (isOpen) await refresh($);
     return r;
   });
@@ -95,6 +125,21 @@ export const register: Register = (on) => {
     };
   });
 
+  on("command.run", async ($, e, next) => {
+    await countUse($, `command:${e.command}`);
+    return next(e);
+  });
+
+  on("skill.prompt", async ($, e, next) => {
+    await countUse($, `command:${e.skill}`);
+    return next(e);
+  });
+
+  on("agent.spawn", async ($, e, next) => {
+    await countUse($, `agent:${e.subagentType}`);
+    return next(e);
+  });
+
   // the context's agent listing has no descriptions; the model's offer does
   on("agent.offer", async ($, e, next) => {
     const r = await next(e);
@@ -105,7 +150,9 @@ export const register: Register = (on) => {
 
   on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e);
-    const all = await read($, groups);
+    const listed = await read($, groups);
+    const top = mostUsed(listed, await read($, usage));
+    const all = top ? [top, ...listed] : listed;
     const shut = new Set(await read($, folded));
     const info = await read($, agentInfo);
     const toggle = (id: string) =>
@@ -135,24 +182,29 @@ export const register: Register = (on) => {
               {`${shut.has(g.id) ? "▸" : "▾"} ${g.title} (${g.items.length})`}
             </Button>
             {!shut.has(g.id) &&
-              g.items.map((item) => (
-                <Box
-                  key={`row:${item.kind}:${item.name}`}
-                  flexDirection="row"
-                  columnGap={1}
-                >
-                  <Button
-                    key={`${item.kind}:${item.name}`}
-                    plain
-                    onPress={() => press($, item)}
+              g.items.map((item) => {
+                const id = `${g.id === MOST_USED ? "top:" : ""}${item.kind}:${item.name}`;
+                const about = item.description || info[item.name] || "";
+                return (
+                  <Box
+                    key={`row:${id}`}
+                    flexDirection="column"
+                    marginTop={1}
+                    marginLeft={2}
                   >
-                    {label(item)}
-                  </Button>
-                  <Text dimColor wrap="truncate-end">
-                    {item.description || info[item.name] || ""}
-                  </Text>
-                </Box>
-              ))}
+                    <Button key={id} plain onPress={() => press($, item)}>
+                      {label(item)}
+                    </Button>
+                    {about && (
+                      <Box marginLeft={2}>
+                        <Text dimColor wrap="truncate-end">
+                          {about}
+                        </Text>
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
           </Box>
         ))}
       </Box>

@@ -1,11 +1,14 @@
 import { describe, expect, test } from "claude-code/testing";
 
-import type { PaletteItem } from "../types";
+import type { PaletteGroup, PaletteItem } from "../types";
 import {
   buildGroups,
   fillFor,
   label,
+  mostUsed,
   projectPaths,
+  recordUse,
+  REPEAT_MS,
   type RawCommand,
 } from "../hooks/core.ts";
 
@@ -116,6 +119,65 @@ describe("fill", () => {
   });
 });
 
+describe("usage", () => {
+  test("a use counts once, a repeat within REPEAT_MS does not", () => {
+    const one = recordUse({}, "command:think", 1_000);
+    expect(one).toEqual({ "command:think": { count: 1, last: 1_000 } });
+    expect(recordUse(one, "command:think", 1_000 + REPEAT_MS - 1)).toBe(one);
+    expect(recordUse(one, "command:think", 1_000 + REPEAT_MS)).toEqual({
+      "command:think": { count: 2, last: 1_000 + REPEAT_MS },
+    });
+  });
+
+  const item = (kind: PaletteItem["kind"], name: string): PaletteItem => ({
+    kind,
+    name,
+    description: "",
+  });
+  const groups: PaletteGroup[] = [
+    {
+      id: "user",
+      title: "user",
+      items: [item("agent", "think"), item("command", "think")],
+    },
+    {
+      id: "plugin:x",
+      title: "plugin:x",
+      items: [item("command", "x:a"), item("command", "x:b")],
+    },
+  ];
+
+  test("none used: no group", () => {
+    expect(mostUsed(groups, {})).toBeUndefined();
+    expect(mostUsed(groups, { "command:gone": { count: 9, last: 0 } })).toBe(
+      undefined,
+    );
+  });
+
+  test("most first, then the latest use, then by name; listed ones only", () => {
+    const top = mostUsed(groups, {
+      "command:x:b": { count: 1, last: 5 },
+      "command:x:a": { count: 1, last: 5 },
+      "agent:think": { count: 1, last: 9 },
+      "command:think": { count: 3, last: 1 },
+      "command:clear": { count: 50, last: 1 },
+    });
+    expect(top!.id).toBe("most used");
+    expect(top!.items.map(label)).toEqual([
+      "/think",
+      "@think",
+      "/x:a",
+      "/x:b",
+    ]);
+  });
+
+  test("at most n", () => {
+    const usage = { "command:x:a": { count: 2, last: 0 } };
+    const top = mostUsed(groups, { ...usage, "command:x:b": { count: 1, last: 0 } }, 1);
+    expect(top!.items.map(label)).toEqual(["/x:a"]);
+  });
+});
+
 const PANE = {
   component: "Pane" as const,
   requestId: "palette",
@@ -137,6 +199,16 @@ function engine(on: any) {
     isOpen: false,
   };
   const draft = { text: "", cursor: 0 };
+  const store = new Map<string, unknown>();
+  let now = 0;
+  on("store.get", (_$: unknown, e: { key: string }) => ({
+    value: store.get(e.key),
+  }));
+  on("store.set", (_$: unknown, e: { key: string; value: unknown }) => {
+    store.set(e.key, e.value);
+    return { value: undefined };
+  });
+  on("clock.now", () => ({ value: (now += REPEAT_MS) }));
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
   on("command.list", () => ({
@@ -185,7 +257,7 @@ function engine(on: any) {
         ]
       : [],
   }));
-  return { seen, draft };
+  return { seen, draft, store };
 }
 
 describe("pane", () => {
@@ -255,6 +327,37 @@ describe("pane", () => {
       ...PANE,
     });
     expect(await ui.find({ type: "Text", text: "Rust expert" })).toBeDefined();
+    await ui.unmount();
+  });
+
+  test("used items show first under most used, kept in the store", async ($, on) => {
+    const { seen, store } = engine(on);
+    on("command.run", { command: "think" }, () => ({ text: "" }));
+    on("agent.spawn", () => ({ model: "m" }));
+    await $.command.run({ command: "palette", args: "" } as never);
+    await $.command.run({ command: "think", args: "" } as never);
+    await $.agent.spawn({ subagentType: "rust-engineer" } as never);
+    await $.command.run({ command: "think", args: "" } as never);
+
+    expect(store.get("usage")).toMatchObject({
+      "command:think": { count: 2 },
+      "agent:rust-engineer": { count: 1 },
+    });
+    const ui = await $.ui.mount({
+      plugin: "palette",
+      surface: "terminal",
+      ...PANE,
+    });
+    expect((await ui.find({ key: "group:most used" }))?.text).toBe(
+      "▾ most used (2)",
+    );
+    expect((await ui.find({ key: "top:command:think" }))?.text).toBe("/think");
+    expect((await ui.find({ key: "top:agent:rust-engineer" }))?.text).toBe(
+      "@rust-engineer",
+    );
+    expect(await ui.find({ key: "command:think" })).toBeDefined();
+    await ui.press({ key: "top:command:think" });
+    expect(seen.fills).toEqual([{ text: "/think ", mode: "replace" }]);
     await ui.unmount();
   });
 });

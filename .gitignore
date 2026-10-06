@@ -17,3 +17,6 @@ Thumbs.db
 
 # Types Claude Code lays beside a loaded mod
 plugins/*/.claude-plugin/types/
+
+# Verification dependencies
+verification/node_modules/

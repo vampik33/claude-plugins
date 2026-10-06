@@ -1,0 +1,9 @@
+name = "plugins"
+defaultTargets = ["Plugins", "oracle"]
+
+[[lean_lib]]
+name = "Plugins"
+
+[[lean_exe]]
+name = "oracle"
+root = "Oracle"

@@ -195,6 +195,10 @@ function engine(on: any, list: { id: string; status: string }[]) {
     status: [] as (string | undefined)[],
     opened: 0,
     closed: 0,
+    /** Whether the pane is open, and whether the next open is drawn. */
+    isOpen: false,
+    placeNext: true,
+    isPlaced: false,
   };
   const clock = mock.clock(on, { now: Date.now() });
   mock.env(on, {});
@@ -224,9 +228,22 @@ function engine(on: any, list: { id: string; status: string }[]) {
       { value: undefined }
     ),
   );
-  on("ui.open", () => (seen.opened++, { value: { isPlaced: true } }));
-  on("ui.close", () => (seen.closed++, { value: undefined }));
-  on("ui.panes", () => ({ value: [] }));
+  on("ui.open", () => {
+    seen.opened++;
+    seen.isOpen = true;
+    seen.isPlaced = seen.placeNext;
+    return {
+      value: seen.isPlaced
+        ? { isPlaced: true }
+        : { isPlaced: false, reason: "narrow" },
+    };
+  });
+  on("ui.close", () => (seen.closed++, (seen.isOpen = false), { value: undefined }));
+  on("ui.panes", () => ({
+    value: seen.isOpen
+      ? [{ id: "fleet", title: "Fleet", isShown: true, isFocused: false, isPlaced: seen.isPlaced }]
+      : [],
+  }));
   on("agent.list", () => ({
     value: list.map((a) => ({ ...a, description: "", type: "Explore" })),
   }));
@@ -320,6 +337,8 @@ describe("session", () => {
     ui = await mount();
     const drawn: any = await ui.drawn();
     expect(drawn.props.flexDirection).toBe("column");
+    // a blank row between the bands above and the fleet line
+    expect(drawn.children.at(-1).props.marginTop).toBe(1);
     expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
     expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
     await ui.press({ key: "fleet-toggle" });
@@ -330,6 +349,29 @@ describe("session", () => {
     expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("hide");
     await ui.press({ key: "fleet-toggle" });
     expect(seen.closed).toBe(1);
+    await ui.unmount();
+  });
+
+  test("an auto-open that waits undrawn still offers show, and show draws it", async ($, on) => {
+    const { seen } = engine(on, [
+      { id: "a1", status: "running" },
+      { id: "a2", status: "running" },
+    ]);
+    seen.placeNext = false;
+    await spawn($, "review plan");
+    await spawn($, "review apply");
+    expect([seen.opened, seen.isPlaced]).toEqual([1, false]);
+
+    const mount = () => $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
+    let ui = await mount();
+    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
+    seen.placeNext = true; // a press is asked: drawn at any width
+    await ui.press({ key: "fleet-toggle" });
+    expect([seen.opened, seen.closed, seen.isPlaced]).toEqual([2, 0, true]);
+    await ui.unmount();
+
+    ui = await mount();
+    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("hide");
     await ui.unmount();
   });
 

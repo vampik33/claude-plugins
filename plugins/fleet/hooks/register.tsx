@@ -182,14 +182,15 @@ async function endTask(
 
 async function openPane($: EngineInterface, t: Tracker) {
   const opened = await $.ui.open({ id: PANE, title: `Fleet · ${t.repo}` });
-  await update($, pane, () => true);
+  // an unasked open on a narrow terminal waits undrawn: still "show"
+  await update($, pane, () => opened.isPlaced);
   void refreshTrees($, t);
   return opened;
 }
 
-/** Closes the pane if open (undefined), opens it if not (how it opened). */
+/** Closes the pane if drawn (undefined), opens it if not (how it opened). */
 async function togglePane($: EngineInterface, t: Tracker) {
-  if (await read($, pane)) {
+  if (await isPaneShown($)) {
     await $.ui.close({ id: PANE });
     return undefined;
   }
@@ -235,10 +236,13 @@ export const register: Register = (on, options) => {
     const cwd = await $.session.cwd().catch(() => "");
     t.repo = (t.root ?? cwd).split("/").pop() || "session";
     // a reload keeps an open pane
-    const panes = await $.ui.panes().catch(() => []);
-    await update($, pane, () => panes.some((p) => p.id === PANE));
+    const shown = await isPaneShown($);
+    await update($, pane, () => shown);
     $.clock.every(15_000, async () => {
-      if (await isPaneShown($)) await refreshTrees($, t);
+      const shown = await isPaneShown($);
+      // a waiting pane gets drawn once the terminal widens
+      if (shown !== (await read($, pane))) await update($, pane, () => shown);
+      if (shown) await refreshTrees($, t);
     });
     // a reload while agents run: pick the poll up again
     if ((await read($, fleet)).agents.some((a) => isLive(a.status)))
@@ -386,13 +390,13 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         {below}
-        <Box flexDirection="row" columnGap={2}>
+        <Box flexDirection="row" columnGap={2} marginTop={below ? 1 : 0}>
           <Text dimColor>{statusLine(f) ?? "fleet"}</Text>
           <Button
             key="fleet-toggle"
             hotkey="f"
             dimColor
-            onPress={() => void togglePane($, t)}
+            onPress={() => togglePane($, t)}
           >
             {open ? "hide" : "show"}
           </Button>

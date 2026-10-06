@@ -4,6 +4,15 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - 2026-10-06
+
+### Changed
+- A blank row between the bands above and the fleet line
+
+### Fixed
+- The band's button reads `hide` only while the pane is drawn: a pane opened by itself on a terminal too narrow waited undrawn yet read `hide`, so the first press closed an invisible pane; `show` now opens it at any width
+- The button and `/fleet` toggle on whether the pane is drawn, not on the module's own flag
+
 ## [0.2.0] - 2026-10-06
 
 ### Added

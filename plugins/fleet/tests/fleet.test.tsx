@@ -194,6 +194,7 @@ function engine(on: any, list: { id: string; status: string }[]) {
     toasts: [] as string[],
     status: [] as (string | undefined)[],
     opened: 0,
+    closed: 0,
   };
   const clock = mock.clock(on, { now: Date.now() });
   mock.env(on, {});
@@ -224,6 +225,7 @@ function engine(on: any, list: { id: string; status: string }[]) {
     ),
   );
   on("ui.open", () => (seen.opened++, { value: { isPlaced: true } }));
+  on("ui.close", () => (seen.closed++, { value: undefined }));
   on("ui.panes", () => ({ value: [] }));
   on("agent.list", () => ({
     value: list.map((a) => ({ ...a, description: "", type: "Explore" })),
@@ -235,6 +237,18 @@ function engine(on: any, list: { id: string; status: string }[]) {
   }));
   return { seen, clock };
 }
+
+const BAND = {
+  component: "AbovePrompt" as const,
+  props: {
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 10,
+    bodyColumns: 120,
+    scroll: { offset: 0, bodyRows: 10 },
+    view: {},
+  } as never,
+};
 
 const spawn = ($: any, description: string) =>
   $.agent.spawn({ prompt: "go", description, subagentType: "Explore" });
@@ -280,8 +294,44 @@ describe("session", () => {
       expect(allDone()).toBe(false); // held past the engine's 2 s toast gap
       await clock.advance(2_100);
       expect(allDone()).toBe(true);
+      // the band above the prompt carries the counts; the status line stays free
+      expect(seen.status).toEqual([]);
     },
   );
+
+  test("/fleet opens the pane, then closes it", async ($, on) => {
+    const { seen } = engine(on, []);
+    const run = () => $.command.run({ command: "fleet", args: "" } as never);
+    expect((await run()).text).toBe("Fleet pane opened.");
+    expect((await run()).text).toBe("Fleet pane closed.");
+    expect((await run()).text).toBe("Fleet pane opened.");
+    expect([seen.opened, seen.closed]).toEqual([2, 1]);
+  });
+
+  test("the band's toggle shows and hides the pane, on a line under other bands", async ($, on) => {
+    const { seen } = engine(on, [{ id: "a1", status: "running" }]);
+    const mount = () => $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
+
+    let ui = await mount();
+    expect(await ui.find({ key: "fleet-toggle" })).toBeUndefined();
+    await ui.unmount();
+
+    await spawn($, "map callers");
+    ui = await mount();
+    const drawn: any = await ui.drawn();
+    expect(drawn.props.flexDirection).toBe("column");
+    expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
+    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
+    await ui.press({ key: "fleet-toggle" });
+    expect(seen.opened).toBe(1);
+    await ui.unmount();
+
+    ui = await mount();
+    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("hide");
+    await ui.press({ key: "fleet-toggle" });
+    expect(seen.closed).toBe(1);
+    await ui.unmount();
+  });
 
   test("the pane lists agents with ticking time on terminal and desktop", async ($, on) => {
     engine(on, [{ id: "a1", status: "running" }]);

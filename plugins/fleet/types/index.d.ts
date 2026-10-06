@@ -42,6 +42,7 @@ export type FleetState = {
 
 declare module "claude-code" {
   interface PluginState {
-    fleet: { fleet: FleetState };
+    /** pane: whether the fleet pane is open (shown or a tab) */
+    fleet: { fleet: FleetState; pane: boolean };
   }
 }

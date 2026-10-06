@@ -126,7 +126,7 @@ export function endToast(
   return [head, what, fmtElapsed(ms)].filter(Boolean).join(" · ");
 }
 
-/** The status line while the pane is not shown: "fleet 2▶ 1✓ 0✗ · bg 1" */
+/** The batch's counts on the band line above the prompt: "fleet 2▶ 1✓ 0✗ · bg 1" */
 export function statusLine(f: FleetState): string | undefined {
   const batch = f.batchStart;
   if (batch === undefined) return undefined;

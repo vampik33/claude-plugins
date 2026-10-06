@@ -25,6 +25,7 @@ const ENDED = new Set(["completed", "failed", "killed"]);
 const TOAST_GAP_MS = 2_100;
 
 const fleet = atom({ plugin: "fleet", key: "fleet" } as const, emptyFleet());
+const pane = atom({ plugin: "fleet", key: "pane" } as const, false);
 
 /** What the module keeps outside `$.state`; a reload starts it over. */
 type Tracker = {
@@ -66,12 +67,6 @@ async function sendTelegram($: EngineInterface, text: string): Promise<void> {
 async function isPaneShown($: EngineInterface): Promise<boolean> {
   const panes = await $.ui.panes().catch(() => []);
   return panes.some((p) => p.id === PANE && p.isShown && p.isPlaced);
-}
-
-async function refreshStatus($: EngineInterface): Promise<void> {
-  const f = await read($, fleet);
-  const shown = await isPaneShown($);
-  $.ui.status(liveCount(f) > 0 && !shown ? statusLine(f) : undefined);
 }
 
 async function refreshTrees($: EngineInterface, t: Tracker): Promise<void> {
@@ -120,10 +115,10 @@ function announce(
 /** When nothing is live any more: the all-done alert, and the batch closes. */
 async function settle($: EngineInterface, t: Tracker): Promise<void> {
   const f = await read($, fleet);
-  if (liveCount(f) > 0) return refreshStatus($);
+  if (liveCount(f) > 0) return;
   t.poll?.cancel();
   t.poll = undefined;
-  if (f.batchStart === undefined) return refreshStatus($);
+  if (f.batchStart === undefined) return;
 
   const batch = f.batchStart;
   const size =
@@ -135,7 +130,6 @@ async function settle($: EngineInterface, t: Tracker): Promise<void> {
     ...g,
     autoOpened: false,
   }));
-  $.ui.status(undefined);
   // one item's own toast says it all; the all-done alert is for a batch
   if (size >= 2) {
     // the engine drops a toast within 2 s of the last, and the last item's just showed
@@ -188,9 +182,18 @@ async function endTask(
 
 async function openPane($: EngineInterface, t: Tracker) {
   const opened = await $.ui.open({ id: PANE, title: `Fleet · ${t.repo}` });
+  await update($, pane, () => true);
   void refreshTrees($, t);
-  void refreshStatus($);
   return opened;
+}
+
+/** Closes the pane if open (undefined), opens it if not (how it opened). */
+async function togglePane($: EngineInterface, t: Tracker) {
+  if (await read($, pane)) {
+    await $.ui.close({ id: PANE });
+    return undefined;
+  }
+  return openPane($, t);
 }
 
 const textOf = (content: unknown): string =>
@@ -223,7 +226,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: "fleet",
       description:
-        "Show this session's agents, background shells and worktrees",
+        "Show or hide the pane with this session's agents, background shells and worktrees",
     });
     const top = await $.process
       .run(["git", "rev-parse", "--show-toplevel"])
@@ -231,9 +234,11 @@ export const register: Register = (on, options) => {
     t.root = top?.exitCode === 0 ? top.stdout.trim() : undefined;
     const cwd = await $.session.cwd().catch(() => "");
     t.repo = (t.root ?? cwd).split("/").pop() || "session";
+    // a reload keeps an open pane
+    const panes = await $.ui.panes().catch(() => []);
+    await update($, pane, () => panes.some((p) => p.id === PANE));
     $.clock.every(15_000, async () => {
       if (await isPaneShown($)) await refreshTrees($, t);
-      await refreshStatus($);
     });
     // a reload while agents run: pick the poll up again
     if ((await read($, fleet)).agents.some((a) => isLive(a.status)))
@@ -246,17 +251,18 @@ export const register: Register = (on, options) => {
       t.poll?.cancel();
       t.poll = undefined;
       await update($, fleet, (f) => ({ ...emptyFleet(), trees: f.trees }));
-      $.ui.status(undefined);
     }
     return next(e);
   });
 
   on("command.run", { command: "fleet" }, async ($) => {
-    const opened = await openPane($, t);
+    const opened = await togglePane($, t);
     return {
-      text: opened.isPlaced
-        ? "Fleet pane opened."
-        : "Fleet pane is waiting for a wider terminal.",
+      text: !opened
+        ? "Fleet pane closed."
+        : opened.isPlaced
+          ? "Fleet pane opened."
+          : "Fleet pane is waiting for a wider terminal.",
     };
   });
 
@@ -292,7 +298,6 @@ export const register: Register = (on, options) => {
     });
     ensurePoll($, t);
     if (open && !(await isPaneShown($))) void openPane($, t);
-    else void refreshStatus($);
     return r;
   });
 
@@ -327,7 +332,6 @@ export const register: Register = (on, options) => {
       shells: trim([...f.shells.filter((s) => s.id !== taskId), shell]),
       batchStart: f.batchStart ?? shell.startedAt,
     }));
-    void refreshStatus($);
     return r;
   });
 
@@ -371,9 +375,35 @@ export const register: Register = (on, options) => {
     return drawFleet($.ui.resolve(e), view, Date.now());
   });
 
+  // its own line under the other bands: the counts and a show/hide toggle
+  on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
+    const f = await read($, fleet);
+    const open = await read($, pane);
+    const empty = f.agents.length === 0 && f.shells.length === 0;
+    if (e.props.hasSurvey || (empty && !open)) return next(e);
+    const below = await next(e);
+    const { Box, Button, Text } = $.ui.resolve(e);
+    return (
+      <Box flexDirection="column">
+        {below}
+        <Box flexDirection="row" columnGap={2}>
+          <Text dimColor>{statusLine(f) ?? "fleet"}</Text>
+          <Button
+            key="fleet-toggle"
+            hotkey="f"
+            dimColor
+            onPress={() => void togglePane($, t)}
+          >
+            {open ? "hide" : "show"}
+          </Button>
+        </Box>
+      </Box>
+    );
+  });
+
   on("ui.close", { id: PANE }, async ($, e, next) => {
     const r = await next(e);
-    void refreshStatus($);
+    await update($, pane, () => false);
     return r;
   });
 };

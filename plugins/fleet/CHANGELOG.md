@@ -4,6 +4,17 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-10-06
+
+### Added
+- A line above the prompt with the batch's counts and a `show`/`hide` button (hotkey `f` while the band is focused) that toggles the pane; drawn once an agent or shell has run, or while the pane is open
+
+### Changed
+- `/fleet` toggles the pane: closes it when open
+
+### Removed
+- The status-line entry: the line above the prompt shows the same counts
+
 ## [0.1.0] - 2026-10-05
 
 ### Added

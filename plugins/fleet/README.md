@@ -29,8 +29,8 @@ claude plugin install fleet@vampik-plugins
 
 ## Behaviour
 
-- Opens by itself when 2 or more agents run at once (an unasked pane needs a 144-column terminal); `/fleet` opens it any time.
-- While the pane is closed, the status line shows `fleet 2▶ 1✓ 0✗ · bg 1`.
+- Opens by itself when 2 or more agents run at once (an unasked pane needs a 144-column terminal).
+- `/fleet` toggles the pane any time. Once an agent or shell has run (or while the pane is open), a line above the prompt shows `fleet 2▶ 1✓ 0✗ · bg 1  show`: click `show`/`hide`, or focus the band (ctrl+x tab) and press `f`.
 - A toast for each finish or failure; when a batch of 2+ is all done, one more toast.
 - A chime (`paplay`, freedesktop sounds) on a failure and on all done.
 - A Telegram summary on all done when you have not typed for `idleMinutes`, through telegram-notifier's bot (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).

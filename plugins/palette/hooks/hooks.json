@@ -1,0 +1,4 @@
+{
+  "description": "palette: /palette toggles a pane built from $.command.list and the context's agent listing; agent.offer fills agent descriptions; a press fills the prompt box",
+  "modules": ["./register.tsx"]
+}

@@ -117,6 +117,18 @@
       "category": "Workflow",
       "keywords": ["context", "compaction", "handover", "rate-limit", "mod"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "palette",
+      "description": "A side pane listing the session's agents, skills and commands; click one to put it in the prompt box",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/palette",
+      "category": "Workflow",
+      "keywords": ["agents", "skills", "commands", "launcher", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

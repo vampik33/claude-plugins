@@ -18,7 +18,7 @@ echo "ok"
 echo "== property + differential tests"
 (cd "$here" && bun install --frozen-lockfile >/dev/null && bun test props)
 
-for mod in codex-review continuity fleet prompt-clock; do
+for mod in codex-review continuity fleet palette prompt-clock; do
   echo "== claude plugin test $mod"
   claude plugin test "$root/plugins/$mod"
 done

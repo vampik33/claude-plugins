@@ -1,7 +1,7 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register, SessionMessage } from "claude-code";
 
-import type { ContinuityGauge, ContinuityMode } from "../types";
+import type { CacheDeadline, ContinuityGauge, ContinuityMode } from "../types";
 import {
   bar,
   blockingLimit,
@@ -17,6 +17,16 @@ import {
   userPrompts,
 } from "./core.ts";
 import type { GaugeProps } from "./gauge.tsx";
+import {
+  accountOf,
+  decideTtl,
+  expiryOf,
+  observeTtl,
+  ttlMs,
+  type CacheEnv,
+  type Sample,
+  type Ttl,
+} from "./ttl.ts";
 
 /** The grace between the turn's end and the handover, for a prompt to cancel it. */
 const GRACE_MS = 5_000;
@@ -35,6 +45,10 @@ const mode = atom(
     phase: "idle",
   } as ContinuityMode,
 );
+const cache = atom(
+  { plugin: "continuity", key: "cache" } as const,
+  null as CacheDeadline | null,
+);
 
 /** What the module keeps outside `$.state`; a reload starts it over. */
 type Tracker = {
@@ -43,7 +57,64 @@ type Tracker = {
   turnsSinceHandover: number;
   grace: { cancel: () => void } | undefined;
   resume: { cancel: () => void } | undefined;
+  cache: CacheTracker;
 };
+
+/** What the cache countdown learns as the session goes. */
+type CacheTracker = {
+  option: unknown;
+  yellowAt: number;
+  redAt: number;
+  toast: boolean;
+  env: CacheEnv;
+  setting: unknown;
+  observed: Ttl | undefined;
+  prev: Sample | undefined;
+  toastTimer: { cancel: () => void } | undefined;
+};
+
+async function readCacheSetting($: EngineInterface): Promise<unknown> {
+  const home = await $.env.get("HOME").catch(() => undefined);
+  const cwd = await $.session.cwd().catch(() => undefined);
+  const files = [
+    cwd && `${cwd}/.claude/settings.local.json`,
+    cwd && `${cwd}/.claude/settings.json`,
+    home && `${home}/.claude/settings.json`,
+  ];
+  for (const file of files) {
+    if (!file) continue;
+    try {
+      const value = JSON.parse(await $.fs.read(file)).promptCacheTtl;
+      if (value === "5m" || value === "1h") return value;
+    } catch {
+      // missing or unreadable: the next file
+    }
+  }
+  return undefined;
+}
+
+async function readCacheEnv($: EngineInterface): Promise<CacheEnv> {
+  const none = () => undefined;
+  return {
+    enable1h: await $.env.get("ENABLE_PROMPT_CACHING_1H").catch(none),
+    force5m: await $.env.get("FORCE_PROMPT_CACHING_5M").catch(none),
+    ttlVar: await $.env.get("CLAUDE_CODE_PROMPT_CACHE_TTL").catch(none),
+  };
+}
+
+async function currentTtl($: EngineInterface, c: CacheTracker): Promise<Ttl> {
+  if (c.observed) return c.observed;
+  const usage = await $.session.usage().catch(() => undefined);
+  return decideTtl(
+    c.option,
+    c.env,
+    c.setting,
+    accountOf(usage?.rateLimits ?? []),
+  );
+}
+
+const share = (v: unknown, fallback: number) =>
+  typeof v === "number" && v > 0 && v < 1 ? v : fallback;
 
 async function git(
   $: EngineInterface,
@@ -163,6 +234,7 @@ async function refreshGauge($: EngineInterface) {
 }
 
 export const register: Register = (on, options) => {
+  const yellowAt = share(options.cacheYellowAt, 0.25);
   const t: Tracker = {
     threshold:
       typeof options.threshold === "number" &&
@@ -174,7 +246,19 @@ export const register: Register = (on, options) => {
     turnsSinceHandover: MIN_TURNS_BETWEEN,
     grace: undefined,
     resume: undefined,
+    cache: {
+      option: options.cacheTtl,
+      yellowAt,
+      redAt: Math.min(share(options.cacheRedAt, 0.1), yellowAt),
+      toast: options.cacheToast !== false,
+      env: {},
+      setting: undefined,
+      observed: undefined,
+      prev: undefined,
+      toastTimer: undefined,
+    },
   };
+  const pinnedTtl = t.cache.option === "5m" || t.cache.option === "1h";
 
   on("session.start", async ($, e, next) => {
     const r = await next(e);
@@ -188,6 +272,8 @@ export const register: Register = (on, options) => {
         "Show continuity's status, or pause and resume it: /continuity [on|off]",
     });
     await refreshGauge($);
+    t.cache.env = await readCacheEnv($);
+    t.cache.setting = await readCacheSetting($);
     // a reload drops the timers: a pending grace or a limit wait starts over as idle
     const m = await read($, mode);
     if (m.phase !== "idle") await setPhase($, "idle");
@@ -199,6 +285,12 @@ export const register: Register = (on, options) => {
       cancelTimers(t);
       t.turnsSinceHandover = MIN_TURNS_BETWEEN;
       await setPhase($, "idle");
+      // a new conversation, a new cache
+      t.cache.prev = undefined;
+      t.cache.observed = undefined;
+      t.cache.toastTimer?.cancel();
+      t.cache.toastTimer = undefined;
+      await update($, cache, () => null);
     }
     return next(e);
   });
@@ -206,6 +298,44 @@ export const register: Register = (on, options) => {
   on("session.measure", async ($, e, next) => {
     const r = await next(e);
     if (e.changed.includes("context")) await refreshGauge($);
+    return r;
+  });
+
+  // each main-loop request's cache read/write restarts the cache countdown
+  on("turn.step", async function* ($, e, next) {
+    if (e.agentId) return yield* next(e);
+    const c = t.cache;
+    const startedAt = Date.now();
+    const r = yield* next(e);
+    if (!r.usage) return r;
+
+    const cur: Sample = {
+      model: r.usage.model || e.model,
+      startedAt,
+      read: r.usage.cache_read_input_tokens,
+      write: r.usage.cache_creation_input_tokens,
+      fresh: r.usage.input_tokens,
+    };
+    if (!pinnedTtl) c.observed = observeTtl(c.prev, cur, c.observed);
+    c.prev = cur;
+
+    const ttl = await currentTtl($, c);
+    const expiresAt = expiryOf(cur, ttl);
+    if (expiresAt === undefined) return r;
+    const lifeMs = ttlMs(ttl);
+    await update($, cache, () => ({ expiresAt, lifeMs }));
+
+    c.toastTimer?.cancel();
+    c.toastTimer = undefined;
+    const redIn = expiresAt - lifeMs * c.redAt - Date.now();
+    if (c.toast && redIn > 0) {
+      c.toastTimer = $.clock.after(redIn, () => {
+        const mins = Math.max(1, Math.round((expiresAt - Date.now()) / 60_000));
+        $.ui.toast(
+          `Prompt cache expires in ~${mins} min: send a message to keep it warm`,
+        );
+      });
+    }
     return r;
   });
 
@@ -333,6 +463,7 @@ export const register: Register = (on, options) => {
     const g = await read($, gauge);
     if (e.props.hasSurvey || !g) return next(e);
     const m = await read($, mode);
+    const d = await read($, cache);
     const below = await next(e);
     if (e.surface === "terminal" || e.surface === "desktop") {
       const { Box, Client } = $.ui.resolve(e);
@@ -345,9 +476,15 @@ export const register: Register = (on, options) => {
         phase: m.phase,
         paused: m.paused,
         resumeAt: m.resumeAt ?? null,
+        cache: d && {
+          ...d,
+          yellowAt: t.cache.yellowAt,
+          redAt: t.cache.redAt,
+        },
       };
+      // its own lines first, a row above the tip line; other bands below
       return (
-        <Box flexDirection="row" columnGap={3}>
+        <Box flexDirection="column" marginTop={1}>
           <Client key="continuity-gauge" module="./gauge.tsx" props={props} />
           {below}
         </Box>
@@ -355,11 +492,12 @@ export const register: Register = (on, options) => {
     }
     const { Box, Text } = $.ui.resolve(e);
     const pct = g.percent;
+    const until = d && ` · cache until ${new Date(d.expiresAt).toTimeString().slice(0, 5)}`;
     return (
-      <Box flexDirection="row" columnGap={3}>
+      <Box flexDirection="column" marginTop={1}>
         <Text
           dimColor
-        >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(Date.now() - g.startedAt)}`}</Text>
+        >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(Date.now() - g.startedAt)}${until ?? ""}`}</Text>
         {below}
       </Box>
     );

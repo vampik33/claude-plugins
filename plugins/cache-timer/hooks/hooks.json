@@ -1,4 +1,0 @@
-{
-  "description": "cache-timer: turn.step records each main-loop request's cache use; ui.render draws the countdown above the prompt through a Client that ticks on its own",
-  "modules": ["./register.tsx"]
-}

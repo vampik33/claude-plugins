@@ -101,9 +101,14 @@ const BAND = {
 
 
 /** The engine's side: an empty band, a subscription, and one request's usage. */
-function engine(on: any, usage: { read: number; write: number } | null) {
+function engine(
+  on: any,
+  usage: { read: number; write: number } | null,
+  below: unknown = h("Box", null),
+) {
   mock.clock(on, { now: Date.now() });
-  on("ui.render", () => h("Box", null));
+  on("ui.render", () => below);
+  on("session.measure", (_$: unknown, e: { changed: string[] }) => ({ changed: e.changed }));
   on("session.usage", () => ({
     value: {
       startedAt: 0,
@@ -129,6 +134,14 @@ function engine(on: any, usage: { read: number; write: number } | null) {
   });
 }
 
+/** The gauge draws once a measure reported the context. */
+const measure = ($: any) =>
+  $.session.measure({
+    context: { window: 1_000_000, percent: 29 },
+    rateLimits: [],
+    changed: ["context"],
+  } as never);
+
 async function step($: any) {
   const stream = $.turn.step({ turnId: "t1", index: 0, model: "claude-opus-5-5", messageCount: 1 });
   for await (const _ of stream) {
@@ -137,31 +150,59 @@ async function step($: any) {
   return stream.result;
 }
 
+const CLOCK = /^⏱ (59|1:00):\d\d$/;
+
 describe("band", () => {
-  test("nothing to draw before the first request", async ($, on) => {
+  test("no clock before the first request", async ($, on) => {
     engine(on, null);
-    const ui = await $.ui.mount({ plugin: "cache-timer", surface: "terminal", ...BAND });
-    expect(await ui.find({ key: "cache-clock" })).toBeUndefined();
+    await measure($);
+    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
+    expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
+    expect(await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK })).toBeUndefined();
     await ui.unmount();
   });
 
-  test("a request that hit the cache starts a ticking clock on terminal and desktop", async ($, on) => {
+  test("a request that hit the cache starts a ticking clock on the gauge's line", async ($, on) => {
     engine(on, { read: 80_000, write: 1_000 });
+    await measure($);
     await step($);
     for (const surface of ["terminal", "desktop"] as const) {
-      const ui = await $.ui.mount({ plugin: "cache-timer", surface, ...BAND });
-      expect(await ui.find({ key: "cache-clock" })).toBeDefined();
-      const text = await ui.find({ in: "cache-clock", type: "Text", text: /⏱ (59|1:00):\d\d/ });
+      const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
+      const text = await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK });
       expect(text?.props.color).toBe("green");
       await ui.unmount();
     }
   });
 
-  test("a request that touched no cache draws nothing", async ($, on) => {
+  test("a request that touched no cache draws no clock", async ($, on) => {
     engine(on, { read: 0, write: 0 });
+    await measure($);
     await step($);
-    const ui = await $.ui.mount({ plugin: "cache-timer", surface: "terminal", ...BAND });
-    expect(await ui.find({ key: "cache-clock" })).toBeUndefined();
+    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
+    expect(await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK })).toBeUndefined();
+    await ui.unmount();
+  });
+
+  test("a subagent's request leaves the clock alone", async ($, on) => {
+    engine(on, { read: 80_000, write: 1_000 });
+    await measure($);
+    const stream = $.turn.step({ turnId: "t1", index: 0, model: "claude-opus-5-5", messageCount: 1, agentId: "a1" } as never);
+    for await (const _ of stream) {
+      // drain
+    }
+    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
+    expect(await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK })).toBeUndefined();
+    await ui.unmount();
+  });
+
+  test("its lines stack over other bands, a blank row above them", async ($, on) => {
+    engine(on, { read: 80_000, write: 1_000 }, h("Text", null, "Heads up"));
+    await measure($);
+    const ui = await $.ui.mount({ plugin: "continuity", surface: "terminal", ...BAND });
+    const outer: any = await ui.drawn();
+    expect(outer.type).toBe("Box");
+    expect(outer.props).toMatchObject({ flexDirection: "column", marginTop: 1 });
+    expect(outer.children.map((c: any) => c.type)).toEqual(["Client", "Text"]);
     await ui.unmount();
   });
 });

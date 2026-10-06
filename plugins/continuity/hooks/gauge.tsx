@@ -1,6 +1,14 @@
 import type { ClientModule } from "claude-code";
 
 import { bar, fmtCountdown, fmtLength, fmtTokens, gaugeColor, WARN_POINTS } from "./core.ts";
+import { colorFor, fmtClock } from "./ttl.ts";
+
+export type CacheClock = {
+  expiresAt: number;
+  lifeMs: number;
+  yellowAt: number;
+  redAt: number;
+};
 
 export type GaugeProps = {
   percent: number | null;
@@ -11,9 +19,11 @@ export type GaugeProps = {
   phase: "idle" | "pending" | "compacting" | "blocked";
   paused: boolean;
   resumeAt: number | null;
+  /** The prompt cache's countdown, once a request touched the cache */
+  cache: CacheClock | null;
 };
 
-/** Context fill and session length; the length and a limit countdown tick with no hook call. */
+/** Context fill, session length and the cache countdown; the clocks tick with no hook call. */
 const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
   if (surface.state === undefined) {
     surface.every(1000, () => surface.setState(Date.now()));
@@ -22,6 +32,8 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
   const { Box, Text } = surface.elements;
   const now = surface.state ?? Date.now();
   const pct = p.percent;
+
+  const cacheLeft = p.cache && p.cache.expiresAt - now;
 
   let note: { text: string; color?: string; dim?: boolean } | undefined;
   if (p.phase === "blocked" && p.resumeAt)
@@ -48,6 +60,18 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
         )}
         <Text dimColor>{"   session "}</Text>
         <Text>{fmtLength(now - p.startedAt)}</Text>
+        {p.cache && cacheLeft !== null && (
+          <Text>
+            {"   "}
+            {cacheLeft <= 0 ? (
+              <Text color="red">● cache cold</Text>
+            ) : (
+              <Text bold color={colorFor(cacheLeft, p.cache.lifeMs, p.cache.yellowAt, p.cache.redAt)}>
+                {`⏱ ${fmtClock(cacheLeft)}`}
+              </Text>
+            )}
+          </Text>
+        )}
       </Text>
       {note && (
         <Text color={note.color} dimColor={note.dim}>

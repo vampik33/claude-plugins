@@ -1,7 +1,7 @@
 {
   "name": "continuity",
-  "version": "0.1.0",
-  "description": "A live context gauge and session length above the prompt; past a threshold it writes a handover note, compacts at the end of the turn and continues from the note, and it resumes after a 5-hour limit resets.",
+  "version": "0.2.0",
+  "description": "A live context gauge, session length and prompt-cache countdown above the prompt; past a threshold it writes a handover note, compacts at the end of the turn and continues from the note, and it resumes after a 5-hour limit resets.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -15,6 +15,31 @@
       "type": "boolean",
       "title": "Continue after the 5-hour limit resets",
       "description": "When a turn stops at the 5-hour usage limit, wait for the reset and continue by itself (a countdown shows while blocked)",
+      "default": true
+    },
+    "cacheTtl": {
+      "type": "string",
+      "title": "Cache lifetime",
+      "description": "auto follows Claude Code's rules (FORCE_PROMPT_CACHING_5M, CLAUDE_CODE_PROMPT_CACHE_TTL, promptCacheTtl, ENABLE_PROMPT_CACHING_1H, then 1h on a subscription, 5m otherwise) and corrects itself from request timing; 5m or 1h pins it",
+      "default": "auto",
+      "options": ["auto", "5m", "1h"]
+    },
+    "cacheYellowAt": {
+      "type": "number",
+      "title": "Cache timer yellow at (share left)",
+      "description": "The cache timer turns yellow when this share of the cache lifetime is left (0.25 = 15:00 of a 1h cache)",
+      "default": 0.25
+    },
+    "cacheRedAt": {
+      "type": "number",
+      "title": "Cache timer red at (share left)",
+      "description": "The cache timer turns red, and one toast shows, when this share of the cache lifetime is left (0.1 = 6:00 of a 1h cache)",
+      "default": 0.1
+    },
+    "cacheToast": {
+      "type": "boolean",
+      "title": "Toast when the cache timer turns red",
+      "description": "One toast per cache entry when the cache timer turns red",
       "default": true
     }
   }

@@ -4,6 +4,14 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-10-06
+
+### Added
+- Prompt-cache countdown on the gauge's line, merged in from the cache-timer mod (which is retired): same TTL rules, colours and red toast, options `cacheTtl`, `cacheYellowAt`, `cacheRedAt`, `cacheToast`
+
+### Changed
+- The band's lines stack in a column with a blank row above them; other plugins' bands draw on their own lines below instead of between the gauge and the clock
+
 ## [0.1.0] - 2026-10-05
 
 ### Added

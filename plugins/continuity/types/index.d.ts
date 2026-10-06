@@ -15,8 +15,15 @@ export type ContinuityMode = {
   resumeAt?: number;
 };
 
+/** When the cache the last main-loop request touched expires, and its lifetime. */
+export type CacheDeadline = { expiresAt: number; lifeMs: number };
+
 declare module "claude-code" {
   interface PluginState {
-    continuity: { gauge: ContinuityGauge | null; mode: ContinuityMode };
+    continuity: {
+      gauge: ContinuityGauge | null;
+      mode: ContinuityMode;
+      cache: CacheDeadline | null;
+    };
   }
 }

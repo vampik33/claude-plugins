@@ -337,7 +337,7 @@ describe("session", () => {
     ui = await mount();
     const drawn: any = await ui.drawn();
     expect(drawn.props.flexDirection).toBe("column");
-    // a blank row between the bands above and the fleet line
+    // a blank row above the fleet line, whatever is drawn above it
     expect(drawn.children.at(-1).props.marginTop).toBe(1);
     expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
     expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");

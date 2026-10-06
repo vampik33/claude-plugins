@@ -390,7 +390,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         {below}
-        <Box flexDirection="row" columnGap={2} marginTop={below ? 1 : 0}>
+        <Box flexDirection="row" columnGap={2} marginTop={1}>
           <Text dimColor>{statusLine(f) ?? "fleet"}</Text>
           <Button
             key="fleet-toggle"

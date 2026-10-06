@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.2] - 2026-10-06
+
+### Changed
+- The fleet line always has a blank row above it, also when no other band draws above it
+
 ## [0.2.1] - 2026-10-06
 
 ### Changed

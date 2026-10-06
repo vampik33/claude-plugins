@@ -71,18 +71,6 @@
       "homepage": "https://github.com/vampik33/claude-plugins"
     },
     {
-      "name": "cache-timer",
-      "description": "A real-time countdown to the prompt cache's expiry above the prompt, green to yellow to red as it runs out",
-      "version": "0.1.0",
-      "author": {
-        "name": "vampik33"
-      },
-      "source": "./plugins/cache-timer",
-      "category": "Workflow",
-      "keywords": ["cache", "prompt-cache", "timer", "mod"],
-      "homepage": "https://github.com/vampik33/claude-plugins"
-    },
-    {
       "name": "prompt-clock",
       "description": "Send time on each typed prompt and start → end times on each turn's duration line",
       "version": "0.1.0",
@@ -97,7 +85,7 @@
     {
       "name": "fleet",
       "description": "A side pane with the session's subagents, background shells and worktrees, with alerts when they finish or fail",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "vampik33"
       },
@@ -109,7 +97,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "vampik33"
       },
@@ -120,8 +108,8 @@
     },
     {
       "name": "continuity",
-      "description": "Live context gauge and session length; handover note, compaction and continue past a threshold; resume after a usage limit",
-      "version": "0.1.0",
+      "description": "Live context gauge, session length and prompt-cache countdown; handover note, compaction and continue past a threshold; resume after a usage limit",
+      "version": "0.2.0",
       "author": {
         "name": "vampik33"
       },

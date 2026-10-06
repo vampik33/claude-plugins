@@ -16,10 +16,9 @@ claude-plugins/
 ├── .claude/                          # Project-level Claude config
 ├── plans/                            # Implementation plans from Claude sessions
 └── plugins/
-    ├── cache-timer/                  # Mod: prompt-cache countdown above the prompt
     ├── claudemd-gen/                 # CLAUDE.md generator and auditor
     ├── codex-review/                 # Mod: background Codex reviews, findings pane, CodexReview tool
-    ├── continuity/                   # Mod: context gauge, handover + compact + continue
+    ├── continuity/                   # Mod: context gauge + cache timer, handover + compact + continue
     ├── explain-changes/              # Git diff explainer with educational insights
     ├── fleet/                        # Mod: agents / shells / worktrees pane with alerts
     ├── gtr/                          # Git worktree management (wraps git-worktree-runner)
@@ -49,7 +48,7 @@ Each plugin in `plugins/<name>/` follows this structure:
 
 ## Mods (function-hook plugins)
 
-cache-timer, codex-review, continuity, fleet and prompt-clock are TypeScript mods, not shell hooks:
+codex-review, continuity, fleet and prompt-clock are TypeScript mods, not shell hooks:
 
 ```
 <mod>/

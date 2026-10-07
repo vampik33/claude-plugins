@@ -3,7 +3,14 @@
  * branch, reading the companion's output, and the words sent to Claude.
  */
 
-import type { CxFinding, CxJob, CxMode, CxReview, CxState } from "../types";
+import type {
+  CxFinding,
+  CxJob,
+  CxMode,
+  CxReview,
+  CxScope,
+  CxState,
+} from "../types";
 
 /** Jobs kept; the oldest ended ones fall off. */
 export const KEEP = 5;
@@ -37,13 +44,23 @@ export function parseArgs(args: string): CxCommand {
   };
 }
 
-/** The PR's base when there is one, else develop for the greentic orgs, else main. */
-export function chooseBase(
-  prBase: string | undefined,
-  remoteUrl: string,
-): string {
-  if (prBase) return prBase;
-  return /[/:]greentic(ai|-biz)\//.test(remoteUrl) ? "develop" : "main";
+/** The PR's base when there is one, else main. */
+export const chooseBase = (prBase: string | undefined): string =>
+  prBase || "main";
+
+/** The choices the review dialog offers, by label. */
+export const SCOPES: Record<string, CxScope> = {
+  "Against base branch": "base",
+  "Session commits": "session",
+  "Current changes": "changes",
+};
+
+/** What a job reviewed: "base main", "session commits since abc1234", "uncommitted changes". */
+export function target(job: Pick<CxJob, "scope" | "base">): string {
+  if (job.scope === "session")
+    return `session commits since ${job.base.slice(0, 7)}`;
+  if (job.scope === "changes") return "uncommitted changes";
+  return `base ${job.base}`;
 }
 
 /** A branch name the companion can take as --base: no leading dash, no spaces or shell-ish characters. */
@@ -223,11 +240,11 @@ export function buildPrompt(
       findings.push(`   Recommendation: ${f.recommendation}`);
   });
   const lines = [
-    `Codex ${label(job.mode)} review of ${job.repo} (base ${job.base}) returned ${picked.length} finding(s) to verify.`,
+    `Codex ${label(job.mode)} review of ${job.repo} (${target(job)}) returned ${picked.length} finding(s) to verify.`,
     "",
     asRecord(findings.join("\n")),
     "",
-    "For each finding: read the cited code and its diff against the base, then decide VALID or FALSE POSITIVE with a one-line reason (pre-existing behaviour outside this diff, a wrong premise, out of scope, or style only make it a false positive).",
+    "For each finding: read the cited code and the reviewed diff, then decide VALID or FALSE POSITIVE with a one-line reason (pre-existing behaviour outside this diff, a wrong premise, out of scope, or style only make it a false positive).",
   ];
   if (verifyOnly) {
     lines.push("Do not change any code: report the verdict per finding only.");
@@ -243,7 +260,7 @@ export function buildPrompt(
 /** The prompt for a review with no structured findings: Codex's text, verbatim. */
 export function buildRawPrompt(job: CxJob, raw: string): string {
   return [
-    `Codex ${label(job.mode)} review of ${job.repo} (base ${job.base}) said:`,
+    `Codex ${label(job.mode)} review of ${job.repo} (${target(job)}) said:`,
     "",
     asRecord(raw),
     "",

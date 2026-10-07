@@ -19,12 +19,18 @@ export type CxReview = {
 
 export type CxMode = "adversarial" | "standard";
 
+/** What a review covers: the branch against its base, the commits since the session started, or the uncommitted changes */
+export type CxScope = "base" | "session" | "changes";
+
 export type CxJob = {
   id: string;
   mode: CxMode;
   repo: string;
   root: string;
+  /** The --base ref: the base branch, the session's start commit, or HEAD for uncommitted changes */
   base: string;
+  /** Absent on jobs from before scopes: those are "base" */
+  scope?: CxScope;
   focus: string;
   /** Where the detached companion writes out.json and err.log */
   dir: string;
@@ -48,6 +54,8 @@ export type CxState = {
   shown?: string;
   /** Which of the shown job's findings are ticked */
   picked: boolean[];
+  /** The repository and its HEAD when the session started: where "Session commits" begin */
+  sessionHead?: { root: string; sha: string };
 };
 
 declare module "claude-code" {

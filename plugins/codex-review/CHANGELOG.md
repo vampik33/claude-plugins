@@ -4,6 +4,18 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-10-07
+
+### Added
+- Starting a review (`/cx` or the `review` button) asks what to review: against the base branch, the commits made in this session, or the current uncommitted changes
+- A choice with nothing to review (no commits ahead of the base or in the session, a clean tree) says so instead of running Codex on an empty diff; the CodexReview tool refuses an empty diff the same way
+
+### Changed
+- The line, the pane and the prompts sent to Claude name what was reviewed (`base main`, `session commits since abc1234`, `uncommitted changes`)
+
+### Removed
+- The `develop` default for the greenticai/greentic-biz orgs: the base is the PR's base branch, else `main`
+
 ## [0.2.0] - 2026-10-06
 
 ### Added

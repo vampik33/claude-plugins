@@ -524,26 +524,15 @@ describe("preselect", () => {
 });
 
 describe("chooseBase", () => {
-  test("prBase is returned when present", () => {
+  test("prBase is returned when present, else main", () => {
     fc.assert(
-      fc.property(
-        fc.string({ minLength: 1, maxLength: 30 }),
-        fc.string({ minLength: 0, maxLength: 100 }),
-        (base, url) => {
-          expect(chooseBase(base, url)).toBe(base);
-        },
-      ),
+      fc.property(fc.string({ minLength: 1, maxLength: 30 }), (base) => {
+        expect(chooseBase(base)).toBe(base);
+      }),
       { numRuns: 200 },
     );
-  });
-
-  test("greentic repos get develop, others get main", () => {
-    expect(chooseBase(undefined, "git@github.com:greenticai/x.git")).toBe(
-      "develop",
-    );
-    expect(chooseBase(undefined, "https://github.com/greentic-biz/x")).toBe(
-      "develop",
-    );
-    expect(chooseBase(undefined, "https://github.com/other/x")).toBe("main");
+    expect(chooseBase(undefined)).toBe("main");
+    expect(chooseBase("")).toBe("main");
   });
 });
+

@@ -16,6 +16,8 @@ import {
   preselect,
   readOutcome,
   resultText,
+  SCOPES,
+  target,
   toolText,
   trimJobs,
 } from "../hooks/core.ts";
@@ -96,19 +98,22 @@ describe("arguments", () => {
     expect(parseArgs(" last ")).toEqual({ action: "last" });
   });
 
-  test("base: the PR's, else develop for greentic, else main", () => {
-    expect(chooseBase("release/1.19", "git@github.com:greenticai/x.git")).toBe(
-      "release/1.19",
+  test("base: the PR's, else main", () => {
+    expect(chooseBase("release/1.19")).toBe("release/1.19");
+    expect(chooseBase(undefined)).toBe("main");
+    expect(chooseBase("")).toBe("main");
+  });
+
+  test("what a job reviewed", () => {
+    expect(target(job())).toBe("base develop");
+    expect(target(job({ scope: "base", base: "main" }))).toBe("base main");
+    expect(target(job({ scope: "session", base: "abc1234def5678" }))).toBe(
+      "session commits since abc1234",
     );
-    expect(
-      chooseBase(undefined, "git@github.com:greenticai/deployer.git"),
-    ).toBe("develop");
-    expect(chooseBase(undefined, "https://github.com/greentic-biz/x")).toBe(
-      "develop",
+    expect(target(job({ scope: "changes", base: "HEAD" }))).toBe(
+      "uncommitted changes",
     );
-    expect(
-      chooseBase(undefined, "https://github.com/vampik33/claude-plugins"),
-    ).toBe("main");
+    expect(Object.values(SCOPES)).toEqual(["base", "session", "changes"]);
   });
 
   test("a base that could be read as an option is refused", () => {
@@ -357,7 +362,15 @@ describe("companion", () => {
 function engine(
   on: any,
   out: string,
-  opts: { repo?: boolean } = {},
+  opts: {
+    repo?: boolean;
+    /** The label picked in the review dialog (default against base); null dismisses it */
+    answer?: string | null;
+    /** `git rev-list --count <base>..HEAD` */
+    ahead?: string;
+    /** `git status --porcelain` */
+    status?: string;
+  } = {},
 ) {
   const seen = {
     toasts: [] as string[],
@@ -365,6 +378,9 @@ function engine(
     opened: 0,
     alive: true,
     started: 0,
+    asked: 0,
+    launch: [] as string[],
+    revList: [] as string[],
   };
   const clock = mock.clock(on, { now: Date.now() });
   mock.env(on, { HOME: "/h" });
@@ -372,6 +388,7 @@ function engine(
   on("command.register", () => ({ value: undefined }));
   on("tool.register", () => ({ value: undefined }));
   on("session.cwd", () => ({ value: "/r/deployer" }));
+  on("session.start", (_$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }));
   on("fs.read", (_$: unknown, e: { path: string }) => ({
     value: e.path.endsWith("installed_plugins.json")
       ? JSON.stringify({
@@ -404,14 +421,18 @@ function engine(
       },
     });
     if (cmd === "git" && rest[0] === "rev-parse")
-      return opts.repo === false ? fail() : ok("/r/deployer\n");
-    if (cmd === "git" && rest[0] === "remote")
-      return ok("git@github.com:greenticai/deployer.git\n");
+      return opts.repo === false
+        ? fail()
+        : ok(rest.includes("HEAD") ? "/r/deployer\nabc1234def\n" : "/r/deployer\n");
+    if (cmd === "git" && rest[0] === "rev-list")
+      return (seen.revList.push(rest[2]!), ok(`${opts.ahead ?? "2"}\n`));
+    if (cmd === "git" && rest[0] === "status")
+      return ok(opts.status ?? " M avg.ts\n");
     if (cmd === "gh") return fail();
     if (cmd === "mkdir") return ok();
     // the detached launch answers its pid; the wait loop answers that Codex exited
     if (cmd === "sh" && rest[1]?.startsWith("cd "))
-      return (seen.started++, ok("4242\n"));
+      return (seen.started++, (seen.launch = rest.slice(10)), ok("4242\n"));
     if (cmd === "sh") return ok();
     if (cmd === "kill") return seen.alive ? ok() : fail();
     if (cmd === "node") return ok(JSON.stringify({ running: [] }));
@@ -425,6 +446,22 @@ function engine(
     ),
   );
   on("ui.open", () => (seen.opened++, { value: { isPlaced: true } }));
+  on(
+    "tool.call",
+    { tool: "AskUserQuestion" },
+    (_$: unknown, e: { questions: { question: string }[] }) => {
+      seen.asked++;
+      if (opts.answer === null) return { deny: "dismissed" };
+      return {
+        result: {
+          questions: e.questions,
+          answers: {
+            [e.questions[0]!.question]: opts.answer ?? "Against base branch",
+          },
+        },
+      };
+    },
+  );
   on("ui.close", () => ({ value: undefined }));
   on(
     "prompt.submit",
@@ -464,7 +501,7 @@ describe("session", () => {
       command: "cx",
       args: 'adv "avg helper"',
     } as never);
-    expect((started as { text: string }).text).toContain("deployer → develop");
+    expect((started as { text: string }).text).toContain("deployer · base main");
 
     const band = await $.ui.mount({
       plugin: "codex-review",
@@ -540,7 +577,7 @@ describe("session", () => {
     await ui.press({ key: "codex-review" });
     expect(seen.started).toBe(1);
     expect(seen.toasts.at(-1)).toContain(
-      "Codex adversarial review started in the background: deployer → develop",
+      "Codex adversarial review started in the background: deployer · base main",
     );
     await ui.unmount();
 
@@ -614,6 +651,82 @@ describe("session", () => {
     expect(seen.started).toBe(0);
     expect(seen.toasts.at(-1)).toBe("Not a git repository: /r/deployer");
     await ui.unmount();
+  });
+
+  test("the button asks what to review; dismissing it starts nothing", async ($, on) => {
+    const { seen } = engine(on, JSON.stringify(REAL), { answer: null });
+    const ui = await $.ui.mount({
+      plugin: "codex-review",
+      surface: "terminal",
+      ...BAND,
+    });
+    await ui.press({ key: "codex-review" });
+    expect(seen.asked).toBe(1);
+    expect(seen.started).toBe(0);
+    expect(seen.toasts.at(-1)).toBe("No Codex review started.");
+    await ui.unmount();
+  });
+
+  test("against base: --base with the PR's base, else main", async ($, on) => {
+    const { seen } = engine(on, JSON.stringify(REAL));
+    await $.command.run({ command: "cx", args: "" } as never);
+    expect(seen.asked).toBe(1);
+    expect(seen.revList).toEqual(["main..HEAD"]);
+    expect(seen.launch).toEqual(["--base", "main"]);
+  });
+
+  test("current changes: the working tree, no --base", async ($, on) => {
+    const { seen } = engine(on, JSON.stringify(REAL), {
+      answer: "Current changes",
+    });
+    const r = await $.command.run({ command: "cx", args: "adv auth" } as never);
+    expect((r as { text: string }).text).toContain(
+      "deployer · uncommitted changes",
+    );
+    expect(seen.launch).toEqual(["--scope", "working-tree", "--", "auth"]);
+  });
+
+  test("a scope with nothing in it starts no review", async ($, on) => {
+    const clean = engine(on, "", { answer: "Current changes", status: "" });
+    const r = await $.command.run({ command: "cx", args: "" } as never);
+    expect((r as { text: string }).text).toBe(
+      "Nothing to review: no uncommitted changes.",
+    );
+    expect(clean.seen.started).toBe(0);
+  });
+
+  test("on the base branch itself there is nothing to review", async ($, on) => {
+    const { seen } = engine(on, "", { ahead: "0" });
+    const r = await $.command.run({ command: "cx", args: "" } as never);
+    expect((r as { text: string }).text).toBe(
+      "Nothing to review: no commits ahead of main.",
+    );
+    expect(seen.started).toBe(0);
+  });
+
+  test("session commits: from the HEAD the session started at", async ($, on) => {
+    const { seen } = engine(on, JSON.stringify(REAL), {
+      answer: "Session commits",
+    });
+    await $.session.start({ cwd: "/r/deployer" } as never);
+    const r = await $.command.run({ command: "cx", args: "" } as never);
+    expect((r as { text: string }).text).toContain(
+      "deployer · session commits since abc1234",
+    );
+    expect(seen.revList).toEqual(["abc1234def..HEAD"]);
+    expect(seen.launch).toEqual(["--base", "abc1234def"]);
+  });
+
+  test("session commits: none yet, or no start recorded", async ($, on) => {
+    const none = engine(on, "", { answer: "Session commits", ahead: "0" });
+    let r = await $.command.run({ command: "cx", args: "" } as never);
+    expect((r as { text: string }).text).toContain("No session start recorded");
+    await $.session.start({ cwd: "/r/deployer" } as never);
+    r = await $.command.run({ command: "cx", args: "" } as never);
+    expect((r as { text: string }).text).toBe(
+      "Nothing to review: no commits in this session yet.",
+    );
+    expect(none.seen.started).toBe(0);
   });
 
   test("under a survey: no line", async ($, on) => {

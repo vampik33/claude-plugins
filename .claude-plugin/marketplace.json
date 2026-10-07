@@ -97,7 +97,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "vampik33"
       },

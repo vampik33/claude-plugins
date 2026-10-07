@@ -1,7 +1,7 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, ProcessRunResult, Register } from "claude-code";
 
-import type { CxJob, CxMode } from "../types";
+import type { CxJob, CxMode, CxScope } from "../types";
 import {
   buildPrompt,
   buildRawPrompt,
@@ -17,6 +17,8 @@ import {
   preselect,
   readOutcome,
   resultText,
+  SCOPES,
+  target,
   toolText,
   trimJobs,
   where,
@@ -44,6 +46,7 @@ type Tracker = {
 type StartRequest = {
   mode: CxMode;
   focus: string;
+  scope: CxScope;
   base?: string;
   cwd?: string;
   byTool: boolean;
@@ -82,11 +85,37 @@ async function detectBase($: EngineInterface, root: string): Promise<string> {
     root,
     15_000,
   );
-  const remote = await run($, ["git", "remote", "get-url", "origin"], root);
-  return chooseBase(
-    pr?.exitCode === 0 ? pr.stdout.trim() || undefined : undefined,
-    remote?.exitCode === 0 ? remote.stdout.trim() : "",
-  );
+  return chooseBase(pr?.exitCode === 0 ? pr.stdout.trim() : undefined);
+}
+
+/** The repository the session's directory is in and its HEAD, or undefined. */
+async function repoHead(
+  $: EngineInterface,
+  cwd: string | undefined,
+): Promise<{ root: string; sha: string } | undefined> {
+  const r = await run($, ["git", "rev-parse", "--show-toplevel", "HEAD"], cwd);
+  const [root, sha] = r?.exitCode === 0 ? r.stdout.trim().split("\n") : [];
+  return root && sha ? { root, sha } : undefined;
+}
+
+/** Why the scope holds nothing to review, or undefined; a git that cannot say lets Codex try. */
+async function nothingToReview(
+  $: EngineInterface,
+  root: string,
+  scope: CxScope,
+  base: string,
+): Promise<string | undefined> {
+  if (scope === "changes") {
+    const st = await run($, ["git", "status", "--porcelain"], root);
+    return st?.exitCode === 0 && !st.stdout.trim()
+      ? "Nothing to review: no uncommitted changes."
+      : undefined;
+  }
+  const n = await run($, ["git", "rev-list", "--count", `${base}..HEAD`], root);
+  if (n?.exitCode !== 0 || n.stdout.trim() !== "0") return undefined;
+  return scope === "session"
+    ? "Nothing to review: no commits in this session yet."
+    : `Nothing to review: no commits ahead of ${base}.`;
 }
 
 /** Starts the companion detached, writing its JSON to the job's folder; a job or why not. */
@@ -104,8 +133,17 @@ async function startJob(
   if (!top || top.exitCode !== 0)
     return `Not a git repository: ${req.cwd ?? "the session's directory"}`;
   const root = top.stdout.trim();
-  const base = req.base || (await detectBase($, root));
+  let base: string;
+  if (req.scope === "changes") base = "HEAD";
+  else if (req.scope === "session") {
+    const head = (await read($, cx)).sessionHead;
+    if (!head || head.root !== root)
+      return `No session start recorded for ${root}: Session commits needs the repository the session started in.`;
+    base = head.sha;
+  } else base = req.base || (await detectBase($, root));
   if (!isSafeRef(base)) return `Not a branch name: ${base}`;
+  const empty = await nothingToReview($, root, req.scope, base);
+  if (empty) return empty;
   const id = `cx-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const dir = `${home}/.cache/codex-review/${id}`;
   const made = await run($, ["mkdir", "-p", dir]);
@@ -127,8 +165,9 @@ async function startJob(
     companion,
     sub,
     "--json",
-    "--base",
-    base,
+    ...(req.scope === "changes"
+      ? ["--scope", "working-tree"]
+      : ["--base", base]),
     ...focus,
   ]);
   const pid = Number(started?.stdout.trim());
@@ -141,6 +180,7 @@ async function startJob(
     repo: root.split("/").pop() || root,
     root,
     base,
+    scope: req.scope,
     focus: req.focus,
     dir,
     pid,
@@ -246,7 +286,7 @@ function ensurePoll($: EngineInterface, t: Tracker) {
   if (!t.poll) t.poll = $.clock.every(POLL_MS, () => void pollJobs($, t));
 }
 
-/** Starts a review from /cx or the line's button; what to tell the person. */
+/** Starts a review from /cx or the line's button, asking what to review; what to tell the person. */
 async function startReview(
   $: EngineInterface,
   t: Tracker,
@@ -257,13 +297,21 @@ async function startReview(
   t.starting = true;
   let job: CxJob | string;
   try {
+    const answer = await $.ui
+      .ask("What should Codex review?", {
+        header: "Codex",
+        options: Object.keys(SCOPES),
+      })
+      .catch(() => "");
+    const scope = SCOPES[answer];
+    if (!scope) return "No Codex review started.";
     const cwd = await $.session.cwd().catch(() => undefined);
-    job = await startJob($, t, { mode, focus, cwd, byTool: false });
+    job = await startJob($, t, { mode, focus, scope, cwd, byTool: false });
   } finally {
     t.starting = false;
   }
   if (typeof job === "string") return job;
-  return `Codex ${mode} review started in the background: ${job.repo} → ${job.base}${focus ? ` · "${focus}"` : ""}. /cx cancel stops it.`;
+  return `Codex ${mode} review started in the background: ${job.repo} · ${target(job)}${focus ? ` · "${focus}"` : ""}. /cx cancel stops it.`;
 }
 
 /** Opens the pane on the last finished review; false when there is none. */
@@ -373,7 +421,7 @@ export const register: Register = (on, options) => {
           base: {
             type: "string",
             description:
-              "Base branch to diff against; default the PR's base, else develop/main",
+              "Base branch to diff against; default the PR's base, else main",
           },
           focus: {
             type: "string",
@@ -387,6 +435,14 @@ export const register: Register = (on, options) => {
         },
       },
     });
+    // where "Session commits" begin; a reload keeps the first one
+    if (!(await read($, cx)).sessionHead) {
+      const head = await repoHead($, e.cwd);
+      if (head)
+        await update($, cx, (s) =>
+          s.sessionHead ? s : { ...s, sessionHead: head },
+        );
+    }
     // a reload while a review runs: follow it again
     if ((await read($, cx)).jobs.some((j) => j.status === "running"))
       ensurePoll($, t);
@@ -419,6 +475,7 @@ export const register: Register = (on, options) => {
     const job = await startJob($, t, {
       mode,
       focus: str(e.focus) ?? "",
+      scope: "base",
       base: str(e.base),
       cwd,
       byTool: true,
@@ -473,7 +530,7 @@ export const register: Register = (on, options) => {
           kind: "running",
           label: `codex ${job.mode === "adversarial" ? "adversarial-review" : "review"}`,
           startedAt: job.startedAt,
-          detail: `${job.phase ?? "starting"} · ${job.repo} → ${job.base}${running.length > 1 ? ` · +${running.length - 1} more` : ""}`,
+          detail: `${job.phase ?? "starting"} · ${job.repo} · ${target(job)}${running.length > 1 ? ` · +${running.length - 1} more` : ""}`,
         }
       : {
           kind: "idle",
@@ -562,7 +619,7 @@ export const register: Register = (on, options) => {
             <Text bold>CODEX</Text>
             <Text
               dimColor
-            >{` · ${job.status} · ${took} · ${job.repo} → ${job.base}`}</Text>
+            >{` · ${job.status} · ${took} · ${job.repo} · ${target(job)}`}</Text>
           </Text>
           {job.error && <Text color="red">{job.error}</Text>}
           {job.raw && <Text>{job.raw}</Text>}
@@ -604,7 +661,7 @@ export const register: Register = (on, options) => {
           </Text>
           <Text
             dimColor
-          >{` · ${findings.length} finding${findings.length === 1 ? "" : "s"} · ${took} · base ${job.base}`}</Text>
+          >{` · ${findings.length} finding${findings.length === 1 ? "" : "s"} · ${took} · ${target(job)}`}</Text>
         </Text>
         <Text dimColor>{summary}</Text>
         <Text> </Text>

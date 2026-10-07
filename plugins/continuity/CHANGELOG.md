@@ -4,6 +4,11 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-10-07
+
+### Changed
+- Default `threshold` lowered from 75% to 60%
+
 ## [0.2.1] - 2026-10-06
 
 ### Changed

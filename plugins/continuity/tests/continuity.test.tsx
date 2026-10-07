@@ -328,7 +328,7 @@ describe("session", () => {
     await turnEnd($);
     expect(
       seen.toasts.some((t) =>
-        t.startsWith("Context 80% ≥ 75%: handover + compact in 5 s"),
+        t.startsWith("Context 80% ≥ 60%: handover + compact in 5 s"),
       ),
     ).toBe(true);
     expect(seen.compacted.length).toBe(0);
@@ -421,9 +421,9 @@ describe("session", () => {
   });
 
   test("the gauge draws on terminal and desktop", async ($, on) => {
-    engine(on, 62);
+    engine(on, 50);
     await $.session.measure({
-      context: { window: 1_000_000, percent: 62 },
+      context: { window: 1_000_000, percent: 50 },
       rateLimits: [],
       changed: ["context"],
     } as never);
@@ -443,13 +443,13 @@ describe("session", () => {
       });
       expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
       expect(
-        await ui.find({ in: "continuity-gauge", type: "Text", text: " 62%" }),
+        await ui.find({ in: "continuity-gauge", type: "Text", text: " 50%" }),
       ).toBeDefined();
       expect(
         await ui.find({
           in: "continuity-gauge",
           type: "Text",
-          text: "handover at 75% · 13 points to go",
+          text: "handover at 60% · 10 points to go",
         }),
       ).toBeDefined();
       await ui.unmount();

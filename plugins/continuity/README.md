@@ -3,8 +3,8 @@
 Keep working through a compaction, and keep the prompt cache warm.
 
 ```
-ctx ████████████░░░░ 76% 760k/1M   session 2h13m   ⏱ 42:17
-over 75%: handover + compact after this turn
+ctx ██████████░░░░░░ 61% 610k/1M   session 2h13m   ⏱ 42:17
+over 60%: handover + compact after this turn
 ```
 
 Its lines sit in a column above the prompt, a blank row above them; other plugins' bands (surveys, tips, codex-review, fleet) draw on their own lines below.
@@ -48,7 +48,7 @@ The note holds: your first and latest prompts, cwd, branch and worktree, uncommi
 
 | Option | Default | |
 |---|---|---|
-| `threshold` | `75` | handover at this % of context |
+| `threshold` | `60` | handover at this % of context |
 | `resumeAfterLimit` | `true` | continue after a usage limit resets |
 | `cacheTtl` | `auto` | `auto`, `5m` or `1h` |
 | `cacheYellowAt` | `0.25` | share of the cache lifetime left when the timer turns yellow |

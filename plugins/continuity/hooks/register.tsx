@@ -242,7 +242,7 @@ export const register: Register = (on, options) => {
       options.threshold > 0 &&
       options.threshold <= 100
         ? options.threshold
-        : 75,
+        : 60,
     resumeAfterLimit: options.resumeAfterLimit !== false,
     turnsSinceHandover: MIN_TURNS_BETWEEN,
     grace: undefined,

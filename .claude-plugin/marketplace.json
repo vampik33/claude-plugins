@@ -109,7 +109,7 @@
     {
       "name": "continuity",
       "description": "Live context gauge, session length and prompt-cache countdown; handover note, compaction and continue past a threshold; resume after a usage limit",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "author": {
         "name": "vampik33"
       },

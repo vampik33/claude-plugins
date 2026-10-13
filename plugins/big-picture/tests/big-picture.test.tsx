@@ -12,12 +12,15 @@ import {
   isRewriteDue,
   MIN_GAP_MS,
   jevBigRequest,
+  jevProgressRequest,
   jevUpdateRequest,
+  liveShells,
   logTool,
   mayBeBig,
   parseJev,
   parseTabId,
   placeholderHtml,
+  PROGRESS_EVERY_MS,
   securePage,
   SUMMARY_CSP,
   summaryPrompt,
@@ -28,7 +31,47 @@ import {
   type Message,
 } from "../hooks/core.ts";
 
+const bgShell = (id: string, command: string): Message => ({
+  role: "assistant",
+  text: "",
+  toolUses: [
+    {
+      tool: "Bash",
+      input: { command, run_in_background: true },
+      text: `Command running in background with ID: ${id}. Output is being written to: /t/tasks/${id}.output. You will be notified when it completes.`,
+    },
+  ],
+});
+const shellEnded = (id: string): Message => ({
+  role: "user",
+  text: `<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n</task-notification>`,
+  toolUses: [],
+});
+
 describe("core", () => {
+  test("liveShells: background shells started and not yet ended, with their output files", () => {
+    const messages: Message[] = [
+      bgShell("b1", "cargo test"),
+      bgShell("b2", "npm run build"),
+      {
+        role: "assistant",
+        text: "",
+        toolUses: [
+          { tool: "Bash", input: { command: "ls" }, text: "a\nb" },
+          { tool: "Bash", input: { command: "sleep 9" } }, // not answered yet
+        ],
+      },
+      shellEnded("b1"),
+      bgShell("b3", "make bench"),
+    ];
+    expect(liveShells(messages)).toEqual([
+      { id: "b2", command: "npm run build", outputFile: "/t/tasks/b2.output" },
+      { id: "b3", command: "make bench", outputFile: "/t/tasks/b3.output" },
+    ]);
+    expect(liveShells([])).toEqual([]);
+  });
+
+
   test("logTool counts calls; edits once each; commands and agents cut short", () => {
     let a = emptyActivity("add send later");
     a = logTool(a, "Read", { file_path: "/r/a.ts" });
@@ -86,6 +129,17 @@ describe("core", () => {
       workSinceTheSummary: { filesChanged: ["/r/t.rs"] },
     });
     expect(Object.keys(upd.questions)).toEqual(["update"]);
+  });
+
+  test("Jev: progress asks over the running commands' latest output", () => {
+    const body = jevProgressRequest(emptyActivity("run the suite"), [
+      { command: "cargo test", tail: "test a ... ok" },
+    ]);
+    expect(Object.keys(body.questions)).toEqual(["progress"]);
+    expect(body.state).toEqual({
+      request: "run the suite",
+      runningCommands: [{ command: "cargo test", latestOutput: "test a ... ok" }],
+    });
   });
 
   test("parseJev reads the named question's p(yes) and refuses anything else", () => {
@@ -196,6 +250,17 @@ describe("core", () => {
     expect(upd).toContain("Update the previous summary");
   });
 
+  test("the prompt carries the running commands only when there are some", () => {
+    expect(summaryPrompt("S", "P", [])).toBe(summaryPrompt("S", "P"));
+    const p = summaryPrompt("S", undefined, [
+      { command: "cargo test", tail: "12/40 passed" },
+    ]);
+    expect(p).toContain(
+      "</session>\n\n<running-commands>\nThese commands are still running; show where they stand.\n$ cargo test\n12/40 passed\n</running-commands>",
+    );
+    expect(p).toContain("Write the summary");
+  });
+
   test("extractHtml drops fences and prose; none without a whole page", () => {
     const page = "<!doctype html><html><body>hi</body></html>";
     expect(extractHtml(`Here:\n\`\`\`html\n${page}\n\`\`\`\nDone.`)).toBe(page);
@@ -295,7 +360,13 @@ function engine(
 ) {
   const seen = {
     /** Jev's p(yes) by question. */
-    p: { big: 0.9, update: 0.9 } as Record<string, number>,
+    p: { big: 0.9, update: 0.9, progress: 0.9 } as Record<string, number>,
+    /** The transcript `$.session.messages()` gives. */
+    messages: [
+      { role: "user", text: "add send later", toolUses: [] },
+    ] as Message[],
+    /** Background shells' output, by file. */
+    outputs: new Map<string, string>(),
     /** The question of each Jev call, in order. */
     asked: [] as string[],
     bodies: [] as any[],
@@ -327,10 +398,9 @@ function engine(
   });
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
+  on("session.start", (_$: unknown, e: unknown) => e);
   on("session.id", () => ({ value: "s1" }));
-  on("session.messages", () => ({
-    value: [{ role: "user", text: "add send later", toolUses: [] }],
-  }));
+  on("session.messages", () => ({ value: seen.messages }));
   on("prompt.submit", (_$: unknown, e: { text: string }) => ({ text: e.text }));
   on("tool.call", () => ({ result: "" }));
   on("turn.complete", (_$: unknown, e: { answer: string }) => ({
@@ -387,7 +457,11 @@ function engine(
     const [cmd, ...args] = e.argv;
     let stdout = "";
     let exitCode = 0;
-    if (cmd === "orca") {
+    if (cmd === "tail") {
+      const out = seen.outputs.get(args.at(-1)!);
+      if (out === undefined) exitCode = 1;
+      else stdout = out;
+    } else if (cmd === "orca") {
       seen.orca.push(args.join(" "));
       const page = args[args.indexOf("--page") + 1] ?? "";
       if (args[0] === "tab" && args[1] === "create") {
@@ -763,6 +837,103 @@ describe("session", () => {
 
     expect((await run()).text).toBe("Summary hidden.");
     expect([seen.pane, (await band($)).toggle]).toEqual([false, "show"]);
+  });
+
+  test("every 30 minutes: running shells' new output asks Jev; a yes rewrites with it", async ($, on) => {
+    const { seen, clock } = engine(on);
+    await $.session.start({ cwd: "/r" } as never);
+    await turn($, clock, "big refactor", 10);
+    expect([seen.asked, seen.writes.length]).toEqual([["big"], 1]);
+
+    seen.messages = [...seen.messages, bgShell("b1", "cargo test")];
+    seen.outputs.set("/t/tasks/b1.output", "test a ... ok\x1b[0m");
+    await clock.advance(PROGRESS_EVERY_MS);
+    expect(seen.asked).toEqual(["big", "progress"]);
+    expect(seen.bodies[1].state.runningCommands).toEqual([
+      { command: "cargo test", latestOutput: "test a ... ok" },
+    ]);
+    expect(seen.writes.length).toBe(2);
+    expect(seen.writes[1]!.prompt).toContain(
+      "<running-commands>\nThese commands are still running; show where they stand.\n$ cargo test\ntest a ... ok\n</running-commands>",
+    );
+    expect(seen.writes[1]!.prompt).toContain(`<previous-summary>\n${html(1)}`);
+
+    await clock.advance(PROGRESS_EVERY_MS); // same output: nothing asked
+    expect(seen.asked.length).toBe(2);
+
+    seen.p.progress = 0.1;
+    seen.outputs.set("/t/tasks/b1.output", "test b ... ok");
+    await clock.advance(PROGRESS_EVERY_MS);
+    expect([seen.asked.length, seen.writes.length]).toEqual([3, 2]);
+    await clock.advance(PROGRESS_EVERY_MS); // a no is not asked again on the same output
+    expect(seen.asked.length).toBe(3);
+
+    seen.messages = [...seen.messages, shellEnded("b1")];
+    seen.outputs.set("/t/tasks/b1.output", "done");
+    await clock.advance(PROGRESS_EVERY_MS); // ended: nothing running
+    expect([seen.asked.length, seen.writes.length]).toEqual([3, 2]);
+  });
+
+  test("the timer asks nothing before a summary, nor for a shell whose output is gone", async ($, on) => {
+    const { seen, clock } = engine(on);
+    await $.session.start({ cwd: "/r" } as never);
+    seen.messages = [...seen.messages, bgShell("b1", "cargo test")];
+    seen.outputs.set("/t/tasks/b1.output", "running");
+    await clock.advance(PROGRESS_EVERY_MS);
+    expect(seen.asked).toEqual([]);
+
+    await turn($, clock, "big refactor", 10);
+    expect(seen.writes[0]!.prompt).toContain("$ cargo test\nrunning");
+    seen.outputs.delete("/t/tasks/b1.output");
+    await clock.advance(PROGRESS_EVERY_MS);
+    expect(seen.asked).toEqual(["big"]);
+  });
+
+  test("a failed progress write is tried again on the same output", async ($, on) => {
+    const { seen, clock } = engine(on);
+    await $.session.start({ cwd: "/r" } as never);
+    await turn($, clock, "big refactor", 10);
+    seen.messages = [...seen.messages, bgShell("b1", "cargo test")];
+    seen.outputs.set("/t/tasks/b1.output", "12/40");
+    seen.reply = { isAnswered: false, reason: "api-error", status: 529 };
+    await clock.advance(PROGRESS_EVERY_MS);
+    expect([seen.asked, seen.writes.length]).toEqual([["big", "progress"], 2]);
+    seen.reply = undefined;
+    await clock.advance(PROGRESS_EVERY_MS);
+    expect([seen.asked, seen.writes.length]).toEqual([
+      ["big", "progress", "progress"],
+      3,
+    ]);
+  });
+
+  test("update: written now with no question, even before big work; presses while it writes run once after", async ($, on) => {
+    const { seen, clock } = engine(on);
+    const r = await $.command.run({ command: "big-picture", args: " update " } as never);
+    expect((r as { text: string }).text).toBe("Updating the summary.");
+    await clock.advance(1);
+    expect([seen.asked, seen.writes.length]).toEqual([[], 1]);
+    expect(seen.files.get(PAGE)).toBe(securePage(html(1)));
+    expect(seen.orca.filter((c) => c.startsWith("tab create"))).toEqual([]);
+
+    const ui = await $.ui.mount({ plugin: "big-picture", surface: "terminal", ...BAND });
+    expect((await ui.find({ key: "big-picture-update" }))?.text).toBe("update");
+    let release = () => {};
+    seen.gate = new Promise<void>((g) => (release = g));
+    await ui.press({ key: "big-picture-update" });
+    await clock.advance(1);
+    expect(seen.writes.length).toBe(2);
+    await ui.press({ key: "big-picture-update" });
+    await ui.press({ key: "big-picture-update" });
+    seen.gate = undefined;
+    release();
+    await clock.advance(1);
+    await ui.unmount();
+    expect([seen.asked, seen.writes.length]).toEqual([[], 3]);
+    expect(seen.writes[2]!.prompt).toContain(`<previous-summary>\n${html(2)}`);
+
+    // pressed: the work counts as big, so the next turn asks about an update
+    await turn($, clock, "tests", 1, "Write");
+    expect(seen.asked).toEqual(["update"]);
   });
 
   test("outside Orca: a reply with nothing in it is a failure", async ($, on) => {

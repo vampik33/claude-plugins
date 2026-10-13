@@ -4,6 +4,16 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-10-13
+
+### Added
+- Every 30 minutes, the background shells still running (found in the transcript: started, with no completion notice yet) have the last 2 KB of their output read; when it moved since the last look, Jev is asked whether it changed the picture, and on a yes the summary is rewritten with it. Nothing is asked before a summary exists, with no shell running, or on output unchanged since a no
+- Every summary write is handed the running commands and their latest output, so turn-end updates show their progress too
+- `/big-picture update` and an `update` button on the `summary` line (hotkey `u`) rewrite the summary now, through the same Haiku write, with no Jev question; from then on the work counts as big. A press while a check runs is run once after it
+
+### Fixed
+- The hooks description said the summary comes from `$.model.fork`; it is Haiku via `$.model.complete`
+
 ## [0.2.2] - 2026-10-13
 
 ### Changed

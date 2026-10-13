@@ -2,6 +2,10 @@
 export const CHECK_EVERY = 10;
 /** During a turn, rewrites are at least this far apart; a turn's end may always rewrite. */
 export const MIN_GAP_MS = 5 * 60_000;
+/** How often the background shells still running are looked at, for progress to show. */
+export const PROGRESS_EVERY_MS = 30 * 60_000;
+/** How much of a running shell's output, from its end, a progress check reads. */
+export const TAIL_BYTES = 2_000;
 /** Jev's p(yes) at or above which the work counts as big. */
 export const BIG_AT = 0.5;
 export const JEV_URL = "https://api.typesafe.ai/v1/systemone";
@@ -98,7 +102,7 @@ const jevBody = (
   questions: { [name]: { type: "noul", instructions, criteria } },
 });
 
-export type JevQuestion = "big" | "update";
+export type JevQuestion = "big" | "update" | "progress";
 
 /** Jev's yes/no: is the turn's work big enough for a visual summary? */
 export function jevBigRequest(turn: Activity) {
@@ -128,6 +132,26 @@ export function jevUpdateRequest(turn: Activity, since: Activity) {
   );
 }
 
+/** Jev's yes/no: has the running commands' output changed the picture? */
+export function jevProgressRequest(turn: Activity, running: readonly Progress[]) {
+  return jevBody(
+    "progress",
+    {
+      request: cut(turn.prompt),
+      runningCommands: running.map((r) => ({
+        command: cut(r.command),
+        latestOutput: r.tail,
+      })),
+    },
+    "A visual summary of this session's work was written earlier, while these long-running commands kept running. Does their latest output change the picture enough that the summary needs rewriting?",
+    {
+      true: "a phase or step finished, a failure or error appeared, or progress moved well past where the summary last showed it",
+      false:
+        "the same step still running, or output that only repeats or adds noise",
+    },
+  );
+}
+
 /** p(yes) of the named question from Jev's reply, or undefined when it is not one. */
 export function parseJev(text: string, name: JevQuestion): number | undefined {
   try {
@@ -145,7 +169,12 @@ export function parseJev(text: string, name: JevQuestion): number | undefined {
 export type Message = {
   role: "user" | "assistant";
   text: string;
-  toolUses: readonly { tool: string; input: Record<string, unknown> }[];
+  toolUses: readonly {
+    tool: string;
+    input: Record<string, unknown>;
+    /** The result as the model read it, once answered. */
+    text?: string;
+  }[];
   toolResults?: readonly unknown[];
 };
 
@@ -193,6 +222,43 @@ export function digest(
   return kept.join("\n");
 }
 
+/** A background shell the transcript shows started and not yet ended. */
+export type LiveShell = { id: string; command: string; outputFile: string };
+
+/**
+ * The background shells still running: a Bash result that moved its command
+ * to the background (its id and output file), with no task notification for
+ * that id after it.
+ */
+export function liveShells(messages: readonly Message[]): LiveShell[] {
+  const live = new Map<string, LiveShell>();
+  for (const m of messages) {
+    if (m.role === "user") {
+      if (!m.text.includes("<task-notification>")) continue;
+      for (const [, id] of m.text.matchAll(/<task-id>([^<]+)<\/task-id>/g))
+        live.delete(id!.trim());
+      continue;
+    }
+    for (const u of m.toolUses) {
+      if (u.tool !== "Bash" || typeof u.text !== "string") continue;
+      const id = /running in background with ID: ([\w-]+)/.exec(u.text)?.[1];
+      const outputFile = /Output is being written to: (\S+?\.output)/.exec(
+        u.text,
+      )?.[1];
+      if (id && outputFile)
+        live.set(id, {
+          id,
+          command: typeof u.input.command === "string" ? u.input.command : "",
+          outputFile,
+        });
+    }
+  }
+  return [...live.values()];
+}
+
+/** A running command and the end of its output, as a summary shows its progress. */
+export type Progress = { command: string; tail: string };
+
 /** Where the summary is shown: an HTML page in an Orca tab, or text in a terminal pane. */
 export type Format = "html" | "text";
 
@@ -229,9 +295,20 @@ ${showMe}
 ${format === "html" ? HTML_CONTRACT : TEXT_CONTRACT}`;
 }
 
-/** The user message: the session, and the page to update when there is one. */
-export function summaryPrompt(session: string, previous?: string): string {
-  const now = `<session>\n${session}\n</session>`;
+const runningSection = (running: readonly Progress[]) =>
+  running.length === 0
+    ? ""
+    : `\n\n<running-commands>\nThese commands are still running; show where they stand.\n${running
+        .map((r) => `$ ${cut(r.command)}\n${r.tail}`)
+        .join("\n\n")}\n</running-commands>`;
+
+/** The user message: the session, the commands still running, and the page to update when there is one. */
+export function summaryPrompt(
+  session: string,
+  previous?: string,
+  running: readonly Progress[] = [],
+): string {
+  const now = `<session>\n${session}\n</session>${runningSection(running)}`;
   return previous === undefined
     ? `${now}\n\nWrite the summary of this session's work.`
     : `${now}\n\n<previous-summary>\n${previous}\n</previous-summary>\n\nUpdate the previous summary to the session as it stands: keep what still holds, its layout and diagrams where they still fit; add, change or drop what the newer work changed.`;

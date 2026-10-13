@@ -12,6 +12,7 @@ import {
   extractHtml,
   hasTab,
   isCheckDue,
+  liveShells,
   logTool,
   mayBeBig,
   mergeActivity,
@@ -22,6 +23,7 @@ import {
   MERMAID_LOADER,
   MERMAID_LOADER_SHA256,
   securePage,
+  summaryPrompt,
   textBlocks,
   type Message,
 } from "../../plugins/big-picture/hooks/core.ts";
@@ -207,6 +209,75 @@ describe("text summary", () => {
           else expect(b.lines[0]!.trim()).not.toBe("");
         }
       }),
+    );
+  });
+});
+
+describe("liveShells", () => {
+  const id = fc.constantFrom("b1", "b2", "b3");
+  const event = fc.oneof(
+    id.map((i) => ({ start: i })),
+    id.map((i) => ({ end: i })),
+  );
+  const toMessage = (e: { start?: string; end?: string }): Message =>
+    e.start
+      ? {
+          role: "assistant",
+          text: "",
+          toolUses: [
+            {
+              tool: "Bash",
+              input: { command: `run ${e.start}` },
+              text: `Command running in background with ID: ${e.start}. Output is being written to: /t/${e.start}.output. You will be notified.`,
+            },
+          ],
+        }
+      : {
+          role: "user",
+          text: `<task-notification>\n<task-id>${e.end}</task-id>\n</task-notification>`,
+          toolUses: [],
+        };
+
+  test("a shell is live iff its last event is a start; each once, with its own file", () => {
+    fc.assert(
+      fc.property(fc.array(event, { maxLength: 20 }), (events) => {
+        const last = new Map<string, boolean>();
+        for (const e of events) last.set((e.start ?? e.end)!, !!e.start);
+        const live = liveShells(events.map(toMessage));
+        expect(new Set(live.map((s) => s.id)).size).toBe(live.length);
+        expect(new Set(live.map((s) => s.id))).toEqual(
+          new Set([...last].filter(([, isLive]) => isLive).map(([i]) => i)),
+        );
+        for (const s of live) {
+          expect(s.outputFile).toBe(`/t/${s.id}.output`);
+          expect(s.command).toBe(`run ${s.id}`);
+        }
+      }),
+    );
+  });
+});
+
+describe("summaryPrompt", () => {
+  test("no running commands leaves the prompt as it was; any carry each command", () => {
+    fc.assert(
+      fc.property(
+        fc.string(),
+        fc.option(fc.string(), { nil: undefined }),
+        fc.array(fc.record({ command: fc.string({ maxLength: 50 }), tail: fc.string() }), {
+          maxLength: 3,
+        }),
+        (session, previous, running) => {
+          if (running.length === 0)
+            expect(summaryPrompt(session, previous, running)).toBe(
+              summaryPrompt(session, previous),
+            );
+          else {
+            const p = summaryPrompt(session, previous, running);
+            expect(p).toContain("<running-commands>");
+            for (const r of running) expect(p).toContain(`$ ${r.command}\n${r.tail}`);
+          }
+        },
+      ),
     );
   });
 });

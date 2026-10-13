@@ -14,18 +14,24 @@ import {
   isRewriteDue,
   JEV_URL,
   jevBigRequest,
+  jevProgressRequest,
   type JevQuestion,
   jevUpdateRequest,
+  liveShells,
   logTool,
   mayBeBig,
   mergeActivity,
+  type Message,
   parseJev,
   parseTabId,
   placeholderHtml,
   digest,
+  PROGRESS_EVERY_MS,
+  type Progress,
   securePage,
   summaryPrompt,
   summarySystem,
+  TAIL_BYTES,
   textBlocks,
 } from "./core.ts";
 import { SHOW_ME } from "./show-me.ts";
@@ -65,13 +71,18 @@ let isBig = false;
 let lastSummary: string | undefined;
 /** When the page was last written (ms since epoch). */
 let lastWrittenAt: number | undefined;
+/** The running commands' output when the summary was last written or a progress check last looked. */
+let lastProgress: string | undefined;
 let running = false;
-let again = false;
-/** Whether a check queued while one ran came from a turn's end. */
-let againAtTurnEnd = false;
+/** What asked for a check: tool calls, a turn's end, the progress timer, or a press. */
+type Why = "tools" | "turn" | "progress" | "manual";
+/** Checks asked for while one ran: they run after it, each kind once. */
+let queued = new Set<Why>();
 let warned = false;
 /** A show or hide under way: presses meanwhile are dropped, not stacked into more tabs. */
 let toggling = false;
+/** Looks at the running shells every PROGRESS_EVERY_MS. */
+let progressWatch: { cancel: () => void } | undefined;
 /** Looks for the open tab every TAB_WATCH_MS. */
 let tabWatch: { cancel: () => void } | undefined;
 /** A look under way (Orca takes ~8 s to list no tabs): a tick meanwhile is skipped. */
@@ -100,16 +111,42 @@ const orca = ($: EngineInterface, args: string[]) =>
 const inOrca = async ($: EngineInterface) =>
   (await $.env.get("TERM_PROGRAM").catch(() => undefined)) === "Orca";
 
+const messagesOf = async ($: EngineInterface): Promise<Message[]> => {
+  const messages = await $.session.messages().catch(() => []);
+  return Array.isArray(messages) ? messages : [];
+};
+
+/** The background shells still running and the end of each one's output; one whose file is gone is left out. */
+async function readProgress(
+  $: EngineInterface,
+  messages: readonly Message[],
+): Promise<Progress[]> {
+  const progress: Progress[] = [];
+  for (const shell of liveShells(messages)) {
+    const ran = await $.process
+      .run(["tail", "-c", String(TAIL_BYTES), shell.outputFile])
+      .catch(() => undefined);
+    if (ran?.exitCode === 0)
+      progress.push({ command: shell.command, tail: cleanText(ran.stdout) });
+  }
+  return progress;
+}
+
+/** The TypeSafe key Jev needs; without one, a toast the first time. */
+async function jevKey($: EngineInterface): Promise<string | undefined> {
+  const key = await $.env.get("TYPESAFE_API_KEY").catch(() => undefined);
+  if (!key && !warned) $.ui.toast("big-picture: set TYPESAFE_API_KEY for Jev");
+  warned ||= !key;
+  return key || undefined;
+}
+
 /** Jev's p(yes) to one question; undefined (status failed) when it did not answer. */
 async function askJev(
   $: EngineInterface,
   key: string,
   name: JevQuestion,
+  body: unknown,
 ): Promise<number | undefined> {
-  const body =
-    name === "big"
-      ? jevBigRequest(activity)
-      : jevUpdateRequest(activity, since);
   const res = await $.http
     .fetch(JEV_URL, {
       method: "POST",
@@ -128,6 +165,24 @@ async function askJev(
       reason: res ? `Jev answered HTTP ${res.status}` : "Jev was not reached",
     });
   return p;
+}
+
+/**
+ * Asks Jev one question with the line on classifying: true on a yes; false on
+ * a no, the line as it was; undefined when Jev did not answer (status failed).
+ */
+async function jevSaysYes(
+  $: EngineInterface,
+  key: string,
+  name: JevQuestion,
+  body: unknown,
+): Promise<boolean | undefined> {
+  const was = await read($, status);
+  await setStatus($, { kind: "working", step: "classifying" });
+  const p = await askJev($, key, name, body);
+  if (p === undefined) return undefined;
+  if (p < BIG_AT) await setStatus($, was);
+  return p >= BIG_AT;
 }
 
 /** Writes the page; work it did not cover is kept for the next check, all of it on a failure. */
@@ -150,14 +205,12 @@ async function summarize($: EngineInterface): Promise<void> {
 async function writeSummary($: EngineInterface): Promise<boolean> {
   await setStatus($, { kind: "working", step: "writing" });
   const format: Format = (await inOrca($)) ? "html" : "text";
-  const messages = await $.session.messages().catch(() => []);
+  const messages = await messagesOf($);
+  const progress = await readProgress($, messages);
   const reply = await $.model.complete({
     model: SUMMARY_MODEL,
     system: [{ text: summarySystem(SHOW_ME, format), cache: true }],
-    prompt: summaryPrompt(
-      digest(Array.isArray(messages) ? messages : []),
-      lastSummary,
-    ),
+    prompt: summaryPrompt(digest(messages), lastSummary, progress),
     maxTokens: SUMMARY_TOKENS,
     timeoutMs: SUMMARY_MS,
   });
@@ -178,6 +231,7 @@ async function writeSummary($: EngineInterface): Promise<boolean> {
   if (format === "html") await writePage($, securePage(summary));
   else await update($, text, () => summary);
   lastSummary = summary;
+  lastProgress = JSON.stringify(progress);
   lastWrittenAt = await $.clock.now();
   await setStatus($, { kind: "ready", at: lastWrittenAt });
   const id = await read($, tab);
@@ -203,50 +257,82 @@ async function checkOnce(
     !isRewriteDue(await $.clock.now(), lastWrittenAt, isTurnEnd)
   )
     return;
-  const key = await $.env.get("TYPESAFE_API_KEY").catch(() => undefined);
-  if (!key) {
-    if (!warned) $.ui.toast("big-picture: set TYPESAFE_API_KEY for Jev");
-    warned = true;
-    return;
-  }
+  const key = await jevKey($);
+  if (!key) return;
   // a big session whose first page failed: write it, no question
   const question: JevQuestion | undefined = !isBig
     ? "big"
     : lastSummary === undefined
       ? undefined
       : "update";
-  if (question) {
-    const was = await read($, status);
-    await setStatus($, { kind: "working", step: "classifying" });
-    const p = await askJev($, key, question);
-    if (p === undefined) return;
-    if (p < BIG_AT) return void (await setStatus($, was));
-  }
+  if (
+    question &&
+    !(await jevSaysYes(
+      $,
+      key,
+      question,
+      question === "big"
+        ? jevBigRequest(activity)
+        : jevUpdateRequest(activity, since),
+    ))
+  )
+    return;
   isBig = true;
   await summarize($);
 }
 
-/** One check at a time; a check asked for meanwhile runs after it. */
-async function check($: EngineInterface, isTurnEnd: boolean): Promise<void> {
-  if (running) {
-    again = true;
-    againAtTurnEnd ||= isTurnEnd;
-    return;
-  }
+/**
+ * With a summary written and background shells running: when their output
+ * moved since the last look, asks Jev whether it changed the picture, and
+ * rewrites the summary on a yes.
+ */
+async function progressOnce($: EngineInterface): Promise<void> {
+  if (lastSummary === undefined) return;
+  const progress = await readProgress($, await messagesOf($));
+  const seen = JSON.stringify(progress);
+  if (progress.length === 0 || seen === lastProgress) return;
+  const key = await jevKey($);
+  if (!key) return;
+  // a no is not asked again on the same output; a failed ask or write is
+  const yes = await jevSaysYes(
+    $,
+    key,
+    "progress",
+    jevProgressRequest(activity, progress),
+  );
+  if (yes === false) lastProgress = seen;
+  if (yes) await summarize($);
+}
+
+/** A press: the summary written now, no question asked; the work counts as big from then on. */
+async function manualOnce($: EngineInterface): Promise<void> {
+  isBig = true;
+  await summarize($);
+}
+
+/** The checks one run of the queue asked for; a press covers all the others. */
+async function checkOnceFor($: EngineInterface, whys: Set<Why>): Promise<void> {
+  if (whys.has("manual")) return manualOnce($);
+  if (whys.has("tools") || whys.has("turn")) await checkOnce($, whys.has("turn"));
+  if (whys.has("progress")) await progressOnce($);
+}
+
+/** One check at a time; checks asked for meanwhile run after it, together. */
+async function check($: EngineInterface, why: Why): Promise<void> {
+  queued.add(why);
+  if (running) return;
   running = true;
   try {
-    let atTurnEnd = isTurnEnd;
-    do {
-      again = false;
-      await checkOnce($, atTurnEnd);
-      atTurnEnd = againAtTurnEnd;
-      againAtTurnEnd = false;
-    } while (again);
+    while (queued.size > 0) {
+      const whys = queued;
+      queued = new Set();
+      await checkOnceFor($, whys);
+    }
   } catch (err) {
     await setStatus($, { kind: "failed", reason: String(err) }).catch(() => {});
   } finally {
     running = false;
-    againAtTurnEnd = false;
+    queued.clear();
   }
 }
 
@@ -338,17 +424,26 @@ export const register: Register = (on) => {
     const r = await next(e);
     await $.command.register({
       name: "big-picture",
-      description: "Show or hide the visual summary of this session's big work",
+      description:
+        "Show or hide the visual summary of this session's big work; update rewrites it now",
+      argumentHint: "[update]",
     });
+    progressWatch?.cancel();
+    progressWatch = $.clock.every(
+      PROGRESS_EVERY_MS,
+      () => void check($, "progress"),
+    );
     // a reload keeps an open pane
     const panes = await $.ui.panes().catch(() => []);
     await update($, pane, () => panes.some((p) => p.id === PANE && p.isPlaced));
     return r;
   });
 
-  on("command.run", { command: "big-picture" }, async ($) => ({
-    text: (await toggle($)).text,
-  }));
+  on("command.run", { command: "big-picture" }, async ($, e) => {
+    if (e.args.trim() !== "update") return { text: (await toggle($)).text };
+    $.clock.after(0, () => void check($, "manual"));
+    return { text: "Updating the summary." };
+  });
 
   on("prompt.submit", async ($, e, next) => {
     activity = emptyActivity(e.text);
@@ -363,7 +458,7 @@ export const register: Register = (on) => {
       activity = logTool(activity, e.tool, input);
       since = logTool(since, e.tool, input);
       if (isCheckDue(activity))
-        $.clock.after(0, () => void check($, false));
+        $.clock.after(0, () => void check($, "tools"));
     }
     return ran;
   });
@@ -371,7 +466,7 @@ export const register: Register = (on) => {
   on("turn.complete", async ($, e, next) => {
     const r = await next(e);
     if (e.agentId === undefined && !e.isAborted)
-      $.clock.after(0, () => void check($, true));
+      $.clock.after(0, () => void check($, "turn"));
     return r;
   });
 
@@ -442,6 +537,14 @@ export const register: Register = (on) => {
             }}
           >
             {open ? "hide" : "show"}
+          </Button>
+          <Button
+            key="big-picture-update"
+            hotkey="u"
+            dimColor
+            onPress={() => void check($, "manual")}
+          >
+            update
           </Button>
         </Box>
       </Box>

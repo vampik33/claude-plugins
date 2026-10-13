@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.2] - 2026-10-13
+
+### Fixed
+- The model's `<meta>` and `<link>` tags are now all dropped: a refresh's `http-equiv` could be entity-encoded past the 0.1.1 filter and navigate the tab away, and a `dns-prefetch` or `preconnect` link reaches out past the CSP; the page gets its own charset
+
 ## [0.1.1] - 2026-10-13
 
 ### Fixed

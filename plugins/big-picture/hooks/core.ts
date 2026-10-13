@@ -249,8 +249,10 @@ export const SUMMARY_CSP = [
 ].join("; ");
 
 /**
- * A model-written page made safe to open: its scripts and refreshes dropped,
- * and, before it, the CSP and the Mermaid loader. The CSP comes first, so it
+ * A model-written page made safe to open: its scripts, every <meta> (an
+ * http-equiv may be entity-encoded past any filter) and every <link> (a
+ * dns-prefetch or preconnect reaches out past the CSP) dropped, and, before it, the
+ * charset, the CSP and the Mermaid loader. The CSP comes first, so it
  * holds for all of the page; a later policy can only narrow it.
  */
 export function securePage(html: string): string {
@@ -260,9 +262,10 @@ export function securePage(html: string): string {
     was = body;
     body = body
       .replace(/<script\b[\s\S]*?(<\/script\s*>|$)/gi, "")
-      .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, "");
+      .replace(/<(meta|link)\b[^>]*>?/gi, "");
   }
   return `<!doctype html>
+<meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">
 ${MERMAID_LOADER}
 ${body}`;

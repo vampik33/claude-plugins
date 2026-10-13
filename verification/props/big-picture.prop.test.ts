@@ -162,16 +162,19 @@ describe("securePage", () => {
     expect(createHash("sha256").update(body).digest("base64")).toBe(MERMAID_LOADER_SHA256);
   });
 
-  test("no script of the page survives but the loader, whatever it holds", () => {
+  test("no script, meta or link of the page survives but the mod's own, whatever it holds", () => {
     const piece = fc.constantFrom(
       "<script>x()</script>", "<SCRIPT src=a>", "<script\n>y", "</script>",
       "<scr", "ipt>", "<p>", "text", "<meta http-equiv=refresh content=0>",
+      '<meta http-equiv="&#x72;efresh" content=0>', "<me", "ta ",
+      "<link rel=dns-prefetch href=//x.example>", "<li", "nk ",
     );
     fc.assert(
       fc.property(fc.array(fc.oneof(piece, fc.string()), { maxLength: 20 }), (ps) => {
         const page = securePage(ps.join(""));
         expect(page.match(/<script\b/gi)?.length).toBe(1);
-        expect(page).not.toMatch(/http-equiv\s*=\s*["']?refresh/i);
+        expect(page.match(/<meta\b/gi)?.length).toBe(2);
+        expect(page).not.toMatch(/<link\b/i);
       }),
     );
   });

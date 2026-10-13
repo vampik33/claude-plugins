@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.2] - 2026-10-13
+
+### Changed
+- The `summary` line above the prompt shows only once there is something to show (a summary being written, written, or failing), or while the summary is open so it can be hidden; before that, and while Jev only judges work with no summary yet, it is hidden
+
 ## [0.2.1] - 2026-10-13
 
 ### Fixed

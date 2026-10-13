@@ -494,12 +494,26 @@ describe("session", () => {
     expect((await band($)).texts).toContain("updated 09:05");
   });
 
-  test("small work: no page, the line stays as it was", async ($, on) => {
+  test("small work: no page, no line", async ($, on) => {
     const { seen, clock } = engine(on);
+    expect((await band($)).texts).toEqual([]);
     seen.p.big = 0.2;
     await turn($, clock, "rename a var", 1);
     expect([seen.asked, seen.writes.length]).toEqual([["big"], 0]);
-    expect((await band($)).texts).toEqual(["summary"]);
+    expect((await band($)).texts).toEqual([]);
+  });
+
+  test("the line hides while Jev judges work with no summary, shows while it is written", async ($, on) => {
+    const { seen, clock } = engine(on);
+    let open!: () => void;
+    seen.gate = new Promise<void>((r) => (open = r));
+    await prompt($, "big refactor");
+    await tools($, 10, "Edit");
+    await clock.advance(1);
+    expect((await band($)).texts).toContain("● writing…");
+    open();
+    await clock.advance(1);
+    expect((await band($)).texts).toContain("updated 09:05");
   });
 
   test("once big, Jev decides each update; Haiku updates the last page", async ($, on) => {
@@ -663,17 +677,19 @@ describe("session", () => {
       await ui.press({ key: "big-picture-toggle" });
       await ui.unmount();
     };
-    expect((await band($)).toggle).toBe("show");
-    await press();
+    expect((await band($)).toggle).toBeUndefined(); // nothing to show yet
+    await $.command.run({ command: "big-picture", args: "" } as never);
     expect(seen.files.get(PAGE)).toContain("No big work in this session yet.");
     expect(seen.orca).toContain(`tab create --url file://${PAGE} --json`);
     expect((await band($)).toggle).toBe("hide");
 
     await press();
     expect(seen.tabs).toEqual([]);
-    expect((await band($)).toggle).toBe("show");
+    expect((await band($)).toggle).toBeUndefined(); // closed, and still nothing to show
 
-    // closed in Orca by hand: the button turns to show by itself, and opens a new one
+    // with a summary written: closed in Orca by hand, the button turns to show by itself
+    await turn($, clock, "big refactor", 10);
+    expect((await band($)).toggle).toBe("show");
     await press();
     expect((await band($)).toggle).toBe("hide");
     seen.tabs = [];
@@ -696,7 +712,7 @@ describe("session", () => {
     open();
     seen.listGate = undefined;
     await clock.advance(2_000);
-    expect((await band($)).toggle).toBe("show");
+    expect((await band($)).toggle).toBeUndefined(); // tab forgotten, nothing to show
   });
 
   test("presses while a show runs are dropped: one tab, not one per press", async ($, on) => {

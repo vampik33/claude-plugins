@@ -408,11 +408,16 @@ export const register: Register = (on) => {
     return r;
   });
 
-  // its own line under the other bands: the summary's state and a show/hide toggle
+  // its own line under the other bands: the summary's state and a show/hide toggle,
+  // once there is something to show (or the summary is open, so it can be hidden);
+  // Jev judging work that has no summary yet is not something to show
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
     const s = await read($, status);
     const open = (await read($, tab)) !== null || (await read($, pane));
+    const isJudgingOnly =
+      s.kind === "working" && s.step === "classifying" && lastSummary === undefined;
+    if (!open && (s.kind === "none" || isJudgingOnly)) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
     return (

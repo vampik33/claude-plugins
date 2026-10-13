@@ -203,8 +203,8 @@ ${showMe}
 
 The summary is one self-contained HTML page:
 - Text sketches (pseudocode, call trees, file trees, diffs) go in <pre> blocks; color diff lines.
-- Mermaid diagrams go in <pre class="mermaid"> blocks, rendered by this script and no other: <script type="module">import mermaid from "${MERMAID_URL}"; mermaid.initialize({ startOnLoad: true, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });</script>
-- No other external scripts, styles, fonts or images. Inline CSS, light and dark via prefers-color-scheme, readable in a narrow side panel.
+- Mermaid diagrams go in <pre class="mermaid"> blocks; the page gets its Mermaid script added, so write no <script> at all.
+- No external scripts, styles, fonts or images. Inline CSS, light and dark via prefers-color-scheme, readable in a narrow side panel.
 - Open with a title and one short paragraph; real file names, functions and labels from the session. Claim nothing the session does not show.
 - It is a diagram summary: at least one Mermaid diagram of how the pieces connect or flow, and a text sketch (a file tree or call tree) of what changed. Prose only labels the visuals.
 
@@ -225,6 +225,47 @@ export function extractHtml(text: string): string | undefined {
   const end = text.toLowerCase().lastIndexOf("</html>");
   if (start < 0 || end < start) return undefined;
   return text.slice(start, end + "</html>".length);
+}
+
+/** The one script a summary runs: Mermaid, from MERMAID_URL. */
+export const MERMAID_LOADER = `<script type="module">import mermaid from "${MERMAID_URL}"; mermaid.initialize({ startOnLoad: true, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });</script>`;
+/** sha256 of MERMAID_LOADER's body, base64: the CSP lets it run and no other inline script. */
+export const MERMAID_LOADER_SHA256 =
+  "Olg3I0JmxL6iPaXBstF8PxlFzHJ/YejN9UP70TigNEw=";
+
+/**
+ * Only the Mermaid loader and Mermaid's own files may run: no other script,
+ * no request out but Mermaid's, no base, form or frame. Allows inline styles
+ * and data: images, which Mermaid draws with.
+ */
+export const SUMMARY_CSP = [
+  "default-src 'none'",
+  `script-src 'sha256-${MERMAID_LOADER_SHA256}' ${MERMAID_URL.slice(0, MERMAID_URL.lastIndexOf("/dist/") + 1)}`,
+  "style-src 'unsafe-inline'",
+  "img-src data:",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-src 'none'",
+].join("; ");
+
+/**
+ * A model-written page made safe to open: its scripts and refreshes dropped,
+ * and, before it, the CSP and the Mermaid loader. The CSP comes first, so it
+ * holds for all of the page; a later policy can only narrow it.
+ */
+export function securePage(html: string): string {
+  // until nothing changes: a cut may join `<scr` and `ipt>` into a new tag
+  let body = html.replace(/^\s*<!doctype[^>]*>/i, "");
+  for (let was = ""; was !== body; ) {
+    was = body;
+    body = body
+      .replace(/<script\b[\s\S]*?(<\/script\s*>|$)/gi, "")
+      .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, "");
+  }
+  return `<!doctype html>
+<meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">
+${MERMAID_LOADER}
+${body}`;
 }
 
 const escape = (s: string) =>

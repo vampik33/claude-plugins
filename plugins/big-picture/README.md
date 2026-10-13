@@ -32,7 +32,7 @@ Every tool call that goes through (subagents' too) is logged: files written or e
 
 1. **Is it big?** Until the session's work is judged big, Jev (TypeSafe's classifier, `POST api.typesafe.ai/v1/systemone`) gets one yes/no question over the turn's prompt and log. At p ≥ 0.5 the work is big and the first page is written.
 2. **Does it need an update?** From then on Jev is asked whether the work since the last page changed the picture; at p ≥ 0.5 the page is rewritten. Work it turns down still counts toward the next question. During a turn, rewrites are at least 5 minutes apart (a check inside the gap asks nothing and keeps the work for later); a turn's end may always rewrite.
-3. **Writing** is Haiku (`$.model.complete`, 16k tokens at most): show-me's guidance and the page's contract as a cached system prompt, the transcript as a digest (what was typed, said and run: the newest 60k characters), and the previous page to update. Mermaid comes from jsDelivr, pinned.
+3. **Writing** is Haiku (`$.model.complete`, 16k tokens at most): show-me's guidance and the page's contract as a cached system prompt, the transcript as a digest (what was typed, said and run: the newest 60k characters), and the previous page to update. Mermaid comes from jsDelivr, pinned. The page runs no script of Haiku's: its scripts are stripped, and a Content-Security-Policy lets only the mod's Mermaid loader and Mermaid's own files run.
 
 Each check costs a Jev call; only a yes costs a Haiku call. Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
 

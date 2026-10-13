@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-10-13
+
+### Fixed
+- The summary page ran whatever script Haiku wrote, so text injected into the session could run in the Orca tab; now the model's scripts and meta refreshes are stripped and a Content-Security-Policy lets only the mod's own Mermaid loader and Mermaid's pinned files run, with no other requests
+
 ## [0.1.0] - 2026-10-13
 
 ### Added

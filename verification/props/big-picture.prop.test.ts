@@ -2,6 +2,7 @@
  * Property tests for big-picture/hooks/core.ts.
  */
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import fc from "fast-check";
 
 import {
@@ -17,6 +18,9 @@ import {
   parseTabId,
   placeholderHtml,
   digest,
+  MERMAID_LOADER,
+  MERMAID_LOADER_SHA256,
+  securePage,
   type Message,
 } from "../../plugins/big-picture/hooks/core.ts";
 
@@ -148,6 +152,27 @@ describe("digest", () => {
             expect(all.slice(-d.split("\n").length)).toEqual(d.split("\n"));
         },
       ),
+    );
+  });
+});
+
+describe("securePage", () => {
+  test("the CSP hash is the Mermaid loader's", () => {
+    const body = MERMAID_LOADER.replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
+    expect(createHash("sha256").update(body).digest("base64")).toBe(MERMAID_LOADER_SHA256);
+  });
+
+  test("no script of the page survives but the loader, whatever it holds", () => {
+    const piece = fc.constantFrom(
+      "<script>x()</script>", "<SCRIPT src=a>", "<script\n>y", "</script>",
+      "<scr", "ipt>", "<p>", "text", "<meta http-equiv=refresh content=0>",
+    );
+    fc.assert(
+      fc.property(fc.array(fc.oneof(piece, fc.string()), { maxLength: 20 }), (ps) => {
+        const page = securePage(ps.join(""));
+        expect(page.match(/<script\b/gi)?.length).toBe(1);
+        expect(page).not.toMatch(/http-equiv\s*=\s*["']?refresh/i);
+      }),
     );
   });
 });

@@ -21,6 +21,7 @@ import {
   parseTabId,
   placeholderHtml,
   digest,
+  securePage,
   summaryPrompt,
   summarySystem,
 } from "./core.ts";
@@ -148,7 +149,8 @@ async function writeSummary($: EngineInterface): Promise<boolean> {
     await setStatus($, { kind: "failed", reason: "the reply held no HTML page" });
     return false;
   }
-  await writePage($, html);
+  // the transcript may carry injected text: the page runs no script of the model's
+  await writePage($, securePage(html));
   lastHtml = html;
   lastWrittenAt = await $.clock.now();
   await setStatus($, { kind: "ready", at: lastWrittenAt });

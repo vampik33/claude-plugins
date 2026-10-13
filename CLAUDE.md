@@ -19,6 +19,7 @@ claude-plugins/
 ├── plans/                            # Implementation plans from Claude sessions
 ├── verification/                     # Lean proofs, fast-check + differential tests, run.sh
 └── plugins/
+    ├── big-picture/                  # Mod: Jev-gated live HTML summary of big work, in an Orca tab
     ├── claudemd-gen/                 # CLAUDE.md generator and auditor
     ├── codex-review/                 # Mod: background Codex reviews, findings pane, CodexReview tool
     ├── continuity/                   # Mod: context gauge + cache timer, handover + compact + continue
@@ -53,7 +54,7 @@ Each plugin in `plugins/<name>/` follows this structure:
 
 ## Mods (function-hook plugins)
 
-codex-review, continuity, fleet, memory-watch, palette and prompt-clock are TypeScript mods, not shell hooks:
+big-picture, codex-review, continuity, fleet, memory-watch, palette and prompt-clock are TypeScript mods, not shell hooks:
 
 ```
 <mod>/

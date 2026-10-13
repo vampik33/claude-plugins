@@ -59,6 +59,18 @@
       "homepage": "https://github.com/vampik33/claude-plugins"
     },
     {
+      "name": "big-picture",
+      "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated in an Orca browser tab while the work goes on",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/big-picture",
+      "category": "Workflow",
+      "keywords": ["summary", "diagrams", "html", "orca", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
       "name": "claudemd-gen",
       "description": "Interactive CLAUDE.md generator and auditor - encodes best practices for writing effective Claude Code memory files",
       "version": "1.1.1",

@@ -1,0 +1,4 @@
+{
+  "description": "big-picture: tool.call logs the work; every 10 tools and at turn end Jev classifies it, and a big job gets an HTML summary from $.model.fork, shown in an Orca browser tab that /big-picture and a band line toggle",
+  "modules": ["./register.tsx"]
+}

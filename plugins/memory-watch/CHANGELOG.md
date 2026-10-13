@@ -4,6 +4,11 @@ All notable changes to the memory-watch plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-10-13
+
+### Changed
+- The `memory  show` / `hide` line above the prompt appears only once the session has written memory, or while the pane is open
+
 ## [0.1.0] - 2026-10-13
 
 ### Added

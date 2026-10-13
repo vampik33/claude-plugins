@@ -133,7 +133,7 @@
     {
       "name": "memory-watch",
       "description": "A side pane summarizing each auto-memory file the session creates or updates",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "vampik33"
       },

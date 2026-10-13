@@ -237,6 +237,20 @@ describe("session", () => {
     await ui.unmount();
   });
 
+  test("with nothing written, the band line shows only while the pane is open", async ($, on) => {
+    engine(on);
+    const mount = () =>
+      $.ui.mount({ plugin: "memory-watch", surface: "terminal", ...BAND });
+    await $.command.run({ command: "memory-watch", args: "" } as never);
+    let ui = await mount();
+    expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe("hide");
+    await ui.press({ key: "memory-watch-toggle" });
+    await ui.unmount();
+    ui = await mount();
+    expect(await ui.find({ key: "memory-watch-toggle" })).toBeUndefined();
+    await ui.unmount();
+  });
+
   test("/memory-watch opens the pane, then closes it", async ($, on) => {
     const { seen } = engine(on);
     const run = () =>
@@ -251,9 +265,16 @@ describe("session", () => {
     const mount = () =>
       $.ui.mount({ plugin: "memory-watch", surface: "terminal", ...BAND });
 
+    // nothing written: no line
     let ui = await mount();
-    expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe("show");
-    expect(await ui.find({ type: "Text", text: /new/ })).toBeUndefined();
+    expect(await ui.find({ key: "memory-watch-toggle" })).toBeUndefined();
+    expect(await ui.find({ type: "Text", text: "memory" })).toBeUndefined();
+    await ui.unmount();
+
+    // a write outside memory still shows nothing
+    await write($, "/home/u/repo/notes.md", MEMO);
+    ui = await mount();
+    expect(await ui.find({ key: "memory-watch-toggle" })).toBeUndefined();
     await ui.unmount();
 
     await write($, `${DIR}/a.md`, MEMO);

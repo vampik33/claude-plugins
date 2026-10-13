@@ -20,7 +20,7 @@ claude plugin install memory-watch@vampik-plugins
 ## Behaviour
 
 - `/memory-watch` shows or hides the pane. It docks beside the transcript in the fullscreen layout (110+ columns), inline above the prompt otherwise.
-- A `memory  show` line always sits above the prompt: `show` / `hide` toggles the pane (hotkey `m` once the band has the keys, ctrl+x tab or a click). While the pane is hidden, `● N new` counts the writes since it was last open.
+- A `memory  show` line sits above the prompt once the session has written memory (or while the pane is open): `show` / `hide` toggles the pane (hotkey `m` once the band has the keys, ctrl+x tab or a click). While the pane is hidden, `● N new` counts the writes since it was last open.
 - Newest first, the last 50 writes of the session. The pane never opens by itself.
 
 ## How It Works

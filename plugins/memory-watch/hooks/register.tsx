@@ -134,10 +134,12 @@ export const register: Register = (on) => {
     );
   });
 
-  // its own line under the other bands: a show/hide toggle
+  // its own line under the other bands: a show/hide toggle, once there is
+  // something to show (or the pane is open, so it can be hidden)
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
     const open = await read($, pane);
+    if (!open && (await read($, changes)).length === 0) return next(e);
     const fresh = open ? 0 : await read($, unread);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);

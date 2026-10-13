@@ -4,6 +4,14 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-10-13
+
+### Changed
+- The progress question no longer sends the running shells' output to Jev (TypeSafe, a third party), as it may hold secrets: Jev gets the commands alone and judges whether their progress is worth a rewrite; only Haiku reads the output
+
+### Fixed
+- The progress check took a running shell's id and output file from the Bash result's text, so any command that printed "running in background with ID: … Output is being written to: ….output" could make the mod read that file and send its end to Jev and Haiku. The id now comes from the call's record (`backgroundTaskId`), and the file must be that id's `.output` in a `tasks` directory, with no `..`
+
 ## [0.3.0] - 2026-10-13
 
 ### Added

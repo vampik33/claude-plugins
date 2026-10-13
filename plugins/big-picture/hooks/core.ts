@@ -132,22 +132,23 @@ export function jevUpdateRequest(turn: Activity, since: Activity) {
   );
 }
 
-/** Jev's yes/no: has the running commands' output changed the picture? */
+/**
+ * Jev's yes/no: is new output from these running commands worth a rewrite?
+ * Jev is a third party: it gets the commands, never their output (which may
+ * hold secrets); only Haiku reads that.
+ */
 export function jevProgressRequest(turn: Activity, running: readonly Progress[]) {
   return jevBody(
     "progress",
     {
       request: cut(turn.prompt),
-      runningCommands: running.map((r) => ({
-        command: cut(r.command),
-        latestOutput: r.tail,
-      })),
+      runningCommands: running.map((r) => cut(r.command)),
     },
-    "A visual summary of this session's work was written earlier, while these long-running commands kept running. Does their latest output change the picture enough that the summary needs rewriting?",
+    "A visual summary of this session's work was written earlier, while these long-running commands kept running. They have printed new output since. Is their progress likely worth rewriting the summary for?",
     {
-      true: "a phase or step finished, a failure or error appeared, or progress moved well past where the summary last showed it",
+      true: "builds, test suites, benchmarks, migrations, deploys or other long jobs whose progress or result is part of the work's picture",
       false:
-        "the same step still running, or output that only repeats or adds noise",
+        "servers, watchers, log tails or other commands that run on without a result to show",
     },
   );
 }
@@ -174,6 +175,8 @@ export type Message = {
     input: Record<string, unknown>;
     /** The result as the model read it, once answered. */
     text?: string;
+    /** The tool's record, once answered (a Bash one's `backgroundTaskId`). */
+    result?: unknown;
   }[];
   toolResults?: readonly unknown[];
 };
@@ -226,9 +229,11 @@ export function digest(
 export type LiveShell = { id: string; command: string; outputFile: string };
 
 /**
- * The background shells still running: a Bash result that moved its command
- * to the background (its id and output file), with no task notification for
- * that id after it.
+ * The background shells still running: a Bash call whose record names the
+ * task it moved to the background, with no task notification for that id
+ * after it. The id is the record's, never the result text's: a command's
+ * output may say anything, so the text only gives the file, and only one
+ * named for that id in a `tasks` directory.
  */
 export function liveShells(messages: readonly Message[]): LiveShell[] {
   const live = new Map<string, LiveShell>();
@@ -241,11 +246,13 @@ export function liveShells(messages: readonly Message[]): LiveShell[] {
     }
     for (const u of m.toolUses) {
       if (u.tool !== "Bash" || typeof u.text !== "string") continue;
-      const id = /running in background with ID: ([\w-]+)/.exec(u.text)?.[1];
-      const outputFile = /Output is being written to: (\S+?\.output)/.exec(
-        u.text,
-      )?.[1];
-      if (id && outputFile)
+      const id = (u.result as { backgroundTaskId?: unknown } | undefined)
+        ?.backgroundTaskId;
+      if (typeof id !== "string" || !/^[\w-]+$/.test(id)) continue;
+      const outputFile = new RegExp(
+        `Output is being written to: (/\\S*/tasks/${id}\\.output)`,
+      ).exec(u.text)?.[1];
+      if (outputFile && !outputFile.split("/").includes(".."))
         live.set(id, {
           id,
           command: typeof u.input.command === "string" ? u.input.command : "",

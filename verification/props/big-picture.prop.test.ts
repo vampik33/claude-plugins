@@ -228,7 +228,8 @@ describe("liveShells", () => {
             {
               tool: "Bash",
               input: { command: `run ${e.start}` },
-              text: `Command running in background with ID: ${e.start}. Output is being written to: /t/${e.start}.output. You will be notified.`,
+              text: `Command running in background with ID: ${e.start}. Output is being written to: /t/tasks/${e.start}.output. You will be notified.`,
+              result: { backgroundTaskId: e.start },
             },
           ],
         }
@@ -249,7 +250,7 @@ describe("liveShells", () => {
           new Set([...last].filter(([, isLive]) => isLive).map(([i]) => i)),
         );
         for (const s of live) {
-          expect(s.outputFile).toBe(`/t/${s.id}.output`);
+          expect(s.outputFile).toBe(`/t/tasks/${s.id}.output`);
           expect(s.command).toBe(`run ${s.id}`);
         }
       }),

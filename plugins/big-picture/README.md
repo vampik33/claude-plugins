@@ -23,7 +23,7 @@ Set a TypeSafe key for Jev, in `~/.claude/settings.json`:
 ## Behaviour
 
 - `/big-picture` shows or hides the summary's Orca browser tab; so does the `summary  show` line above the prompt (hotkey `s`). Before there is a summary, the tab shows a placeholder that fills in later. The tab never opens by itself. A press while a show or hide is under way is dropped.
-- A tab closed in Orca by hand turns the button back to `show` within 2 seconds (the mod looks for its tab in `orca tab list` while one is open).
+- A tab closed in Orca by hand turns the button back to `show` within about 10 seconds (the mod looks for its tab in `orca tab list` every 2 seconds while one is open; Orca takes about 8 seconds to answer when no browser tab is left).
 - The page is `~/.claude/big-picture/<session-id>.html`. Each rewrite reloads the open tab.
 - Outside Orca (`TERM_PROGRAM` is not `Orca`) there is no browser: Haiku writes the summary as text instead (headings, short paragraphs, and diagrams and trees drawn in text, no line of a diagram over 60 characters), and `/big-picture` or the `summary` line opens and closes it in a terminal pane. Nothing is written to disk.
 

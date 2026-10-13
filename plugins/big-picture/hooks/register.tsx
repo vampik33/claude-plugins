@@ -74,6 +74,8 @@ let warned = false;
 let toggling = false;
 /** Looks for the open tab every TAB_WATCH_MS. */
 let tabWatch: { cancel: () => void } | undefined;
+/** A look under way (Orca takes ~8 s to list no tabs): a tick meanwhile is skipped. */
+let watching = false;
 
 const setStatus = ($: EngineInterface, s: SummaryStatus) =>
   update($, status, () => s);
@@ -259,10 +261,16 @@ async function forgetTab($: EngineInterface): Promise<void> {
 
 /** Forgets the tab once Orca no longer lists it: closed there by hand. */
 async function watchTab($: EngineInterface): Promise<void> {
-  const id = await read($, tab);
-  if (!id) return forgetTab($);
-  const list = await orca($, ["tab", "list"]);
-  if (list?.exitCode === 0 && !hasTab(list.stdout, id)) await forgetTab($);
+  if (watching) return;
+  watching = true;
+  try {
+    const id = await read($, tab);
+    if (!id) return await forgetTab($);
+    const list = await orca($, ["tab", "list"]);
+    if (list?.exitCode === 0 && !hasTab(list.stdout, id)) await forgetTab($);
+  } finally {
+    watching = false;
+  }
 }
 
 async function showTab($: EngineInterface): Promise<Said> {

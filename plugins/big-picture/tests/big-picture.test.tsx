@@ -312,6 +312,8 @@ function engine(
     orca: [] as string[],
     tabs: [] as string[],
     toasts: [] as string[],
+    /** While set, `orca tab list` waits for it. */
+    listGate: undefined as Promise<void> | undefined,
     /** Whether the summary's pane is open, and how often it was opened. */
     pane: false,
     paneOpens: 0,
@@ -381,7 +383,7 @@ function engine(
   on("fs.exists", (_$: unknown, e: { path: string }) => ({
     value: seen.files.has(e.path),
   }));
-  on("process.run", (_$: unknown, e: { argv: string[] }) => {
+  on("process.run", async (_$: unknown, e: { argv: string[] }) => {
     const [cmd, ...args] = e.argv;
     let stdout = "";
     let exitCode = 0;
@@ -393,6 +395,7 @@ function engine(
         seen.tabs.push(id);
         stdout = JSON.stringify({ ok: true, result: { browserPageId: id } });
       } else if (args[0] === "tab" && args[1] === "list") {
+        await seen.listGate;
         stdout = JSON.stringify({
           result: {
             tabs: seen.tabs.map((browserPageId) => ({ browserPageId })),
@@ -679,6 +682,21 @@ describe("session", () => {
     await press();
     expect(seen.tabs.length).toBe(1);
     expect((await band($)).toggle).toBe("hide");
+  });
+
+  test("the tab is looked for one look at a time, however slow Orca answers", async ($, on) => {
+    const { seen, clock } = engine(on);
+    await $.command.run({ command: "big-picture", args: "" } as never);
+    let open!: () => void;
+    seen.listGate = new Promise<void>((r) => (open = r));
+    await clock.advance(6_000); // three ticks while the first look hangs
+    const lists = () => seen.orca.filter((c) => c.startsWith("tab list"));
+    expect(lists()).toEqual(["tab list --json"]);
+    seen.tabs = [];
+    open();
+    seen.listGate = undefined;
+    await clock.advance(2_000);
+    expect((await band($)).toggle).toBe("show");
   });
 
   test("presses while a show runs are dropped: one tab, not one per press", async ($, on) => {

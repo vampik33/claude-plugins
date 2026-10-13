@@ -1,0 +1,4 @@
+{
+  "description": "memory-watch: tool.call on Write/Edit records each auto-memory file written; /memory-watch and a band line toggle a pane listing them",
+  "modules": ["./register.tsx"]
+}

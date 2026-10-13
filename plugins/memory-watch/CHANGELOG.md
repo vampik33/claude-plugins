@@ -1,0 +1,11 @@
+# Changelog
+
+All notable changes to the memory-watch plugin will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [0.1.0] - 2026-10-13
+
+### Added
+- A side pane listing each auto-memory file the session's `Write` / `Edit` calls create or update, newest first (last 50): the memory's name (or file), time, action, type, lines added and removed, and its description
+- `/memory-watch` and a `memory  show` / `hide` line above the prompt (hotkey `m`) toggle the pane; the line counts writes made while it was hidden

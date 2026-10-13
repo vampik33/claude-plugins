@@ -1,0 +1,7 @@
+{
+  "name": "memory-watch",
+  "version": "0.1.0",
+  "description": "A side pane summarizing each auto-memory file the session creates or updates.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts"
+}

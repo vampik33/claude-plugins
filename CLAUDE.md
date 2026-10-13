@@ -25,6 +25,7 @@ claude-plugins/
     ├── explain-changes/              # Git diff explainer with educational insights
     ├── fleet/                        # Mod: agents / shells / worktrees pane with alerts
     ├── gtr/                          # Git worktree management (wraps git-worktree-runner)
+    ├── memory-watch/                 # Mod: pane summarizing auto-memory writes
     ├── palette/                      # Mod: clickable agents / skills / commands pane
     ├── plan-renamer/                 # Rename plan files to meaningful titles
     ├── prompt-clock/                 # Mod: send times on prompts and turn lines
@@ -52,7 +53,7 @@ Each plugin in `plugins/<name>/` follows this structure:
 
 ## Mods (function-hook plugins)
 
-codex-review, continuity, fleet, palette and prompt-clock are TypeScript mods, not shell hooks:
+codex-review, continuity, fleet, memory-watch, palette and prompt-clock are TypeScript mods, not shell hooks:
 
 ```
 <mod>/

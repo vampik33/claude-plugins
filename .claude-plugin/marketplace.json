@@ -119,6 +119,18 @@
       "homepage": "https://github.com/vampik33/claude-plugins"
     },
     {
+      "name": "memory-watch",
+      "description": "A side pane summarizing each auto-memory file the session creates or updates",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/memory-watch",
+      "category": "Workflow",
+      "keywords": ["memory", "auto-memory", "pane", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
       "name": "palette",
       "description": "A side pane listing the session's agents, skills and commands; click one to put it in the prompt box",
       "version": "0.4.0",

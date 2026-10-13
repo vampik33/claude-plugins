@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "claude-code/testing";
 
 import {
   CHECK_EVERY,
+  cleanText,
   digest,
   emptyActivity,
   extractHtml,
@@ -21,6 +22,8 @@ import {
   SUMMARY_CSP,
   summaryPrompt,
   summarySystem,
+  textBlocks,
+  TEXT_WIDTH,
   toolLine,
   type Message,
 } from "../hooks/core.ts";
@@ -135,10 +138,51 @@ describe("core", () => {
   });
 
   test("the system prompt carries show-me and the page's contract", () => {
-    const s = summarySystem("SHOW-ME-TEXT");
+    const s = summarySystem("SHOW-ME-TEXT", "html");
     expect(s).toContain("<show-me>\nSHOW-ME-TEXT\n</show-me>");
     expect(s).toContain("write no <script> at all");
     expect(s).toContain("starting with <!doctype html>");
+    const t = summarySystem("SHOW-ME-TEXT", "text");
+    expect(t).toContain("<show-me>\nSHOW-ME-TEXT\n</show-me>");
+    expect(t).toContain(`no line of a diagram wider than ${TEXT_WIDTH} characters`);
+    expect(t).toContain("box-drawing characters");
+    expect(t).not.toContain("<!doctype");
+  });
+
+  test("cleanText drops escape sequences and control characters", () => {
+    expect(cleanText("\x1b[31mred\x1b[0m\r\nok\x07\tx\x1b]0;title\x07!")).toBe(
+      "red\nok  x!",
+    );
+  });
+
+  test("textBlocks: headings, paragraphs joined, sketches kept as written", () => {
+    const summary = [
+      "# Rate limiter",
+      "",
+      "A token bucket per",
+      "client.",
+      "```",
+      "┌──────┐   ┌───────┐",
+      "│ take │──▶│ store │",
+      "",
+      "└──────┘   └───────┘",
+      "```",
+      "## Next",
+      "Wire it in.",
+      "```",
+      "unclosed",
+    ].join("\n");
+    expect(textBlocks(summary)).toEqual([
+      { kind: "heading", lines: ["Rate limiter"] },
+      { kind: "prose", lines: ["A token bucket per client."] },
+      {
+        kind: "sketch",
+        lines: ["┌──────┐   ┌───────┐", "│ take │──▶│ store │", "", "└──────┘   └───────┘"],
+      },
+      { kind: "heading", lines: ["Next"] },
+      { kind: "prose", lines: ["Wire it in."] },
+      { kind: "sketch", lines: ["unclosed"] },
+    ]);
   });
 
   test("the prompt: the session, and the previous page to update", () => {
@@ -228,6 +272,19 @@ const BAND = {
   } as never,
 };
 
+const PANE = {
+  component: "Pane" as const,
+  requestId: "big-picture",
+  props: {
+    title: "Big picture",
+    isFocused: false,
+    bodyColumns: 60,
+    placement: "dock",
+    scroll: { offset: 0, bodyRows: 30 },
+    view: {},
+  } as never,
+};
+
 const PAGE = "/h/.claude/big-picture/s1.html";
 const html = (n: number) =>
   `<!doctype html><html><body>summary ${n}</body></html>`;
@@ -255,6 +312,9 @@ function engine(
     orca: [] as string[],
     tabs: [] as string[],
     toasts: [] as string[],
+    /** Whether the summary's pane is open, and how often it was opened. */
+    pane: false,
+    paneOpens: 0,
   };
   const clock = mock.clock(on, { now: new Date(2026, 9, 13, 9, 5).getTime() });
   mock.env(on, {
@@ -274,6 +334,13 @@ function engine(
   on("turn.complete", (_$: unknown, e: { answer: string }) => ({
     text: e.answer,
   }));
+  on("ui.open", () => {
+    seen.pane = true;
+    seen.paneOpens++;
+    return { value: { isPlaced: true } };
+  });
+  on("ui.close", () => ((seen.pane = false), { value: undefined }));
+  on("ui.panes", () => ({ value: [] }));
   on("ui.toast", (_$: unknown, e: { text: string }) => {
     seen.toasts.push(e.text);
     return { value: undefined };
@@ -583,7 +650,7 @@ describe("session", () => {
   });
 
   test("the band toggles the Orca tab, a placeholder before any summary", async ($, on) => {
-    const { seen } = engine(on);
+    const { seen, clock } = engine(on);
     const press = async () => {
       const ui = await $.ui.mount({
         plugin: "big-picture",
@@ -603,21 +670,71 @@ describe("session", () => {
     expect(seen.tabs).toEqual([]);
     expect((await band($)).toggle).toBe("show");
 
-    // closed in Orca by hand: the next press opens a new one
+    // closed in Orca by hand: the button turns to show by itself, and opens a new one
     await press();
+    expect((await band($)).toggle).toBe("hide");
     seen.tabs = [];
+    await clock.advance(2_000);
+    expect((await band($)).toggle).toBe("show");
     await press();
     expect(seen.tabs.length).toBe(1);
     expect((await band($)).toggle).toBe("hide");
   });
 
-  test("outside Orca: the path, no tab", async ($, on) => {
-    const { seen } = engine(on, { env: { TERM_PROGRAM: "ghostty" } });
-    const r = await $.command.run({
-      command: "big-picture",
-      args: "",
-    } as never);
-    expect(r.text).toBe(`Not in Orca: the summary is at ${PAGE}`);
+  test("presses while a show runs are dropped: one tab, not one per press", async ($, on) => {
+    const { seen } = engine(on);
+    const run = () => $.command.run({ command: "big-picture", args: "" } as never);
+    const said = await Promise.all([run(), run(), run()]);
+    expect(seen.orca.filter((c) => c.startsWith("tab create")).length).toBe(1);
+    expect(said.map((r: any) => r.text)).toEqual([
+      "Summary shown.",
+      "Still showing or hiding the summary.",
+      "Still showing or hiding the summary.",
+    ]);
+    expect((await band($)).toggle).toBe("hide");
+  });
+
+  test("outside Orca: a text summary in a terminal pane, toggled by the band", async ($, on) => {
+    const { seen, clock } = engine(on, { env: { TERM_PROGRAM: "ghostty" } });
+    const paneTexts = async () => {
+      const ui = await $.ui.mount({ plugin: "big-picture", surface: "terminal", ...PANE });
+      const texts = (await ui.findAll({ type: "Text" })).map((t: any) => t.text);
+      await ui.unmount();
+      return texts;
+    };
+    const run = () => $.command.run({ command: "big-picture", args: "" } as never);
+
+    expect((await run()).text).toBe("Summary shown.");
+    expect([seen.pane, (await band($)).toggle]).toEqual([true, "hide"]);
+    expect((await paneTexts())[0]).toContain("No big work in this session yet.");
+
+    seen.reply = {
+      isAnswered: true,
+      text: "# Rate limiter\n\nA bucket per client.\n```\n│ take │──▶│ store │\x1b[2J\n```",
+    };
+    await turn($, clock, "add a rate limiter", 1);
+    expect(seen.writes[0]!.systemBlocks[0].text).toContain("box-drawing characters");
+    expect(seen.files.size).toBe(0); // no page
     expect(seen.orca).toEqual([]);
+    expect(await paneTexts()).toEqual([
+      "Rate limiter",
+      "A bucket per client.",
+      "│ take │──▶│ store │",
+    ]);
+    expect((await band($)).texts).toContain("updated 09:05");
+
+    // the update is handed the text it rewrites
+    await turn($, clock, "add metrics", 1);
+    expect(seen.writes[1]!.prompt).toContain("<previous-summary>\n# Rate limiter");
+
+    expect((await run()).text).toBe("Summary hidden.");
+    expect([seen.pane, (await band($)).toggle]).toEqual([false, "show"]);
+  });
+
+  test("outside Orca: a reply with nothing in it is a failure", async ($, on) => {
+    const { seen, clock } = engine(on, { env: { TERM_PROGRAM: "ghostty" } });
+    seen.reply = { isAnswered: true, text: " \x1b[0m \n" };
+    await turn($, clock, "x", 1);
+    expect((await band($)).texts).toContain("✗ the reply held no summary");
   });
 });

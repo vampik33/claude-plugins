@@ -13,6 +13,10 @@ declare module "claude-code" {
       status: SummaryStatus;
       /** The Orca browser page showing the summary, while its tab is open. */
       tab: string | null;
+      /** Outside Orca: whether the summary's terminal pane is open. */
+      pane: boolean;
+      /** Outside Orca: the text summary the pane shows, once written. */
+      text: string | null;
     };
   }
 }

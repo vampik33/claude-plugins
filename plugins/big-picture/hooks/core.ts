@@ -193,15 +193,13 @@ export function digest(
   return kept.join("\n");
 }
 
-/** The system prompt: show-me's guidance, then the page's contract. Fixed, so cached. */
-export function summarySystem(showMe: string): string {
-  return `You write a visual summary of a person's coding session with Claude: what was done and why, how the pieces fit, what is still in progress or next. Follow this guidance for choosing the views:
+/** Where the summary is shown: an HTML page in an Orca tab, or text in a terminal pane. */
+export type Format = "html" | "text";
 
-<show-me>
-${showMe}
-</show-me>
+/** The text summary's widest line, so the pane need not wrap a diagram. */
+export const TEXT_WIDTH = 60;
 
-The summary is one self-contained HTML page:
+const HTML_CONTRACT = `The summary is one self-contained HTML page:
 - Text sketches (pseudocode, call trees, file trees, diffs) go in <pre> blocks; color diff lines.
 - Mermaid diagrams go in <pre class="mermaid"> blocks; the page gets its Mermaid script added, so write no <script> at all.
 - No external scripts, styles, fonts or images. Inline CSS, light and dark via prefers-color-scheme, readable in a narrow side panel.
@@ -209,6 +207,26 @@ The summary is one self-contained HTML page:
 - It is a diagram summary: at least one Mermaid diagram of how the pieces connect or flow, and a text sketch (a file tree or call tree) of what changed. Prose only labels the visuals.
 
 Reply with the HTML document alone, starting with <!doctype html>: no prose, no code fence.`;
+
+const TEXT_CONTRACT = `The summary is plain text for a terminal side pane, no line of a diagram wider than ${TEXT_WIDTH} characters:
+- A line starting with "# " is a section heading; the first line is "# " and the title.
+- Diagrams and sketches (file trees, call trees, pseudocode, diffs, and flows drawn with box-drawing characters like ┌─┐│└┘├▶→ where show-me would use Mermaid) go between two lines of three backticks alone, shown as written.
+- Prose is short paragraphs, a blank line between them; it wraps to the pane.
+- Nothing else: no Markdown emphasis, links or tables, no HTML, no escape codes.
+- Real file names, functions and labels from the session. Claim nothing the session does not show.
+- It is a diagram summary: at least one diagram of how the pieces connect or flow, and a file tree or call tree of what changed. Prose only labels the visuals.
+
+Reply with the summary alone: no preamble, no fence around all of it.`;
+
+/** The system prompt: show-me's guidance, then the format's contract. Fixed, so cached. */
+export function summarySystem(showMe: string, format: Format): string {
+  return `You write a visual summary of a person's coding session with Claude: what was done and why, how the pieces fit, what is still in progress or next. Follow this guidance for choosing the views:
+
+<show-me>
+${showMe}
+</show-me>
+
+${format === "html" ? HTML_CONTRACT : TEXT_CONTRACT}`;
 }
 
 /** The user message: the session, and the page to update when there is one. */
@@ -269,6 +287,53 @@ export function securePage(html: string): string {
 <meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">
 ${MERMAID_LOADER}
 ${body}`;
+}
+
+/** One piece of the text summary as the pane draws it. */
+export type TextBlock = {
+  kind: "heading" | "prose" | "sketch";
+  /** A sketch's lines, as written; a heading's or a paragraph's one line. */
+  lines: string[];
+};
+
+/** The model's text with escape sequences and other control characters gone. */
+export function cleanText(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "  ")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)?/g, "")
+    .replace(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g, "")
+    .trim();
+}
+
+/** The text summary in headings, paragraphs and sketches; an unclosed sketch runs to the end. */
+export function textBlocks(text: string): TextBlock[] {
+  const blocks: TextBlock[] = [];
+  let prose: string[] = [];
+  let sketch: string[] | undefined;
+  const flush = () => {
+    if (prose.length) blocks.push({ kind: "prose", lines: [prose.join(" ")] });
+    prose = [];
+  };
+  for (const line of cleanText(text).split("\n")) {
+    if (/^\s*```/.test(line)) {
+      if (sketch) {
+        if (sketch.length) blocks.push({ kind: "sketch", lines: sketch });
+        sketch = undefined;
+      } else {
+        flush();
+        sketch = [];
+      }
+    } else if (sketch) sketch.push(line);
+    else if (/^#+\s+\S/.test(line)) {
+      flush();
+      blocks.push({ kind: "heading", lines: [line.replace(/^#+\s+/, "")] });
+    } else if (line.trim() === "") flush();
+    else prose.push(line.trim());
+  }
+  flush();
+  if (sketch?.length) blocks.push({ kind: "sketch", lines: sketch });
+  return blocks;
 }
 
 const escape = (s: string) =>

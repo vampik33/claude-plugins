@@ -7,6 +7,7 @@ import fc from "fast-check";
 
 import {
   CHECK_EVERY,
+  cleanText,
   emptyActivity,
   extractHtml,
   hasTab,
@@ -21,6 +22,7 @@ import {
   MERMAID_LOADER,
   MERMAID_LOADER_SHA256,
   securePage,
+  textBlocks,
   type Message,
 } from "../../plugins/big-picture/hooks/core.ts";
 
@@ -175,6 +177,35 @@ describe("securePage", () => {
         expect(page.match(/<script\b/gi)?.length).toBe(1);
         expect(page.match(/<meta\b/gi)?.length).toBe(2);
         expect(page).not.toMatch(/<link\b/i);
+      }),
+    );
+  });
+});
+
+describe("text summary", () => {
+  const line = fc.oneof(
+    fc.constantFrom("# Title", "## Next", "```", "", "┌─┐ │x│", "\x1b[31mred", "\x1b]0;t\x07"),
+    fc.string(),
+  );
+
+  test("cleanText leaves no control character but newlines", () => {
+    fc.assert(
+      fc.property(fc.string(), (s) => {
+        expect(cleanText(s)).not.toMatch(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/);
+      }),
+    );
+  });
+
+  test("textBlocks never throws, keeps no empty block, and every sketch line comes from the text", () => {
+    fc.assert(
+      fc.property(fc.array(line, { maxLength: 30 }), (ls) => {
+        const text = ls.join("\n");
+        const kept = cleanText(text).split("\n");
+        for (const b of textBlocks(text)) {
+          expect(b.lines.length).toBeGreaterThan(0);
+          if (b.kind === "sketch") for (const l of b.lines) expect(kept).toContain(l);
+          else expect(b.lines[0]!.trim()).not.toBe("");
+        }
       }),
     );
   });

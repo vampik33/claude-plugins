@@ -4,6 +4,15 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-10-13
+
+### Added
+- Outside Orca, the summary is shown in a terminal pane: Haiku writes it as text (headings, paragraphs, diagrams and trees drawn in text) instead of an HTML page, and `/big-picture` and the `summary` line open and close the pane
+
+### Fixed
+- A tab closed in Orca by hand left the button on `hide`; the mod now looks for its open tab every 2 seconds and turns the button back to `show`
+- Presses while a show or hide was under way each opened another tab; they are now dropped
+
 ## [0.1.2] - 2026-10-13
 
 ### Fixed

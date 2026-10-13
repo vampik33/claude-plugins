@@ -60,8 +60,8 @@
     },
     {
       "name": "big-picture",
-      "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated in an Orca browser tab while the work goes on",
-      "version": "0.1.2",
+      "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated in an Orca browser tab (a terminal pane outside Orca) while the work goes on",
+      "version": "0.2.0",
       "author": {
         "name": "vampik33"
       },

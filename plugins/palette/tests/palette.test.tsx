@@ -247,7 +247,10 @@ const PANE = {
   } as never,
 };
 
-function engine(on: any) {
+function engine(
+  on: any,
+  opts: { exists?: (path: string) => boolean; storeGate?: Promise<void> } = {},
+) {
   const seen = {
     fills: [] as { text: string; mode?: string }[],
     opened: 0,
@@ -257,12 +260,21 @@ function engine(on: any) {
   };
   const draft = { text: "", cursor: 0 };
   const store = new Map<string, unknown>();
+  // the counts are stored aside from the call: a test awaits the count it wants
+  type Counts = Record<string, { count: number }> | undefined;
+  const waiting: { is: (u: Counts) => boolean; done: () => void }[] = [];
+  const counted = (is: (u: Counts) => boolean) =>
+    new Promise<void>((done) =>
+      is(store.get("usage") as Counts) ? done() : waiting.push({ is, done }),
+    );
   let now = 0;
-  on("store.get", (_$: unknown, e: { key: string }) => ({
-    value: store.get(e.key),
-  }));
+  on("store.get", async (_$: unknown, e: { key: string }) => {
+    await opts.storeGate;
+    return { value: store.get(e.key) };
+  });
   on("store.set", (_$: unknown, e: { key: string; value: unknown }) => {
     store.set(e.key, e.value);
+    for (const w of waiting.filter((w) => w.is(e.value as Counts))) w.done();
     return { value: undefined };
   });
   on("clock.now", () => ({ value: (now += REPEAT_MS) }));
@@ -287,7 +299,10 @@ function engine(on: any) {
       },
     },
   }));
-  on("fs.exists", () => ({ value: false }));
+  on("session.root", () => ({ value: "/proj" }));
+  on("fs.exists", (_$: unknown, e: { path: string }) => ({
+    value: opts.exists?.(e.path) ?? false,
+  }));
   on("prompt.read", () => ({ value: { ...draft } }));
   on("prompt.fill", (_$: unknown, e: { text: string; mode: string }) => {
     seen.fills.push({ text: e.text, mode: e.mode });
@@ -319,7 +334,7 @@ function engine(on: any) {
         ]
       : [],
   }));
-  return { seen, draft, store };
+  return { seen, draft, store, counted };
 }
 
 describe("pane", () => {
@@ -392,14 +407,45 @@ describe("pane", () => {
     await ui.unmount();
   });
 
+  test("a command runs without waiting for its count to be stored", async ($, on) => {
+    let release = () => {};
+    const storeGate = new Promise<void>((r) => (release = r));
+    const { store, counted } = engine(on, { storeGate });
+    on("command.run", { command: "think" }, () => ({ text: "ran" }));
+    const r = await $.command.run({ command: "think", args: "" } as never);
+    expect(r).toMatchObject({ text: "ran" });
+    expect(store.get("usage")).toBeUndefined();
+    release();
+    await counted((u) => u?.["command:think"]?.count === 1);
+    expect(store.get("usage")).toMatchObject({ "command:think": { count: 1 } });
+  });
+
+  test("project commands are found under the project root", async ($, on) => {
+    engine(on, { exists: (p) => p === "/proj/.claude/commands/think.md" });
+    await $.command.run({ command: "palette", args: "" } as never);
+    const ui = await $.ui.mount({
+      plugin: "palette",
+      surface: "terminal",
+      ...PANE,
+    });
+    expect((await ui.find({ key: "group:project" }))?.text).toBe("▾ project (1)");
+    expect(await ui.find({ key: "group:user" })).toBeDefined();
+    await ui.unmount();
+  });
+
   test("used items show first under most used, kept in the store", async ($, on) => {
-    const { seen, store } = engine(on);
+    const { seen, store, counted } = engine(on);
     on("command.run", { command: "think" }, () => ({ text: "" }));
     on("agent.spawn", () => ({ model: "m" }));
     await $.command.run({ command: "palette", args: "" } as never);
     await $.command.run({ command: "think", args: "" } as never);
     await $.agent.spawn({ subagentType: "rust-engineer" } as never);
     await $.command.run({ command: "think", args: "" } as never);
+    await counted(
+      (u) =>
+        u?.["command:think"]?.count === 2 &&
+        u?.["agent:rust-engineer"]?.count === 1,
+    );
 
     expect(store.get("usage")).toMatchObject({
       "command:think": { count: 2 },

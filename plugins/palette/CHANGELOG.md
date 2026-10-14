@@ -4,6 +4,12 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-10-14
+
+### Fixed
+- Counting a use no longer holds up every slash command, skill and agent spawn: the store's read and write run aside from the call
+- Project commands and skills are looked up under the project root, not the directory the session moved to, so they stay in the `project` group after `/cd` or from a subfolder
+
 ## [0.4.0] - 2026-10-06
 
 ### Added

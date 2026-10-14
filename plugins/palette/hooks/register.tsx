@@ -59,12 +59,16 @@ async function refresh($: EngineInterface): Promise<void> {
     .usage({ breakdown: "summary" })
     .catch(() => undefined);
   const agents = usage?.context.breakdown?.agents ?? [];
+  // the project's .claude/ lies under its root, not wherever the session went
+  const root = await $.session.root();
   const local = await Promise.all(
     commands
       .filter((c) => c.source === "user")
       .map(async (c) => {
         const hits = await Promise.all(
-          projectPaths(c.name).map((p) => $.fs.exists(p).catch(() => false)),
+          projectPaths(c.name).map((p) =>
+            $.fs.exists(`${root}/${p}`).catch(() => false),
+          ),
         );
         return hits.some(Boolean) ? c.name : undefined;
       }),
@@ -136,17 +140,20 @@ export const register: Register = (on) => {
   });
 
   on("command.run", async ($, e, next) => {
-    await countUse($, `command:${e.command}`);
+    // counted aside: the store's read and write never hold up the call
+    void countUse($, `command:${e.command}`);
     return next(e);
   });
 
   on("skill.prompt", async ($, e, next) => {
-    await countUse($, `command:${e.skill}`);
+    // counted aside: the store's read and write never hold up the call
+    void countUse($, `command:${e.skill}`);
     return next(e);
   });
 
   on("agent.spawn", async ($, e, next) => {
-    await countUse($, `agent:${e.subagentType}`);
+    // counted aside: the store's read and write never hold up the call
+    void countUse($, `agent:${e.subagentType}`);
     return next(e);
   });
 

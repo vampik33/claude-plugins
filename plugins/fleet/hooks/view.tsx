@@ -4,7 +4,16 @@
  */
 
 import type { FleetAgent, FleetShell, FleetTree } from "../types";
-import { fmtClock, fmtElapsed, isFailed, isLive, LOST } from "./core.ts";
+import {
+  etaMs,
+  fmtClock,
+  fmtElapsed,
+  fmtLeft,
+  isFailed,
+  isLive,
+  LOST,
+  quietMs,
+} from "./core.ts";
 
 export type FleetView = {
   repo: string;
@@ -48,6 +57,39 @@ function mark(Text: any, status: string) {
   );
 }
 
+/** "▓▓▓▓░░░░░░" */
+const bar = (frac: number, n = 10) => {
+  const full = Math.max(0, Math.min(n, Math.round(frac * n)));
+  return "▓".repeat(full) + "░".repeat(n - full);
+};
+
+/** A live shell's second line: waiting, stalled, or its progress, then its last output line. */
+function shellDetail(Text: any, s: FleetShell, now: number, w: number) {
+  const line = s.line ?? "";
+  if (s.waiter)
+    return <Text dimColor>{fit(`   waiting${line ? ` · ${line}` : ""}`, w).trimEnd()}</Text>;
+  if (s.stalled) {
+    const head = `   ⚠ no output ${fmtLeft(quietMs(s, now))}`;
+    return (
+      <Text>
+        <Text color="yellow">{head}</Text>
+        <Text dimColor>{fit(line ? ` · ${line}` : "", Math.max(0, w - head.length)).trimEnd()}</Text>
+      </Text>
+    );
+  }
+  if (s.progress) {
+    const left = etaMs(s.progress, now);
+    const head = `   ${bar(s.progress.frac)} ${Math.floor(s.progress.frac * 100)}%${left === undefined ? "" : ` ~${fmtLeft(left)}`}`;
+    return (
+      <Text>
+        <Text color="cyan">{head}</Text>
+        <Text dimColor>{fit(` · ${line}`, Math.max(0, w - head.length)).trimEnd()}</Text>
+      </Text>
+    );
+  }
+  return <Text dimColor>{fit(`   ${line}`, w).trimEnd()}</Text>;
+}
+
 export function drawFleet(els: Elements, v: FleetView, now: number) {
   const { Box, Text } = els;
   const w = Math.max(24, v.width);
@@ -88,11 +130,23 @@ export function drawFleet(els: Elements, v: FleetView, now: number) {
       {v.shells.length > 0 && <Text dimColor>BACKGROUND</Text>}
       {order(v.shells).map((s) => {
         const time = timing(s, now);
-        return (
-          <Text key={s.id}>
+        const row = (
+          <Text>
             {mark(Text, s.status)}
             {` ${fit(s.command, Math.max(8, w - 4 - time.length))} ${time}`}
           </Text>
+        );
+        if (!isLive(s.status) || (!s.line && !s.waiter && !s.stalled))
+          return (
+            <Box key={s.id} flexDirection="column">
+              {row}
+            </Box>
+          );
+        return (
+          <Box key={s.id} flexDirection="column">
+            {row}
+            {shellDetail(Text, s, now, w)}
+          </Box>
         );
       })}
       {v.trees.length > 0 && <Text> </Text>}

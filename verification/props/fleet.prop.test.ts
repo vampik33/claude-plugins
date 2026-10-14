@@ -6,7 +6,13 @@ import fc from "fast-check";
 
 import {
   emptyFleet,
+  etaMs,
   fmtElapsed,
+  fmtLeft,
+  lastLine,
+  nextProgress,
+  parseProgress,
+  shellName,
   isFailed,
   isLive,
   liveCount,
@@ -294,6 +300,95 @@ describe("trim (light)", () => {
         },
       ),
       { numRuns: 500 },
+    );
+  });
+});
+
+describe("shell output", () => {
+  test("parseProgress is a fraction in [0, 1] or nothing", () => {
+    fc.assert(
+      fc.property(fc.string(), (line) => {
+        const p = parseProgress(line);
+        if (p !== undefined) {
+          expect(p).toBeGreaterThanOrEqual(0);
+          expect(p).toBeLessThanOrEqual(1);
+        }
+      }),
+      { numRuns: 3000 },
+    );
+  });
+
+  test("parseProgress reads any count k/n with n >= 2", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 2, max: 100_000 }), fc.nat(), (n, k) => {
+        const done = k % (n + 1);
+        expect(parseProgress(`step ${done}/${n} done`)).toBe(done / n);
+      }),
+    );
+  });
+
+  test("lastLine holds no line break, no escape, no edge blanks", () => {
+    fc.assert(
+      fc.property(fc.string(), (tail) => {
+        const l = lastLine(tail);
+        if (l === undefined) return;
+        expect(l).not.toMatch(/[\x00-\x1f\x7f-\x9f]/);
+        expect(l).toBe(l.trim());
+        expect(l.length).toBeGreaterThan(0);
+      }),
+      { numRuns: 3000 },
+    );
+  });
+
+  test("a reading never moves its start forward while it rises", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.double({ min: 0, max: 1, noNaN: true }), { minLength: 1, maxLength: 30 }),
+        (fracs) => {
+          let p = undefined as ReturnType<typeof nextProgress>;
+          fracs.forEach((f, i) => {
+            const before = p;
+            p = nextProgress(p, f, i * 1000);
+            expect(p!.frac).toBe(f);
+            if (before && f >= before.frac) expect(p!.firstAt).toBe(before.firstAt);
+            else expect(p!.firstAt).toBe(i * 1000);
+          });
+        },
+      ),
+    );
+  });
+
+  test("etaMs is non-negative when given", () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.integer({ min: 0, max: 10_000_000 }),
+        (a, b, dt) => {
+          const [lo, hi] = a <= b ? [a, b] : [b, a];
+          const left = etaMs({ frac: hi, firstAt: 0, firstFrac: lo }, dt);
+          if (left !== undefined) expect(left).toBeGreaterThanOrEqual(0);
+        },
+      ),
+    );
+  });
+
+  test("fmtLeft shape", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 100 * 3_600_000 }), (ms) => {
+        expect(fmtLeft(ms)).toMatch(/^(<1m|\d+m|\d+h\d{2}m)$/);
+      }),
+    );
+  });
+
+  test("shellName is short and one line", () => {
+    fc.assert(
+      fc.property(fc.string(), (cmd) => {
+        const n = shellName(cmd);
+        expect(n.length).toBeLessThanOrEqual(20);
+        expect(n).not.toMatch(/\n/);
+      }),
+      { numRuns: 3000 },
     );
   });
 });

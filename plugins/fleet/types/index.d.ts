@@ -14,12 +14,32 @@ export type FleetAgent = {
   teammate?: boolean;
 };
 
+/** A fraction done, and where the reading started, for the ETA. */
+export type FleetProgress = {
+  frac: number;
+  firstAt: number;
+  firstFrac: number;
+};
+
 export type FleetShell = {
   id: string;
   command: string;
   startedAt: number;
   endedAt?: number;
   status: string;
+  /** The file the engine writes the shell's output to */
+  outputFile?: string;
+  /** The output file's size at the last look */
+  size?: number;
+  /** When the output last grew (ms) */
+  outputAt?: number;
+  /** The last non-blank line of output */
+  line?: string;
+  progress?: FleetProgress;
+  /** A wait loop (`until …; do sleep`): quiet by design, never stalled */
+  waiter?: boolean;
+  /** No output for the stall time; set once, cleared by new output */
+  stalled?: boolean;
 };
 
 export type FleetTree = {

@@ -5,13 +5,22 @@ import {
   applyStatuses,
   emptyFleet,
   endShell,
+  etaMs,
   fmtClock,
   fmtElapsed,
+  fmtLeft,
+  isWaiter,
+  lastLine,
   loseShells,
   mayNotify,
+  nextProgress,
+  outputFileOf,
   parseNotification,
+  parseProgress,
   parseStatus,
   parseWorktrees,
+  shellName,
+  shellNotes,
   statusLine,
   summary,
   toolLabel,
@@ -209,6 +218,107 @@ describe("transitions", () => {
   });
 });
 
+describe("shell output", () => {
+  test("the output file a background result names", () => {
+    expect(
+      outputFileOf(
+        "Command running in background with ID: b1. Output is being written to: /tmp/x/tasks/b1.output. You will be notified when it completes.",
+      ),
+    ).toBe("/tmp/x/tasks/b1.output");
+    expect(outputFileOf("done")).toBeUndefined();
+    expect(outputFileOf(undefined)).toBeUndefined();
+  });
+
+  test("the last line: a redrawn bar's last frame, no colours, no blanks", () => {
+    expect(lastLine("a\nb\n\n")).toBe("b");
+    expect(lastLine("step 1\rstep 2\rstep 3")).toBe("step 3");
+    expect(lastLine("\x1b[32mok 4/9\x1b[0m\r\n")).toBe("ok 4/9");
+    expect(lastLine("  \n")).toBeUndefined();
+    // the output is the shell's: no escape or control reaches the screen
+    expect(lastLine("x\x1b]0;title\x07y\n")).toBe("xy");
+    expect(lastLine("\x1b]52;c;ZXZpbA==\x1b\\ok\n")).toBe("ok");
+    expect(lastLine("a\x1b(0b\x07\x08c\x9b2J\n")).toBe("a0bc2J");
+  });
+
+  test("progress from a percent or a count; dates and paths are no count", () => {
+    expect(parseProgress("training 47%")).toBe(0.47);
+    expect(parseProgress("12.5 % done")).toBe(0.125);
+    expect(parseProgress("month 14/30")).toBe(14 / 30);
+    expect(parseProgress("[ 3 / 4 ] folds")).toBe(0.75);
+    expect(parseProgress("2026/10/12 started")).toBeUndefined();
+    expect(parseProgress("wrote src/10/12/out.json")).toBeUndefined();
+    expect(parseProgress("v1.10/2 x")).toBeUndefined();
+    expect(parseProgress("9/4 odd")).toBeUndefined();
+    expect(parseProgress("1/1")).toBeUndefined();
+    expect(parseProgress("300% over")).toBeUndefined();
+    expect(parseProgress("no numbers")).toBeUndefined();
+  });
+
+  test("a reading keeps where it started, and restarts when it goes back", () => {
+    const a = nextProgress(undefined, 0.2, T0)!;
+    expect(a).toEqual({ frac: 0.2, firstAt: T0, firstFrac: 0.2 });
+    const b = nextProgress(a, 0.4, T0 + 60_000)!;
+    expect(b).toEqual({ frac: 0.4, firstAt: T0, firstFrac: 0.2 });
+    expect(nextProgress(b, undefined, T0 + 61_000)).toBe(b);
+    expect(nextProgress(b, 0.1, T0 + 62_000)).toEqual({
+      frac: 0.1,
+      firstAt: T0 + 62_000,
+      firstFrac: 0.1,
+    });
+  });
+
+  test("time left at the rate so far, once 30 s have moved it", () => {
+    const p = { frac: 0.4, firstAt: T0, firstFrac: 0.2 };
+    expect(etaMs(p, T0 + 20_000)).toBeUndefined();
+    expect(Math.round(etaMs(p, T0 + 10 * 60_000)!)).toBe(30 * 60_000);
+    expect(etaMs({ ...p, frac: 0.2 }, T0 + 10 * 60_000)).toBeUndefined();
+    expect(fmtLeft(20_000)).toBe("<1m");
+    expect(fmtLeft(38 * 60_000)).toBe("38m");
+    expect(fmtLeft(70 * 60_000)).toBe("1h10m");
+  });
+
+  test("wait loops", () => {
+    expect(isWaiter('until grep -q DONE log; do sleep 30; done')).toBe(true);
+    expect(isWaiter('while pgrep -f retrain; do sleep 60; done')).toBe(true);
+    expect(isWaiter("cargo test")).toBe(false);
+    expect(isWaiter("python sim.py --until 2026")).toBe(false);
+  });
+
+  test("a shell in a few words", () => {
+    expect(shellName("cd /r && FOO=1 ./scripts/retrain.sh d57 --x")).toBe(
+      "retrain.sh d57",
+    );
+    expect(shellName("export A=1; uv run python sim.py")).toBe("uv run");
+    expect(shellName("cargo test --workspace")).toBe("cargo test");
+    expect(shellName("S=/tmp/a; python3 -I /very/long/path/to/some_script_name.py")).toBe(
+      "python3 -I",
+    );
+  });
+
+  test("band notes: progress with ETA, stalls, nothing for waiters or ended", () => {
+    const sh = (over: object) => ({
+      id: "s",
+      command: "python sim.py",
+      startedAt: T0,
+      status: "running",
+      ...over,
+    });
+    const now = T0 + 10 * 60_000;
+    expect(
+      shellNotes(
+        [
+          sh({ progress: { frac: 0.4, firstAt: T0, firstFrac: 0.2 } }),
+          sh({ command: "./retrain.sh d57", stalled: true, outputAt: T0 + 4 * 60_000 }),
+          sh({ command: "until x; do sleep 9; done", waiter: true }),
+          sh({ status: "completed", progress: { frac: 1, firstAt: T0, firstFrac: 0 } }),
+          sh({ line: "no count here" }),
+        ],
+        now,
+      ),
+    ).toEqual(["python sim.py 40% ~30m", "retrain.sh d57 ⚠ 6m"]);
+  });
+});
+
 describe("git", () => {
   test("worktrees by branch, a detached one by its head", () => {
     const out = [
@@ -261,6 +371,8 @@ function engine(
     isShown: true,
   };
   const clock = mock.clock(on, { now: Date.now() });
+  /** Output files by path: what `tail` and `fs.stat` read. */
+  const files: Record<string, string> = {};
   mock.env(on, env);
   on("http.fetch", (_$: unknown, e: { init: { body: string } }) => {
     seen.telegram.push(JSON.parse(e.init.body).text);
@@ -269,15 +381,23 @@ function engine(
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
   on("session.cwd", () => ({ value: "/r/deployer" }));
-  on("process.run", () => ({
-    value: {
-      exitCode: 1,
-      stdout: "",
-      stderr: "",
-      isStdoutTruncated: false,
-      isStderrTruncated: false,
-    },
-  }));
+  on("process.run", (_$: unknown, e: { argv: string[] }) => {
+    const file = e.argv[0] === "tail" ? files[e.argv.at(-1)!] : undefined;
+    return {
+      value: {
+        exitCode: file === undefined ? 1 : 0,
+        stdout: file?.slice(-4096) ?? "",
+        stderr: "",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on("fs.stat", (_$: unknown, e: { path: string }) =>
+    e.path in files
+      ? { value: { kind: "file", size: files[e.path]!.length, mtimeMs: 0, isLink: false } }
+      : { value: { kind: "other", size: 0, mtimeMs: 0, isLink: false } },
+  );
   on(
     "ui.toast",
     (_$: unknown, e: { text: string }) => (
@@ -316,7 +436,7 @@ function engine(
   on("turn.complete", (_$: unknown, e: { answer: string }) => ({
     text: e.answer,
   }));
-  return { seen, clock };
+  return { seen, clock, files };
 }
 
 const BAND = {
@@ -678,6 +798,130 @@ describe("session", () => {
       ).toBeDefined();
       await ui.unmount();
     });
+});
+
+describe("shell progress", () => {
+  const bgResult = (id: string) => ({
+    result: { backgroundTaskId: id },
+    text: `Command running in background with ID: ${id}. Output is being written to: /tmp/t/${id}.output. You will be notified when it completes.`,
+  });
+  const PANE = {
+    component: "Pane" as const,
+    requestId: "fleet",
+    props: {
+      title: "Fleet",
+      isFocused: false,
+      bodyColumns: 60,
+      placement: "dock",
+      scroll: { offset: 0, bodyRows: 20 },
+    } as never,
+  };
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `a shell's progress and ETA on the band and in the pane (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { clock, files } = engine(on, []);
+        on("tool.call", () => bgResult("b1"));
+        await $.tool.call({ tool: "Bash", command: "uv run python sim.py" } as never);
+        files["/tmp/t/b1.output"] = "loading\nmonth 6/30\n";
+        await clock.advance(5_000);
+        files["/tmp/t/b1.output"] += "month 12/30\n";
+        await clock.advance(60_000);
+
+        const band = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
+        expect((await band.find({ type: "Text" }))?.text).toMatch(
+          /^fleet 0▶ 0✓ 0✗ · bg 1 · uv run 40% ~\d+m$/,
+        );
+        await band.unmount();
+
+        // the pane's Client ticks on the wall clock, which the mocked one ran ahead of: no ETA there yet
+        const pane = await $.ui.mount({ plugin: "fleet", surface, ...PANE });
+        expect(
+          await pane.find({ in: "fleet-body", type: "Text", text: /▓▓▓▓░░░░░░ 40%( ~\d+m)? · month 12\/30/ }),
+        ).toBeDefined();
+        await pane.unmount();
+      },
+    );
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `a quiet shell is stalled once, with a toast; new output clears it (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { seen, clock, files } = engine(on, []);
+        on("tool.call", () => bgResult("b1"));
+        await $.tool.call({ tool: "Bash", command: "./retrain.sh d57" } as never);
+        files["/tmp/t/b1.output"] = "fitting\n";
+        await clock.advance(5_000);
+        await clock.advance(5 * 60_000);
+        expect(seen.toasts).toEqual(["⚠ retrain.sh d57 · no output for 5m"]);
+        await clock.advance(60_000);
+        expect(seen.toasts).toHaveLength(1);
+
+        let band = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
+        expect((await band.find({ type: "Text" }))?.text).toMatch(/· retrain.sh d57 ⚠ \dm$/);
+        await band.unmount();
+
+        files["/tmp/t/b1.output"] += "fold 2\n";
+        await clock.advance(5_000);
+        band = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
+        expect((await band.find({ type: "Text" }))?.text).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+        await band.unmount();
+      },
+    );
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `a wait loop is waiting, never stalled, and its stop button stops it (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { seen, clock, files } = engine(on, []);
+        const stopped: string[] = [];
+        on("tool.call", (_$: unknown, e: { tool: string; task_id?: string }) => {
+          if (e.tool === "TaskStop") {
+            stopped.push(e.task_id!);
+            return { result: { message: "stopped", task_id: e.task_id, task_type: "shell" } };
+          }
+          return bgResult("b1");
+        });
+        await $.tool.call({
+          tool: "Bash",
+          command: "until grep -q DONE log; do sleep 30; done",
+        } as never);
+        files["/tmp/t/b1.output"] = "";
+        await clock.advance(10 * 60_000);
+        expect(seen.toasts).toEqual([]);
+
+        const pane = await $.ui.mount({ plugin: "fleet", surface, ...PANE });
+        expect(await pane.find({ in: "fleet-body", type: "Text", text: /^ +waiting$/ })).toBeDefined();
+        expect((await pane.find({ key: "fleet-stop-b1" }))?.text).toBe("stop until grep");
+        await pane.press({ key: "fleet-stop-b1" });
+        expect(stopped).toEqual(["b1"]);
+        await pane.unmount();
+      },
+    );
+
+  test(
+    "a reload picks the shell watch up again",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { clock, files } = engine(on, []);
+      on("tool.call", () => bgResult("b1"));
+      on("session.start", (_$, e) => e as never);
+      await $.session.start({ cwd: "/r/deployer" } as never);
+      await $.tool.call({ tool: "Bash", command: "python sim.py" } as never);
+      await $.session.start({ cwd: "/r/deployer" } as never);
+      files["/tmp/t/b1.output"] = "50%\n";
+      await clock.advance(5_000);
+      const band = await $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
+      expect((await band.find({ type: "Text" }))?.text).toBe(
+        "fleet 0▶ 0✓ 0✗ · bg 1 · python sim.py 50%",
+      );
+      await band.unmount();
+    },
+  );
 });
 
 /** Every line of text a drawing holds, one per outer Text. */

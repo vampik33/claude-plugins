@@ -4,6 +4,14 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-10-14
+
+### Added
+- Background shells show progress: the last line of output under each running shell in the pane; a bar and an ETA when that line holds a count (`14/30`) or a percentage; `⚠ no output 6m` and one toast after 5 minutes of silence; the band above the prompt adds each shell's percentage, ETA or stall (`sim.py 40% ~52m · retrain.sh d57 ⚠ 6m`)
+- Wait loops (`until …; do …; done`, a `while` that sleeps) show as `waiting` and never count as stalled
+- A `stop <shell>` button per running shell in the pane, which stops it through the TaskStop tool
+- The last line drops every escape sequence and control character before it is drawn, since the output is the shell's
+
 ## [0.4.2] - 2026-10-14
 
 ### Fixed

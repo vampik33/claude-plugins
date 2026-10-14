@@ -7,14 +7,24 @@ import {
   emptyFleet,
   endShell,
   endToast,
+  fmtLeft,
   isFailed,
   isLive,
+  isWaiter,
+  lastLine,
   liveCount,
   loseShells,
   mayNotify,
+  nextProgress,
+  outputFileOf,
   parseNotification,
+  parseProgress,
   parseStatus,
   parseWorktrees,
+  quietMs,
+  shellName,
+  shellNotes,
+  STALL_MS,
   statusLine,
   summary,
   toolLabel,
@@ -25,6 +35,9 @@ import { drawFleet, type FleetView } from "./view.tsx";
 const PANE = "fleet";
 const ENDED = new Set(["completed", "failed", "killed"]);
 const TOAST_GAP_MS = 2_100;
+const SHELL_POLL_MS = 5_000;
+/** Bytes of a shell's output read for its last line. */
+const TAIL_BYTES = "4096";
 
 const fleet = atom({ plugin: "fleet", key: "fleet" } as const, emptyFleet());
 const pane = atom({ plugin: "fleet", key: "pane" } as const, false);
@@ -41,6 +54,10 @@ type Tracker = {
   /** Whether the surface docks a pane beside the transcript, as the band last drew; unknown until then. */
   docks: boolean | undefined;
   poll: { cancel: () => void } | undefined;
+  /** The look at live shells' output, while any has an output file. */
+  shellPoll: { cancel: () => void } | undefined;
+  /** When the band was last redrawn for a stalled shell's quiet time. */
+  quietDrawnAt: number;
 };
 
 function chime($: EngineInterface, sound: "complete" | "dialog-error") {
@@ -172,6 +189,69 @@ function ensurePoll($: EngineInterface, t: Tracker) {
   if (!t.poll) t.poll = $.clock.every(2000, () => void tick($, t));
 }
 
+/** One look at each live shell's output: its last line, progress, or a stall. */
+async function watchShells($: EngineInterface, t: Tracker): Promise<void> {
+  const live = (await read($, fleet)).shells.filter(
+    (s) => isLive(s.status) && s.outputFile,
+  );
+  if (live.length === 0) {
+    t.shellPoll?.cancel();
+    t.shellPoll = undefined;
+    return;
+  }
+  const now = await $.clock.now();
+  const patches = new Map<string, Partial<FleetShell>>();
+  const stalled: FleetShell[] = [];
+  for (const s of live) {
+    const st = await $.fs.stat(s.outputFile!).catch(() => undefined);
+    if (st?.kind === "file" && st.size !== s.size) {
+      const tail = await $.process
+        .run(["tail", "-c", TAIL_BYTES, s.outputFile!])
+        .catch(() => undefined);
+      const line = tail?.exitCode === 0 ? lastLine(tail.stdout) : undefined;
+      patches.set(s.id, {
+        size: st.size,
+        outputAt: now,
+        stalled: false,
+        ...(line
+          ? { line, progress: nextProgress(s.progress, parseProgress(line), now) }
+          : {}),
+      });
+    } else if (!s.waiter && !s.stalled && quietMs(s, now) >= STALL_MS) {
+      patches.set(s.id, { stalled: true });
+      stalled.push(s);
+    }
+  }
+  if (patches.size > 0)
+    await update($, fleet, (f) => ({
+      ...f,
+      shells: f.shells.map((s) =>
+        patches.has(s.id) ? { ...s, ...patches.get(s.id) } : s,
+      ),
+    }));
+  for (const s of stalled)
+    $.ui.toast(
+      `⚠ ${shellName(s.command)} · no output for ${fmtLeft(quietMs(s, now))}`,
+    );
+  // the band's quiet minutes move with no state change: a redraw a minute
+  if (live.some((s) => s.stalled) && now - t.quietDrawnAt >= 60_000) {
+    t.quietDrawnAt = now;
+    $.ui.invalidate("ui.render");
+  }
+}
+
+function ensureShellPoll($: EngineInterface, t: Tracker) {
+  if (!t.shellPoll)
+    t.shellPoll = $.clock.every(SHELL_POLL_MS, () => void watchShells($, t));
+}
+
+/** Stops a background shell the way the model would, through TaskStop. */
+async function stopShell($: EngineInterface, id: string): Promise<void> {
+  await $.tool
+    .call({ tool: "TaskStop", task_id: id } as never)
+    .catch(() => $.ui.toast(`fleet: could not stop ${id}`));
+}
+
 /** A task notification or a turn's end: one agent or shell reached `status`. */
 async function endTask(
   $: EngineInterface,
@@ -234,6 +314,8 @@ export const register: Register = (on, options) => {
     root: undefined,
     docks: undefined,
     poll: undefined,
+    shellPoll: undefined,
+    quietDrawnAt: 0,
   };
 
   on("session.start", async ($, e, next) => {
@@ -264,9 +346,11 @@ export const register: Register = (on, options) => {
       }
       if (shown) await refreshTrees($, t);
     });
-    // a reload while agents run: pick the poll up again
-    if ((await read($, fleet)).agents.some((a) => isLive(a.status)))
-      ensurePoll($, t);
+    // a reload while agents or shells run: pick the polls up again
+    const f = await read($, fleet);
+    if (f.agents.some((a) => isLive(a.status))) ensurePoll($, t);
+    if (f.shells.some((s) => isLive(s.status) && s.outputFile))
+      ensureShellPoll($, t);
     return r;
   });
 
@@ -274,6 +358,8 @@ export const register: Register = (on, options) => {
     if (e.reason === "clear") {
       t.poll?.cancel();
       t.poll = undefined;
+      t.shellPoll?.cancel();
+      t.shellPoll = undefined;
       await update($, fleet, (f) => ({ ...emptyFleet(), trees: f.trees }));
     }
     return next(e);
@@ -349,17 +435,21 @@ export const register: Register = (on, options) => {
     const taskId = (r.result as { backgroundTaskId?: string } | undefined)
       ?.backgroundTaskId;
     if (!taskId) return r;
+    const outputFile = outputFileOf(r.text);
     const shell: FleetShell = {
       id: taskId,
       command: e.command,
       startedAt: Date.now(),
       status: "running",
+      ...(outputFile ? { outputFile } : {}),
+      ...(isWaiter(e.command) ? { waiter: true } : {}),
     };
     await update($, fleet, (f) => ({
       ...f,
       shells: trim([...f.shells.filter((s) => s.id !== taskId), shell]),
       batchStart: f.batchStart ?? shell.startedAt,
     }));
+    if (outputFile) ensureShellPoll($, t);
     return r;
   });
 
@@ -411,8 +501,23 @@ export const register: Register = (on, options) => {
       trees: f.trees,
     };
     if (e.surface === "terminal" || e.surface === "desktop") {
-      const { Client } = $.ui.resolve(e);
-      return <Client key="fleet-body" module="./pane.tsx" props={view} />;
+      const { Box, Button, Client, Text } = $.ui.resolve(e);
+      const live = f.shells.filter((s) => isLive(s.status));
+      return (
+        <Box flexDirection="column">
+          <Client key="fleet-body" module="./pane.tsx" props={view} />
+          {live.length > 0 && <Text> </Text>}
+          {live.map((s) => (
+            <Button
+              key={`fleet-stop-${s.id}`}
+              dimColor
+              onPress={() => stopShell($, s.id)}
+            >
+              {`stop ${shellName(s.command)}`}
+            </Button>
+          ))}
+        </Box>
+      );
     }
     return drawFleet($.ui.resolve(e), view, Date.now());
   });
@@ -423,6 +528,7 @@ export const register: Register = (on, options) => {
       t.docks = e.viewport.isFullscreen;
     const f = await read($, fleet);
     const open = await read($, pane);
+    const now = await $.clock.now();
     const empty = f.agents.length === 0 && f.shells.length === 0;
     if (e.props.hasSurvey || (empty && !open)) return next(e);
     const below = await next(e);
@@ -431,7 +537,11 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column">
         {below}
         <Box flexDirection="row" columnGap={2} marginTop={1}>
-          <Text dimColor>{statusLine(f) ?? "fleet"}</Text>
+          <Text dimColor>
+            {[statusLine(f) ?? "fleet", ...shellNotes(f.shells, now)].join(
+              " · ",
+            )}
+          </Text>
           <Button
             key="fleet-toggle"
             hotkey="f"

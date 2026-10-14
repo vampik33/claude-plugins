@@ -3,7 +3,13 @@
  * notifications, and the words of the toasts, status line and summary.
  */
 
-import type { FleetAgent, FleetShell, FleetState, FleetTree } from "../types";
+import type {
+  FleetAgent,
+  FleetProgress,
+  FleetShell,
+  FleetState,
+  FleetTree,
+} from "../types";
 
 /** Most agents and shells kept; the oldest ended ones fall off. */
 export const KEEP = 40;
@@ -245,4 +251,121 @@ export function parseStatus(
     ahead: Number(/ahead (\d+)/.exec(head)?.[1] ?? 0),
     behind: Number(/behind (\d+)/.exec(head)?.[1] ?? 0),
   };
+}
+
+/** No output for this long marks a live shell stalled. */
+export const STALL_MS = 5 * 60_000;
+
+/** The output file a background Bash result names. */
+export function outputFileOf(text: string | undefined): string | undefined {
+  return /Output is being written to: (\S+?\.output)\b/.exec(text ?? "")?.[1];
+}
+
+/** Escape sequences: OSC (titles, links, clipboard), then CSI (colours, cursor), then any other ESC pair. */
+const ESCAPES = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[\s\S]?/g;
+/** Control characters left once lines are split: none of them reaches the screen. */
+const CONTROLS = /[\x00-\x1f\x7f-\x9f]/g;
+
+/**
+ * The last non-blank line of an output tail: a `\r`-redrawn bar's last frame,
+ * every escape sequence and control character dropped, since the output is
+ * the shell's and goes on screen.
+ */
+export function lastLine(tail: string): string | undefined {
+  return tail
+    .replace(ESCAPES, "")
+    .split(/\r\n|\r|\n/)
+    .map((l) => l.replace(CONTROLS, "").trim())
+    .filter(Boolean)
+    .at(-1);
+}
+
+/**
+ * The fraction done a line says: "47%" or "month 14/30". A slash inside a
+ * date or a path (2026/10/12, src/10/12) is no count.
+ */
+export function parseProgress(line: string): number | undefined {
+  const pct = /(\d{1,3}(?:\.\d+)?)\s*%/.exec(line);
+  if (pct && Number(pct[1]) <= 100) return Number(pct[1]) / 100;
+  for (const m of line.matchAll(/(?<![\d./-])(\d+)\s*\/\s*(\d+)(?![\d./-])/g)) {
+    const done = Number(m[1]);
+    const total = Number(m[2]);
+    if (total >= 2 && done <= total) return done / total;
+  }
+  return undefined;
+}
+
+/** A new reading: kept from where it started, restarted when it goes back (a new phase). */
+export function nextProgress(
+  prev: FleetProgress | undefined,
+  frac: number | undefined,
+  now: number,
+): FleetProgress | undefined {
+  if (frac === undefined) return prev;
+  if (!prev || frac < prev.frac) return { frac, firstAt: now, firstFrac: frac };
+  return { ...prev, frac };
+}
+
+/** Time left at the rate seen so far; undefined until 30 s of movement. */
+export function etaMs(p: FleetProgress, now: number): number | undefined {
+  const dt = now - p.firstAt;
+  const df = p.frac - p.firstFrac;
+  if (dt < 30_000 || df <= 0) return undefined;
+  return ((1 - p.frac) * dt) / df;
+}
+
+/** 38m, 1h10m, <1m */
+export function fmtLeft(ms: number): string {
+  const m = Math.round(ms / 60_000);
+  if (m < 1) return "<1m";
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${pad(m % 60)}m`;
+}
+
+/** A wait loop: `until …; do …; done`, or a `while` that sleeps. */
+export const isWaiter = (command: string) =>
+  /\buntil\b[\s\S]*\bdo\b|\bwhile\b[\s\S]*\bsleep\b/.test(command);
+
+const SETUP = /^(cd|export|set|source|\.)(\s|$)/;
+const ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/** A shell in a few words: the first real step's program and argument, "retrain.sh d57". */
+export function shellName(command: string): string {
+  const step =
+    command
+      .split(/&&|\|\||;|\n/)
+      .map((s) => s.trim())
+      .find((s) => s && !SETUP.test(s) && !s.split(/\s+/).every((w) => ASSIGN.test(w))) ??
+    command.trim();
+  const name = step
+    .split(/\s+/)
+    .filter((w) => !ASSIGN.test(w))
+    .slice(0, 2)
+    .map((w) => w.split("/").pop())
+    .join(" ");
+  return name.length > 20 ? `${name.slice(0, 19)}…` : name;
+}
+
+/** How quiet a live shell has been. */
+export const quietMs = (s: FleetShell, now: number) =>
+  now - (s.outputAt ?? s.startedAt);
+
+/** A live shell's state in a few words, or undefined when there is nothing to say. */
+export function shellNote(s: FleetShell, now: number): string | undefined {
+  if (s.waiter) return "waiting";
+  if (s.stalled) return `⚠ no output ${fmtLeft(quietMs(s, now))}`;
+  if (!s.progress) return undefined;
+  const left = etaMs(s.progress, now);
+  return `${Math.floor(s.progress.frac * 100)}%${left === undefined ? "" : ` ~${fmtLeft(left)}`}`;
+}
+
+/** The band's progress items: "sim.py 47% ~38m", "retrain.sh d57 ⚠ 6m". */
+export function shellNotes(shells: FleetShell[], now: number): string[] {
+  return shells
+    .filter((s) => isLive(s.status) && !s.waiter)
+    .flatMap((s) => {
+      const name = shellName(s.command);
+      if (s.stalled) return [`${name} ⚠ ${fmtLeft(quietMs(s, now))}`];
+      const note = shellNote(s, now);
+      return note ? [`${name} ${note}`] : [];
+    });
 }

@@ -28,6 +28,7 @@ const TOAST_GAP_MS = 2_100;
 
 const fleet = atom({ plugin: "fleet", key: "fleet" } as const, emptyFleet());
 const pane = atom({ plugin: "fleet", key: "pane" } as const, false);
+const lastPrompt = atom({ plugin: "fleet", key: "lastPrompt" } as const, 0);
 
 /** What the module keeps outside `$.state`; a reload starts it over. */
 type Tracker = {
@@ -37,7 +38,6 @@ type Tracker = {
   idleMs: number;
   repo: string;
   root: string | undefined;
-  lastPrompt: number;
   /** Whether the surface docks a pane beside the transcript, as the band last drew; unknown until then. */
   docks: boolean | undefined;
   poll: { cancel: () => void } | undefined;
@@ -136,7 +136,7 @@ async function settle($: EngineInterface, t: Tracker): Promise<void> {
   const size =
     f.agents.filter((a) => a.startedAt >= batch).length +
     f.shells.filter((s) => s.startedAt >= batch).length;
-  const now = Date.now();
+  const now = await $.clock.now();
   const text = summary(f, t.repo, now);
   await update($, fleet, ({ batchStart: _, ...g }) => ({
     ...g,
@@ -149,7 +149,8 @@ async function settle($: EngineInterface, t: Tracker): Promise<void> {
     $.clock.after(TOAST_GAP_MS, () => $.ui.toast(done));
     if (t.sound) chime($, "complete");
   }
-  if (t.telegram && now - t.lastPrompt >= t.idleMs) await sendTelegram($, text);
+  if (t.telegram && now - (await read($, lastPrompt)) >= t.idleMs)
+    await sendTelegram($, text);
 }
 
 /** One look at `$.agent.list()`: status changes, their alerts, maybe all done. */
@@ -231,7 +232,6 @@ export const register: Register = (on, options) => {
         : 5) * 60_000,
     repo: "",
     root: undefined,
-    lastPrompt: Date.now(),
     docks: undefined,
     poll: undefined,
   };
@@ -249,6 +249,9 @@ export const register: Register = (on, options) => {
     t.root = top?.exitCode === 0 ? top.stdout.trim() : undefined;
     const cwd = await $.session.cwd().catch(() => "");
     t.repo = (t.root ?? cwd).split("/").pop() || "session";
+    // the session's start counts as a prompt; a reload keeps the last one
+    const started = await $.clock.now();
+    await update($, lastPrompt, (at) => at || started);
     // a reload keeps an open pane
     const drawn = await isPaneDrawn($);
     await update($, pane, () => drawn);
@@ -288,7 +291,10 @@ export const register: Register = (on, options) => {
   });
 
   on("prompt.submit", async ($, e, next) => {
-    if (e.origin.kind === "composer") t.lastPrompt = Date.now();
+    if (e.origin.kind === "composer") {
+      const at = await $.clock.now();
+      await update($, lastPrompt, () => at);
+    }
     return next(e);
   });
 

@@ -38,6 +38,8 @@ claude plugin install fleet@vampik-plugins
 
 Named agents (agent teams) go idle between turns: they show as done without a toast.
 
+Marking a shell lost relies on the classic `Stop` hook, which does not run where an organization manages Claude Code (only plugins the organization lists run classic hooks there): a shell that ends without a notification may stay shown as running.
+
 ## How It Works
 
 `agent.spawn` and `tool.call` record agents and their last tool; `$.agent.list()` is polled every 2 s while any runs; a turn's end and task notifications report finishes at once; at each turn's end a background shell no longer in the engine's in-flight list is marked lost (`?`), its exit unknown; worktrees come from `git worktree list` every 15 s while the pane is shown.

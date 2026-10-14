@@ -241,9 +241,15 @@ describe("git", () => {
 });
 
 /** The engine's side: answers for every call the mod makes; records what it showed. */
-function engine(on: any, list: { id: string; status: string }[]) {
+function engine(
+  on: any,
+  list: { id: string; status: string }[],
+  env: Record<string, string> = {},
+) {
   const seen = {
     toasts: [] as string[],
+    /** Texts sent to Telegram. */
+    telegram: [] as string[],
     status: [] as (string | undefined)[],
     opened: 0,
     closed: 0,
@@ -255,7 +261,11 @@ function engine(on: any, list: { id: string; status: string }[]) {
     isShown: true,
   };
   const clock = mock.clock(on, { now: Date.now() });
-  mock.env(on, {});
+  mock.env(on, env);
+  on("http.fetch", (_$: unknown, e: { init: { body: string } }) => {
+    seen.telegram.push(JSON.parse(e.init.body).text);
+    return { value: { status: 200, ok: true, headers: {}, text: "{}" } };
+  });
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
   on("session.cwd", () => ({ value: "/r/deployer" }));
@@ -340,86 +350,88 @@ const drawBand = async (
 };
 
 describe("session", () => {
-  test(
-    "two agents open the pane; each end toasts; the batch's end says all done",
-    { options: { sound: false, telegram: false } },
-    async ($, on) => {
-      const list = [
-        { id: "a1", status: "running" },
-        { id: "a2", status: "running" },
-      ];
-      const { seen, clock } = engine(on, list);
-      await drawBand($, "terminal", true);
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `two agents open the pane; each end toasts; the batch's end says all done (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const list = [
+          { id: "a1", status: "running" },
+          { id: "a2", status: "running" },
+        ];
+        const { seen, clock } = engine(on, list);
+        await drawBand($, surface, true);
 
-      await spawn($, "review plan");
-      expect(seen.opened).toBe(0);
-      await spawn($, "review apply");
-      expect(seen.opened).toBe(1);
+        await spawn($, "review plan");
+        expect(seen.opened).toBe(0);
+        await spawn($, "review apply");
+        expect(seen.opened).toBe(1);
 
-      await $.turn.complete({
-        answer: "",
-        durationMs: 1,
-        isAborted: false,
-        turnId: "t",
-        reason: "answer",
-        agentId: "a1",
-      } as never);
-      expect(
-        seen.toasts.some((t) => /^✓ Explore · review plan · \d+s$/.test(t)),
-      ).toBe(true);
+        await $.turn.complete({
+          answer: "",
+          durationMs: 1,
+          isAborted: false,
+          turnId: "t",
+          reason: "answer",
+          agentId: "a1",
+        } as never);
+        expect(
+          seen.toasts.some((t) => /^✓ Explore · review plan · \d+s$/.test(t)),
+        ).toBe(true);
 
-      list[0]!.status = "completed";
-      list[1]!.status = "failed";
-      await clock.advance(2_000);
-      expect(
-        seen.toasts.some((t) =>
-          t.startsWith("✗ Explore failed · review apply"),
-        ),
-      ).toBe(true);
-      const allDone = () =>
-        seen.toasts.some((t) => t.startsWith("All 2 agents done in"));
-      expect(allDone()).toBe(false); // held past the engine's 2 s toast gap
-      await clock.advance(2_100);
-      expect(allDone()).toBe(true);
-      // the band above the prompt carries the counts; the status line stays free
-      expect(seen.status).toEqual([]);
-    },
-  );
+        list[0]!.status = "completed";
+        list[1]!.status = "failed";
+        await clock.advance(2_000);
+        expect(
+          seen.toasts.some((t) =>
+            t.startsWith("✗ Explore failed · review apply"),
+          ),
+        ).toBe(true);
+        const allDone = () =>
+          seen.toasts.some((t) => t.startsWith("All 2 agents done in"));
+        expect(allDone()).toBe(false); // held past the engine's 2 s toast gap
+        await clock.advance(2_100);
+        expect(allDone()).toBe(true);
+        // the band above the prompt carries the counts; the status line stays free
+        expect(seen.status).toEqual([]);
+      },
+    );
 
-  test(
-    "a turn's end marks lost the shells no longer in flight",
-    { options: { sound: false, telegram: false } },
-    async ($, on) => {
-      const { seen, clock } = engine(on, []);
-      let n = 0;
-      on("tool.call", () => ({ result: { backgroundTaskId: `b${++n}` } }));
-      on("classic.Stop", () => ({}));
-      const task = (id: string) => ({ id, type: "shell", status: "running", description: "" });
-      const stop = (ids: string[]) =>
-        $.classic.Stop({ stop_hook_active: false, background_tasks: ids.map(task) } as never);
-      const line = async () => {
-        const ui = await $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
-        const text = (await ui.find({ type: "Text" }))?.text;
-        await ui.unmount();
-        return text;
-      };
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `a turn's end marks lost the shells no longer in flight (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { seen, clock } = engine(on, []);
+        let n = 0;
+        on("tool.call", () => ({ result: { backgroundTaskId: `b${++n}` } }));
+        on("classic.Stop", () => ({}));
+        const task = (id: string) => ({ id, type: "shell", status: "running", description: "" });
+        const stop = (ids: string[]) =>
+          $.classic.Stop({ stop_hook_active: false, background_tasks: ids.map(task) } as never);
+        const line = async () => {
+          const ui = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
+          const text = (await ui.find({ type: "Text" }))?.text;
+          await ui.unmount();
+          return text;
+        };
 
-      await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
-      await $.tool.call({ tool: "Bash", command: "cargo bench" } as never);
-      expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+        await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
+        await $.tool.call({ tool: "Bash", command: "cargo bench" } as never);
+        expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
 
-      await $.classic.Stop({ stop_hook_active: false } as never); // no list: nothing known
-      expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
-      await stop(["b2"]);
-      expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
-      await stop([]);
-      expect(await line()).toBe("fleet"); // nothing live: the batch closed
-      // no toast of its own for a lost shell; the batch's all-done counts it
-      expect(seen.toasts).toEqual([]);
-      await clock.advance(2_100);
-      expect(seen.toasts).toEqual(["All done in 0s · Background shells: ✓ 0   ? 2"]);
-    },
-  );
+        await $.classic.Stop({ stop_hook_active: false } as never); // no list: nothing known
+        expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+        await stop(["b2"]);
+        expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+        await stop([]);
+        expect(await line()).toBe("fleet"); // nothing live: the batch closed
+        // no toast of its own for a lost shell; the batch's all-done counts it
+        expect(seen.toasts).toEqual([]);
+        await clock.advance(2_100);
+        expect(seen.toasts).toEqual(["All done in 0s · Background shells: ✓ 0   ? 2"]);
+      },
+    );
 
   test(
     "agents that end together raise one toast",
@@ -439,6 +451,61 @@ describe("session", () => {
       expect(seen.toasts[0]).toMatch(
         /^2 finished: ✓ Explore · review plan · \d+s; ✗ Explore failed · review apply · \d+s$/,
       );
+    },
+  );
+
+  test(
+    "the away check survives a reload: session.start again keeps the last prompt's time",
+    { options: { sound: false, idleMinutes: 5 } },
+    async ($, on) => {
+      const list = [
+        { id: "a1", status: "running" },
+        { id: "a2", status: "running" },
+      ];
+      const { seen, clock } = engine(on, list, {
+        TELEGRAM_BOT_TOKEN: "t",
+        TELEGRAM_CHAT_ID: "c",
+      });
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({ text: e.text }));
+      on("session.start", (_$, e) => e as never);
+      await $.session.start({ cwd: "/r/deployer" } as never);
+      await $.prompt.submit({ text: "go", origin: { kind: "composer" } } as never);
+      await spawn($, "review plan");
+      await spawn($, "review apply");
+      await clock.advance(6 * 60_000);
+      // a reload runs session.start again: the prompt's time stays, so the person is still away
+      await $.session.start({ cwd: "/r/deployer" } as never);
+      list[0]!.status = "completed";
+      list[1]!.status = "completed";
+      await clock.advance(2_000);
+      expect(seen.telegram).toHaveLength(1);
+      expect(seen.telegram[0]).toContain("All 2 agents done in");
+    },
+  );
+
+  test(
+    "no Telegram summary while the person is at the keyboard",
+    { options: { sound: false, idleMinutes: 5 } },
+    async ($, on) => {
+      const list = [
+        { id: "a1", status: "running" },
+        { id: "a2", status: "running" },
+      ];
+      const { seen, clock } = engine(on, list, {
+        TELEGRAM_BOT_TOKEN: "t",
+        TELEGRAM_CHAT_ID: "c",
+      });
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({ text: e.text }));
+      on("session.start", (_$, e) => e as never);
+      await $.session.start({ cwd: "/r/deployer" } as never);
+      await spawn($, "review plan");
+      await spawn($, "review apply");
+      await clock.advance(6 * 60_000);
+      await $.prompt.submit({ text: "go", origin: { kind: "composer" } } as never);
+      list[0]!.status = "completed";
+      list[1]!.status = "completed";
+      await clock.advance(2_000);
+      expect(seen.telegram).toEqual([]);
     },
   );
 
@@ -470,76 +537,79 @@ describe("session", () => {
     expect([seen.opened, seen.closed]).toEqual([2, 1]);
   });
 
-  test("the band's toggle shows and hides the pane, on a line under other bands", async ($, on) => {
-    const { seen } = engine(on, [{ id: "a1", status: "running" }]);
-    const mount = () => $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
+  for (const surface of ["terminal", "desktop"] as const)
+    test(`the band's toggle shows and hides the pane, on a line under other bands (${surface})`, async ($, on) => {
+      const { seen } = engine(on, [{ id: "a1", status: "running" }]);
+      const mount = () => $.ui.mount({ plugin: "fleet", surface, ...BAND });
 
-    let ui = await mount();
-    expect(await ui.find({ key: "fleet-toggle" })).toBeUndefined();
-    await ui.unmount();
-
-    await spawn($, "map callers");
-    ui = await mount();
-    const drawn: any = await ui.drawn();
-    expect(drawn.props.flexDirection).toBe("column");
-    // a blank row above the fleet line, whatever is drawn above it
-    expect(drawn.children.at(-1).props.marginTop).toBe(1);
-    expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
-    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
-    await ui.press({ key: "fleet-toggle" });
-    expect(seen.opened).toBe(1);
-    await ui.unmount();
-
-    ui = await mount();
-    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("hide");
-    await ui.press({ key: "fleet-toggle" });
-    expect(seen.closed).toBe(1);
-    await ui.unmount();
-  });
-
-  test("the band's toggle shows and hides the pane on every press", async ($, on) => {
-    const { seen } = engine(on, [{ id: "a1", status: "running" }]);
-    seen.isShown = false; // the engine's isShown says nothing of the toggle
-    await spawn($, "map callers");
-    const mount = () => $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
-    const press = async (label: string) => {
-      const ui = await mount();
-      expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe(label);
-      await ui.press({ key: "fleet-toggle" });
+      let ui = await mount();
+      expect(await ui.find({ key: "fleet-toggle" })).toBeUndefined();
       await ui.unmount();
-    };
-    for (let i = 0; i < 3; i++) {
-      await press("show");
-      expect(seen.isOpen).toBe(true);
-      await press("hide");
-      expect(seen.isOpen).toBe(false);
-    }
-    expect([seen.opened, seen.closed]).toEqual([3, 3]);
-  });
 
-  test("an auto-open that waits undrawn still offers show, and show draws it", async ($, on) => {
-    const { seen } = engine(on, [
-      { id: "a1", status: "running" },
-      { id: "a2", status: "running" },
-    ]);
-    seen.placeNext = false;
-    await drawBand($, "terminal", true);
-    await spawn($, "review plan");
-    await spawn($, "review apply");
-    expect([seen.opened, seen.isPlaced]).toEqual([1, false]);
+      await spawn($, "map callers");
+      ui = await mount();
+      const drawn: any = await ui.drawn();
+      expect(drawn.props.flexDirection).toBe("column");
+      // a blank row above the fleet line, whatever is drawn above it
+      expect(drawn.children.at(-1).props.marginTop).toBe(1);
+      expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
+      expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
+      await ui.press({ key: "fleet-toggle" });
+      expect(seen.opened).toBe(1);
+      await ui.unmount();
 
-    const mount = () => $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
-    let ui = await mount();
-    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
-    seen.placeNext = true; // a press is asked: drawn at any width
-    await ui.press({ key: "fleet-toggle" });
-    expect([seen.opened, seen.closed, seen.isPlaced]).toEqual([2, 0, true]);
-    await ui.unmount();
+      ui = await mount();
+      expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("hide");
+      await ui.press({ key: "fleet-toggle" });
+      expect(seen.closed).toBe(1);
+      await ui.unmount();
+    });
 
-    ui = await mount();
-    expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("hide");
-    await ui.unmount();
-  });
+  for (const surface of ["terminal", "desktop"] as const)
+    test(`the band's toggle shows and hides the pane on every press (${surface})`, async ($, on) => {
+      const { seen } = engine(on, [{ id: "a1", status: "running" }]);
+      seen.isShown = false; // the engine's isShown says nothing of the toggle
+      await spawn($, "map callers");
+      const mount = () => $.ui.mount({ plugin: "fleet", surface, ...BAND });
+      const press = async (label: string) => {
+        const ui = await mount();
+        expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe(label);
+        await ui.press({ key: "fleet-toggle" });
+        await ui.unmount();
+      };
+      for (let i = 0; i < 3; i++) {
+        await press("show");
+        expect(seen.isOpen).toBe(true);
+        await press("hide");
+        expect(seen.isOpen).toBe(false);
+      }
+      expect([seen.opened, seen.closed]).toEqual([3, 3]);
+    });
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(`an auto-open that waits undrawn still offers show, and show draws it (${surface})`, async ($, on) => {
+      const { seen } = engine(on, [
+        { id: "a1", status: "running" },
+        { id: "a2", status: "running" },
+      ]);
+      seen.placeNext = false;
+      await drawBand($, surface, true);
+      await spawn($, "review plan");
+      await spawn($, "review apply");
+      expect([seen.opened, seen.isPlaced]).toEqual([1, false]);
+
+      const mount = () => $.ui.mount({ plugin: "fleet", surface, ...BAND });
+      let ui = await mount();
+      expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
+      seen.placeNext = true; // a press is asked: drawn at any width
+      await ui.press({ key: "fleet-toggle" });
+      expect([seen.opened, seen.closed, seen.isPlaced]).toEqual([2, 0, true]);
+      await ui.unmount();
+
+      ui = await mount();
+      expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("hide");
+      await ui.unmount();
+    });
 
   test("the pane lists agents with ticking time on terminal and desktop", async ($, on) => {
     engine(on, [{ id: "a1", status: "running" }]);
@@ -573,40 +643,41 @@ describe("session", () => {
     }
   });
 
-  test("the pane shows when an ended agent finished", async ($, on) => {
-    engine(on, [{ id: "a1", status: "running" }]);
-    await spawn($, "map callers");
-    await $.turn.complete({
-      answer: "",
-      durationMs: 1,
-      isAborted: false,
-      turnId: "t",
-      reason: "answer",
-      agentId: "a1",
-    } as never);
-    const ui = await $.ui.mount({
-      plugin: "fleet",
-      surface: "terminal",
-      component: "Pane",
-      requestId: "fleet",
-      props: {
-        title: "Fleet",
-        isFocused: false,
-        bodyColumns: 50,
-        placement: "dock",
-        scroll: { offset: 0, bodyRows: 20 },
-      } as never,
+  for (const surface of ["terminal", "desktop"] as const)
+    test(`the pane shows when an ended agent finished (${surface})`, async ($, on) => {
+      engine(on, [{ id: "a1", status: "running" }]);
+      await spawn($, "map callers");
+      await $.turn.complete({
+        answer: "",
+        durationMs: 1,
+        isAborted: false,
+        turnId: "t",
+        reason: "answer",
+        agentId: "a1",
+      } as never);
+      const ui = await $.ui.mount({
+        plugin: "fleet",
+        surface,
+        component: "Pane",
+        requestId: "fleet",
+        props: {
+          title: "Fleet",
+          isFocused: false,
+          bodyColumns: 50,
+          placement: "dock",
+          scroll: { offset: 0, bodyRows: 20 },
+        } as never,
+      });
+      const clock = fmtClock(Date.now(), Date.now());
+      expect(
+        await ui.find({
+          in: "fleet-body",
+          type: "Text",
+          text: new RegExp(`Explore +\\d+s · ${clock}$`),
+        }),
+      ).toBeDefined();
+      await ui.unmount();
     });
-    const clock = fmtClock(Date.now(), Date.now());
-    expect(
-      await ui.find({
-        in: "fleet-body",
-        type: "Text",
-        text: new RegExp(`Explore +\\d+s · ${clock}$`),
-      }),
-    ).toBeDefined();
-    await ui.unmount();
-  });
 });
 
 /** Every line of text a drawing holds, one per outer Text. */

@@ -4,6 +4,15 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-10-14
+
+### Fixed
+- The time of your last prompt, which decides whether the Telegram summary is sent, is kept in the session state, so a reload no longer makes you look active
+
+### Changed
+- The band, pane and auto-open tests run on both terminal and desktop
+- README says lost-shell detection rests on the classic `Stop` hook, which does not run where an organization manages Claude Code
+
 ## [0.4.1] - 2026-10-14
 
 ### Fixed

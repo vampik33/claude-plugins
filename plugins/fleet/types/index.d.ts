@@ -42,7 +42,7 @@ export type FleetState = {
 
 declare module "claude-code" {
   interface PluginState {
-    /** pane: whether the fleet pane is open (shown or a tab) */
-    fleet: { fleet: FleetState; pane: boolean };
+    /** pane: whether the fleet pane is open (shown or a tab); lastPrompt: when the person last sent a prompt (ms), for the away check */
+    fleet: { fleet: FleetState; pane: boolean; lastPrompt: number };
   }
 }

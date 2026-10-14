@@ -20,6 +20,7 @@ claude plugin install prompt-clock@vampik-plugins
 - `session.append` stamps each typed prompt by its row id; `ui.render` on `UserMessage` puts the time in front.
 - `turn.complete` records each turn's end; `ui.render` on `TurnDuration` draws the line with start → end.
 - A resumed session reads earlier prompts' times from its transcript file.
+  That read runs in the classic `SessionStart` hook, which does not run where an organization manages Claude Code (there only plugins the organization lists run classic hooks): there, earlier prompts of a resumed session show no time.
 - Times from another day get the date: `Oct 4 23:10:05`.
 
 ## Configuration

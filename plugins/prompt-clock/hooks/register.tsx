@@ -38,10 +38,10 @@ export const register: Register = (on, options) => {
   const seconds = options.seconds !== false;
   const showRange = options.turnRange !== false;
 
-  // a resumed session: earlier prompts' times come from its own transcript
+  // a resumed or forked session: earlier prompts' times come from its own transcript
   on("classic.SessionStart", async ($, e, next) => {
     const r = await next(e);
-    if (e.source === "resume" || e.source === "startup")
+    if (e.source === "resume" || e.source === "fork")
       await loadTranscript($, e.transcript_path);
     return r;
   });
@@ -57,7 +57,7 @@ export const register: Register = (on, options) => {
     if (e.agentId || e.origin.kind !== "composer" || "deny" in r) return r;
     const text = promptText(e.message.content);
     if (text === undefined) return r;
-    const at = Date.now();
+    const at = await $.clock.now();
     await update($, times, (t: PromptClockTimes) => ({
       ...t,
       sent: cap({ ...t.sent, [r.uuid]: at }),
@@ -69,7 +69,7 @@ export const register: Register = (on, options) => {
   on("turn.complete", async ($, e, next) => {
     const r = await next(e);
     if (!e.agentId) {
-      const end = Date.now();
+      const end = await $.clock.now();
       await update($, times, (t) => ({
         ...t,
         turns: cap({ ...t.turns, [String(e.durationMs)]: end }),
@@ -88,7 +88,7 @@ export const register: Register = (on, options) => {
       ...e,
       props: {
         ...e.props,
-        text: stampText(e.props.text, at, Date.now(), seconds),
+        text: stampText(e.props.text, at, await $.clock.now(), seconds),
       },
     });
   });
@@ -100,7 +100,12 @@ export const register: Register = (on, options) => {
     if (end === undefined) return next(e);
     // the engine's line is opaque and takes the row, so the mod draws the whole line
     const { Text } = $.ui.resolve(e);
-    const range = turnRange(end, e.props.durationMs, Date.now(), seconds);
+    const range = turnRange(
+      end,
+      e.props.durationMs,
+      await $.clock.now(),
+      seconds,
+    );
     return <Text dimColor>{`✻ ${e.props.word} for ${fmtDuration(e.props.durationMs)} · ${range}`}</Text>;
   });
 };

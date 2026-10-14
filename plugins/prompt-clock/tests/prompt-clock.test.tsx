@@ -1,4 +1,4 @@
-import { describe, expect, test } from "claude-code/testing";
+import { describe, expect, mock, test } from "claude-code/testing";
 
 import {
   cap,
@@ -105,10 +105,11 @@ describe("transcript", () => {
 
 describe("rows", () => {
   test("a resumed session's typed prompt gets its send time; a notification's does not", async ($, on) => {
+    mock.clock(on, { now: at(18, 0, 0) });
     const row = {
       type: "user",
       uuid: "row-1",
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(at(16, 42, 7)).toISOString(),
       message: { content: "run the tests" },
     };
     on("fs.read", () => ({ value: JSON.stringify(row) + "\n" }));
@@ -142,7 +143,7 @@ describe("rows", () => {
       expect(
         await ui.find({
           type: "Text",
-          text: /^\d\d:\d\d:\d\d · run the tests$/,
+          text: "16:42:07 · run the tests",
         }),
       ).toBeDefined();
       await ui.unmount();
@@ -164,7 +165,8 @@ describe("rows", () => {
     }
   });
 
-  test("the turn line gets start and end", async ($, on) => {
+  test("the turn line gets start and end, from the engine's clock", async ($, on) => {
+    mock.clock(on, { now: at(16, 45, 11) });
     on("turn.complete", (_$, e) => ({ text: e.answer }));
     on("ui.render", () => h("Text", null, "✻ Baked for 3s") as never);
     await $.turn.complete({
@@ -174,18 +176,41 @@ describe("rows", () => {
       turnId: "t1",
       reason: "answer",
     } as never);
-    const ui = await $.ui.mount({
-      plugin: "prompt-clock",
-      surface: "terminal",
-      component: "TurnDuration",
-      props: { word: "Baked", durationMs: 3000 },
+    for (const surface of ["terminal", "desktop"] as const) {
+      const ui = await $.ui.mount({
+        plugin: "prompt-clock",
+        surface,
+        component: "TurnDuration",
+        props: { word: "Baked", durationMs: 3000 },
+      });
+      expect(
+        await ui.find({
+          type: "Text",
+          text: "✻ Baked for 3s · 16:45:08 → 16:45:11",
+        }),
+      ).toBeDefined();
+      await ui.unmount();
+    }
+  });
+
+  test("the transcript is read on resume and fork, not on a fresh start", async ($, on) => {
+    const reads: string[] = [];
+    on("fs.read", (_$, e) => {
+      reads.push(e.path);
+      return { value: "" };
     });
-    expect(
-      await ui.find({
-        type: "Text",
-        text: /^✻ Baked for 3s · \d\d:\d\d:\d\d → \d\d:\d\d:\d\d$/,
-      }),
-    ).toBeDefined();
-    await ui.unmount();
+    on("classic.SessionStart", () => ({}));
+    for (const source of ["startup", "clear", "compact"] as const)
+      await $.classic.SessionStart({
+        source,
+        transcript_path: `/${source}.jsonl`,
+      } as never);
+    expect(reads).toEqual([]);
+    for (const source of ["resume", "fork"] as const)
+      await $.classic.SessionStart({
+        source,
+        transcript_path: `/${source}.jsonl`,
+      } as never);
+    expect(reads).toEqual(["/resume.jsonl", "/fork.jsonl"]);
   });
 });

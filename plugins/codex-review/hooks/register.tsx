@@ -148,7 +148,7 @@ async function startJob(
   if (!isSafeRef(base)) return `Not a branch name: ${base}`;
   const empty = await nothingToReview($, root, req.scope, base);
   if (empty) return empty;
-  const id = `cx-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const id = `cx-${(await $.clock.now()).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const dir = `${home}/.cache/codex-review/${id}`;
   const made = await run($, ["mkdir", "-p", dir]);
   if (made?.exitCode !== 0) return `Cannot create ${dir}`;
@@ -188,7 +188,7 @@ async function startJob(
     focus: req.focus,
     dir,
     pid,
-    startedAt: Date.now(),
+    startedAt: await $.clock.now(),
     status: "running",
     byTool: req.byTool,
   };
@@ -215,6 +215,7 @@ async function finishJob(
   const outcome = readOutcome(job.mode, out, err);
   let done: CxJob | undefined;
   let fresh = false;
+  const endedAt = await $.clock.now();
   await update($, cx, (s) => {
     const cur = s.jobs.find((j) => j.id === id);
     if (!cur || cur.status !== "running") {
@@ -222,7 +223,7 @@ async function finishJob(
       return s;
     }
     fresh = true;
-    done = { ...cur, ...outcome, endedAt: Date.now() };
+    done = { ...cur, ...outcome, endedAt };
     const jobs = s.jobs.map((j) => (j.id === id ? done! : j));
     if (cur.byTool) return { ...s, jobs };
     return {
@@ -364,11 +365,12 @@ async function cancelJobs($: EngineInterface, ids?: string[]): Promise<number> {
     await run($, ["kill", String(job.pid)]);
   }
   const gone = new Set(running.map((j) => j.id));
+  const endedAt = await $.clock.now();
   await update($, cx, (s) => ({
     ...s,
     jobs: s.jobs.map((j) =>
       gone.has(j.id) && j.status === "running"
-        ? { ...j, status: "cancelled" as const, endedAt: Date.now() }
+        ? { ...j, status: "cancelled" as const, endedAt }
         : j,
     ),
   }));
@@ -563,6 +565,7 @@ export const register: Register = (on, options) => {
             : null,
         };
     const below = await next(e);
+    const now = await $.clock.now();
     const { Box, Button, Text } = $.ui.resolve(e);
     let line;
     if (
@@ -576,7 +579,7 @@ export const register: Register = (on, options) => {
         <Text dimColor>
           {props.kind === "running"
             ? `${props.label} · ${props.detail}`
-            : `codex · ${idleText(props.last, Date.now())}`}
+            : `codex · ${idleText(props.last, now)}`}
         </Text>
       );
     }
@@ -632,7 +635,9 @@ export const register: Register = (on, options) => {
     const job = s.jobs.find((j) => j.id === s.shown);
     if (!job)
       return <Text dimColor>No Codex review to show. /cx starts one.</Text>;
-    const took = fmtElapsed((job.endedAt ?? Date.now()) - job.startedAt);
+    const took = fmtElapsed(
+      (job.endedAt ?? (await $.clock.now())) - job.startedAt,
+    );
     const close = () => $.ui.close({ id: PANE });
     const send = async (text: string) => {
       await close();

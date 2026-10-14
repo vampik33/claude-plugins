@@ -494,47 +494,49 @@ const BAND = {
   } as never,
 };
 
+const SURFACES = ["terminal", "desktop"] as const;
+
 describe("session", () => {
-  test("/cx runs in the background; when it ends the pane offers the picked findings", async ($, on) => {
-    const { seen, clock } = engine(on, JSON.stringify(REAL));
-    const started = await $.command.run({
-      command: "cx",
-      args: 'adv "avg helper"',
-    } as never);
-    expect((started as { text: string }).text).toContain("deployer · base main");
+  for (const surface of SURFACES) {
+    test(`/cx runs in the background; when it ends the pane offers the picked findings (${surface})`, async ($, on) => {
+      const { seen, clock } = engine(on, JSON.stringify(REAL));
+      const started = await $.command.run({
+        command: "cx",
+        args: 'adv "avg helper"',
+      } as never);
+      expect((started as { text: string }).text).toContain("deployer · base main");
 
-    const band = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      component: "AbovePrompt",
-      props: {
-        hasSurvey: false,
-        isWorking: false,
-        maxRows: 10,
-        bodyColumns: 120,
-        scroll: { offset: 0, bodyRows: 10 },
-        view: {},
-      } as never,
-      viewport: { columns: 160, rows: 40, isFullscreen: true },
-    });
-    expect(await band.find({ key: "codex-band" })).toBeDefined();
-    // its own line under the other bands, never beside them, a blank row between
-    const drawn: any = await band.drawn();
-    expect(drawn.props.flexDirection).toBe("column");
-    const row = drawn.children.at(-1);
-    expect(row.props.key).toBe("codex-line");
-    expect(row.props.marginTop).toBe(1);
-    expect(row.children[0].type).toBe("Client");
-    await band.unmount();
+      const band = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        component: "AbovePrompt",
+        props: {
+          hasSurvey: false,
+          isWorking: false,
+          maxRows: 10,
+          bodyColumns: 120,
+          scroll: { offset: 0, bodyRows: 10 },
+          view: {},
+        } as never,
+        viewport: { columns: 160, rows: 40, isFullscreen: true },
+      });
+      expect(await band.find({ key: "codex-band" })).toBeDefined();
+      // its own line under the other bands, never beside them, a blank row between
+      const drawn: any = await band.drawn();
+      expect(drawn.props.flexDirection).toBe("column");
+      const row = drawn.children.at(-1);
+      expect(row.props.key).toBe("codex-line");
+      expect(row.props.marginTop).toBe(1);
+      expect(row.children[0].type).toBe("Client");
+      await band.unmount();
 
-    seen.alive = false;
-    await clock.advance(10_000);
-    expect(
-      seen.toasts.some((t) => /^Codex needs-attention · 2 findings · /.test(t)),
-    ).toBe(true);
-    expect(seen.opened).toBe(1);
+      seen.alive = false;
+      await clock.advance(10_000);
+      expect(
+        seen.toasts.some((t) => /^Codex needs-attention · 2 findings · /.test(t)),
+      ).toBe(true);
+      expect(seen.opened).toBe(1);
 
-    for (const surface of ["terminal", "desktop"] as const) {
       const ui = await $.ui.mount({
         plugin: "codex-review",
         surface,
@@ -546,61 +548,54 @@ describe("session", () => {
         await ui.find({ type: "Text", text: "needs-attention" }),
       ).toBeDefined();
       expect(await ui.find({ key: "send" })).toBeDefined();
+      expect((await ui.find({ key: "pick1" }))?.props.label).toBe("[ ]");
+      await ui.press({ key: "pick1" });
+      await ui.press({ key: "send" });
+      expect(seen.submitted.length).toBe(1);
+      expect(seen.submitted[0]).toContain("returned 2 finding(s)");
       await ui.unmount();
-    }
-
-    const ui = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      component: "Pane",
-      requestId: "codex-review",
-      props: PANE_PROPS,
     });
-    expect((await ui.find({ key: "pick1" }))?.props.label).toBe("[ ]");
-    await ui.press({ key: "pick1" });
-    await ui.press({ key: "send" });
-    expect(seen.submitted.length).toBe(1);
-    expect(seen.submitted[0]).toContain("returned 2 finding(s)");
-    await ui.unmount();
-  });
+  }
 
-  test("the line is always there: no review yet, then running, then the last result", async ($, on) => {
-    const { seen, clock } = engine(on, JSON.stringify(REAL));
-    const mount = () =>
-      $.ui.mount({ plugin: "codex-review", surface: "terminal", ...BAND });
-    const clientProps = async (ui: any) =>
-      (await ui.find({ key: "codex-band" }))?.props.props;
+  for (const surface of SURFACES) {
+    test(`the line is always there: no review yet, then running, then the last result (${surface})`, async ($, on) => {
+      const { seen, clock } = engine(on, JSON.stringify(REAL));
+      const mount = () =>
+        $.ui.mount({ plugin: "codex-review", surface, ...BAND });
+      const clientProps = async (ui: any) =>
+        (await ui.find({ key: "codex-band" }))?.props.props;
 
-    let ui = await mount();
-    expect(await clientProps(ui)).toEqual({ kind: "idle", last: null });
-    expect(await ui.find({ key: "codex-open" })).toBeUndefined();
-    expect(await ui.find({ key: "codex-cancel" })).toBeUndefined();
-    await ui.press({ key: "codex-review" });
-    expect(seen.started).toBe(1);
-    expect(seen.toasts.at(-1)).toContain(
-      "Codex adversarial review started in the background: deployer · base main",
-    );
-    await ui.unmount();
+      let ui = await mount();
+      expect(await clientProps(ui)).toEqual({ kind: "idle", last: null });
+      expect(await ui.find({ key: "codex-open" })).toBeUndefined();
+      expect(await ui.find({ key: "codex-cancel" })).toBeUndefined();
+      await ui.press({ key: "codex-review" });
+      expect(seen.started).toBe(1);
+      expect(seen.toasts.at(-1)).toContain(
+        "Codex adversarial review started in the background: deployer · base main",
+      );
+      await ui.unmount();
 
-    ui = await mount();
-    expect((await clientProps(ui)).kind).toBe("running");
-    expect(await ui.find({ key: "codex-review" })).toBeUndefined();
-    expect(await ui.find({ key: "codex-open" })).toBeUndefined();
-    expect(await ui.find({ key: "codex-cancel" })).toBeDefined();
-    await ui.unmount();
+      ui = await mount();
+      expect((await clientProps(ui)).kind).toBe("running");
+      expect(await ui.find({ key: "codex-review" })).toBeUndefined();
+      expect(await ui.find({ key: "codex-open" })).toBeUndefined();
+      expect(await ui.find({ key: "codex-cancel" })).toBeDefined();
+      await ui.unmount();
 
-    seen.alive = false;
-    await clock.advance(10_000);
-    const opened = seen.opened;
-    ui = await mount();
-    const idle = await clientProps(ui);
-    expect(idle.kind).toBe("idle");
-    expect(idle.last.text).toBe("needs-attention · 2 findings (1 high)");
-    expect(await ui.find({ key: "codex-review" })).toBeDefined();
-    await ui.press({ key: "codex-open" });
-    expect(seen.opened).toBe(opened + 1);
-    await ui.unmount();
-  });
+      seen.alive = false;
+      await clock.advance(10_000);
+      const opened = seen.opened;
+      ui = await mount();
+      const idle = await clientProps(ui);
+      expect(idle.kind).toBe("idle");
+      expect(idle.last.text).toBe("needs-attention · 2 findings (1 high)");
+      expect(await ui.find({ key: "codex-review" })).toBeDefined();
+      await ui.press({ key: "codex-open" });
+      expect(seen.opened).toBe(opened + 1);
+      await ui.unmount();
+    });
+  }
 
   test("a finished review opens the pane only where it docks; elsewhere a toast points to /cx last", async ($, on) => {
     const { seen, clock } = engine(on, JSON.stringify(REAL));
@@ -666,71 +661,79 @@ describe("session", () => {
     expect(d.description).toBe("Runs a real Codex review");
   });
 
-  test("cancel on the line stops the review; a cancelled one is not the last result", async ($, on) => {
-    const { seen } = engine(on, JSON.stringify(REAL));
-    await $.command.run({ command: "cx", args: "" } as never);
-    const ui = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      ...BAND,
+  for (const surface of SURFACES) {
+    test(`cancel on the line stops the review; a cancelled one is not the last result (${surface})`, async ($, on) => {
+      const { seen } = engine(on, JSON.stringify(REAL));
+      await $.command.run({ command: "cx", args: "" } as never);
+      const ui = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        ...BAND,
+      });
+      await ui.press({ key: "codex-cancel" });
+      await ui.unmount();
+      const again = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        ...BAND,
+      });
+      expect(
+        (await again.find({ key: "codex-band" }))?.props.props,
+      ).toEqual({ kind: "idle", last: null });
+      expect(await again.find({ key: "codex-review" })).toBeDefined();
+      await again.unmount();
+      expect(seen.toasts.length).toBe(0);
     });
-    await ui.press({ key: "codex-cancel" });
-    await ui.unmount();
-    const again = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      ...BAND,
-    });
-    expect(
-      (await again.find({ key: "codex-band" }))?.props.props,
-    ).toEqual({ kind: "idle", last: null });
-    expect(await again.find({ key: "codex-review" })).toBeDefined();
-    await again.unmount();
-    expect(seen.toasts.length).toBe(0);
-  });
+  }
 
-  test("a double press starts one review", async ($, on) => {
-    const { seen } = engine(on, JSON.stringify(REAL));
-    const ui = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      ...BAND,
+  for (const surface of SURFACES) {
+    test(`a double press starts one review (${surface})`, async ($, on) => {
+      const { seen } = engine(on, JSON.stringify(REAL));
+      const ui = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        ...BAND,
+      });
+      await Promise.all([
+        ui.press({ key: "codex-review" }),
+        ui.press({ key: "codex-review" }),
+      ]);
+      expect(seen.started).toBe(1);
+      expect(seen.toasts).toContain("A Codex review is already starting.");
+      await ui.unmount();
     });
-    await Promise.all([
-      ui.press({ key: "codex-review" }),
-      ui.press({ key: "codex-review" }),
-    ]);
-    expect(seen.started).toBe(1);
-    expect(seen.toasts).toContain("A Codex review is already starting.");
-    await ui.unmount();
-  });
+  }
 
-  test("the button outside a git repository says why in a toast", async ($, on) => {
-    const { seen } = engine(on, "", { repo: false });
-    const ui = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      ...BAND,
+  for (const surface of SURFACES) {
+    test(`the button outside a git repository says why in a toast (${surface})`, async ($, on) => {
+      const { seen } = engine(on, "", { repo: false });
+      const ui = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        ...BAND,
+      });
+      await ui.press({ key: "codex-review" });
+      expect(seen.started).toBe(0);
+      expect(seen.toasts.at(-1)).toBe("Not a git repository: /r/deployer");
+      await ui.unmount();
     });
-    await ui.press({ key: "codex-review" });
-    expect(seen.started).toBe(0);
-    expect(seen.toasts.at(-1)).toBe("Not a git repository: /r/deployer");
-    await ui.unmount();
-  });
+  }
 
-  test("the button asks what to review; dismissing it starts nothing", async ($, on) => {
-    const { seen } = engine(on, JSON.stringify(REAL), { answer: null });
-    const ui = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      ...BAND,
+  for (const surface of SURFACES) {
+    test(`the button asks what to review; dismissing it starts nothing (${surface})`, async ($, on) => {
+      const { seen } = engine(on, JSON.stringify(REAL), { answer: null });
+      const ui = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        ...BAND,
+      });
+      await ui.press({ key: "codex-review" });
+      expect(seen.asked).toBe(1);
+      expect(seen.started).toBe(0);
+      expect(seen.toasts.at(-1)).toBe("No Codex review started.");
+      await ui.unmount();
     });
-    await ui.press({ key: "codex-review" });
-    expect(seen.asked).toBe(1);
-    expect(seen.started).toBe(0);
-    expect(seen.toasts.at(-1)).toBe("No Codex review started.");
-    await ui.unmount();
-  });
+  }
 
   test("against base: --base with the PR's base, else main", async ($, on) => {
     const { seen } = engine(on, JSON.stringify(REAL));
@@ -794,46 +797,75 @@ describe("session", () => {
     expect(none.seen.started).toBe(0);
   });
 
-  test("under a survey: no line", async ($, on) => {
+  for (const surface of SURFACES) {
+    test(`under a survey: no line (${surface})`, async ($, on) => {
+      engine(on, "");
+      const ui = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        ...BAND,
+        props: { ...(BAND.props as object), hasSurvey: true } as never,
+      });
+      expect(await ui.find({ key: "codex-line" })).toBeUndefined();
+      await ui.unmount();
+    });
+  }
+
+  test("on mobile the line is plain text", async ($, on) => {
     engine(on, "");
     const ui = await $.ui.mount({
       plugin: "codex-review",
-      surface: "terminal",
+      surface: "mobile",
       ...BAND,
-      props: { ...(BAND.props as object), hasSurvey: true } as never,
     });
-    expect(await ui.find({ key: "codex-line" })).toBeUndefined();
+    expect(await ui.find({ key: "codex-band" })).toBeUndefined();
+    expect(
+      await ui.find({ type: "Text", text: "codex · no review yet" }),
+    ).toBeDefined();
     await ui.unmount();
   });
 
-  test("a malformed review is shown as Codex's raw text, not findings", async ($, on) => {
-    const bad = JSON.stringify({
-      ...REAL,
-      result: null,
-      parseError: "Unexpected token",
-      rawOutput: "Codex said things",
-    });
-    const { seen, clock } = engine(on, bad);
+  test("how long a review took is read from the engine's clock", async ($, on) => {
+    const { seen, clock } = engine(on, JSON.stringify(REAL));
     await $.command.run({ command: "cx", args: "" } as never);
+    await clock.advance(60_000);
     seen.alive = false;
     await clock.advance(10_000);
-    expect(
-      seen.toasts.some((t) => t.startsWith("Codex review failed after")),
-    ).toBe(true);
-    const ui = await $.ui.mount({
-      plugin: "codex-review",
-      surface: "terminal",
-      component: "Pane",
-      requestId: "codex-review",
-      props: PANE_PROPS,
-    });
-    expect(
-      await ui.find({ type: "Text", text: "Codex said things" }),
-    ).toBeDefined();
-    expect(await ui.find({ key: "send" })).toBeUndefined();
-    expect(await ui.find({ key: "send-raw" })).toBeDefined();
-    await ui.unmount();
+    expect(seen.toasts).toContain(
+      "Codex needs-attention · 2 findings · 1m10s",
+    );
   });
+
+  for (const surface of SURFACES) {
+    test(`a malformed review is shown as Codex's raw text, not findings (${surface})`, async ($, on) => {
+      const bad = JSON.stringify({
+        ...REAL,
+        result: null,
+        parseError: "Unexpected token",
+        rawOutput: "Codex said things",
+      });
+      const { seen, clock } = engine(on, bad);
+      await $.command.run({ command: "cx", args: "" } as never);
+      seen.alive = false;
+      await clock.advance(10_000);
+      expect(
+        seen.toasts.some((t) => t.startsWith("Codex review failed after")),
+      ).toBe(true);
+      const ui = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        component: "Pane",
+        requestId: "codex-review",
+        props: PANE_PROPS,
+      });
+      expect(
+        await ui.find({ type: "Text", text: "Codex said things" }),
+      ).toBeDefined();
+      expect(await ui.find({ key: "send" })).toBeUndefined();
+      expect(await ui.find({ key: "send-raw" })).toBeDefined();
+      await ui.unmount();
+    });
+  }
 
   test("the CodexReview tool waits for Codex and returns its findings; a failure is an error", async ($, on) => {
     engine(on, JSON.stringify(REAL));

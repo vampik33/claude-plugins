@@ -4,6 +4,12 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-10-14
+
+### Changed
+- Job start and end times, and the elapsed and "ago" texts the hooks draw, come from the engine's clock (`$.clock.now`) instead of `Date.now()`, so tests drive them through the mocked clock
+- The line, cancel, button, survey and raw-review tests run on both terminal and desktop; a mobile test covers the plain-text line
+
 ## [0.3.1] - 2026-10-14
 
 ### Fixed

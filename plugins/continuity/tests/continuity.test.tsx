@@ -231,7 +231,8 @@ function engine(
     written: [] as string[],
     suggested: [] as string[],
   };
-  const clock = mock.clock(on, { now: Date.now() });
+  const start = Date.now();
+  const clock = mock.clock(on, { now: start });
   mock.env(on, { HOME: "/h" });
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
@@ -240,13 +241,13 @@ function engine(
   on("session.id", () => ({ value: "s1" }));
   on("session.usage", () => ({
     value: {
-      startedAt: Date.now() - 600_000,
+      startedAt: start - 600_000,
       context: { window: 1_000_000, percent, tokens: percent * 10_000 },
       rateLimits: [
         {
           kind: "five_hour",
           percentUsed: 100,
-          resetsAt: new Date(Date.now() + 3_600_000).toISOString(),
+          resetsAt: new Date(start + 3_600_000).toISOString(),
         },
       ],
     },
@@ -542,5 +543,33 @@ describe("session", () => {
       ).toBeDefined();
       await ui.unmount();
     }
+  });
+
+  test("the session length is read from the engine's clock", async ($, on) => {
+    const { clock } = engine(on, 50);
+    await $.session.measure({
+      context: { window: 1_000_000, percent: 50 },
+      rateLimits: [],
+      changed: ["context"],
+    } as never);
+    await clock.advance(20 * 60_000);
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "mobile",
+      component: "AbovePrompt",
+      props: {
+        hasSurvey: false,
+        isWorking: false,
+        maxRows: 10,
+        bodyColumns: 120,
+        scroll: { offset: 0, bodyRows: 10 },
+        view: {},
+      } as never,
+    });
+    // the session started 10 min before the mocked start, and 20 min have passed on it
+    expect(
+      await ui.find({ type: "Text", text: /· session 30m00s/ }),
+    ).toBeDefined();
+    await ui.unmount();
   });
 });

@@ -4,6 +4,12 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-10-14
+
+### Changed
+- Times come from the engine's clock (`$.clock.now()`), not `Date.now()`: the handover note, the limit wait, the cache countdown and its toast, and the plain-text gauge's session length
+- The limit tests take the reset time from the mocked clock's start; a test checks the session length follows the engine's clock
+
 ## [0.3.2] - 2026-10-14
 
 ### Changed

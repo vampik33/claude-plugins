@@ -147,7 +147,7 @@ async function writeNote(
       git($, ["log", "-1", "--format=%h %s"], cwd),
       git($, ["rev-parse", "--show-toplevel"], cwd),
     ]);
-  const now = Date.now();
+  const now = await $.clock.now();
   const note = buildNote({
     repo: (top ?? cwd).split("/").pop() || cwd,
     sessionId,
@@ -224,7 +224,7 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
 async function armResume($: EngineInterface, t: Tracker, resumeAt: number) {
   t.resume?.cancel();
   await setPhase($, "blocked", resumeAt);
-  t.resume = $.clock.after(Math.max(0, resumeAt - Date.now()), async () => {
+  t.resume = $.clock.after(Math.max(0, resumeAt - (await $.clock.now())), async () => {
     t.resume = undefined;
     await setPhase($, "idle");
     await $.prompt.submit({
@@ -330,7 +330,7 @@ export const register: Register = (on, options) => {
   on("turn.step", async function* ($, e, next) {
     if (e.agentId) return yield* next(e);
     const c = t.cache;
-    const startedAt = Date.now();
+    const startedAt = await $.clock.now();
     const r = yield* next(e);
     if (!r.usage) return r;
 
@@ -352,10 +352,10 @@ export const register: Register = (on, options) => {
 
     c.toastTimer?.cancel();
     c.toastTimer = undefined;
-    const redIn = expiresAt - lifeMs * c.redAt - Date.now();
+    const redIn = expiresAt - lifeMs * c.redAt - (await $.clock.now());
     if (c.toast && redIn > 0) {
-      c.toastTimer = $.clock.after(redIn, () => {
-        const mins = Math.max(1, Math.round((expiresAt - Date.now()) / 60_000));
+      c.toastTimer = $.clock.after(redIn, async () => {
+        const mins = Math.max(1, Math.round((expiresAt - (await $.clock.now())) / 60_000));
         $.ui.toast(
           `Prompt cache expires in ~${mins} min: send a message to keep it warm`,
         );
@@ -428,7 +428,7 @@ export const register: Register = (on, options) => {
     const m = await read($, mode);
     if (m.paused) return r;
     const usage = await $.session.usage().catch(() => undefined);
-    const now = Date.now();
+    const now = await $.clock.now();
     const limit = blockingLimit(usage?.rateLimits ?? [], now);
     if (!limit) {
       $.ui.toast(
@@ -516,12 +516,13 @@ export const register: Register = (on, options) => {
     }
     const { Box, Text } = $.ui.resolve(e);
     const pct = g.percent;
+    const now = await $.clock.now();
     const until = d && ` · cache until ${new Date(d.expiresAt).toTimeString().slice(0, 5)}`;
     return (
       <Box flexDirection="column" marginTop={1}>
         <Text
           dimColor
-        >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(Date.now() - g.startedAt)}${until ?? ""}`}</Text>
+        >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(now - g.startedAt)}${until ?? ""}`}</Text>
         {below}
       </Box>
     );

@@ -4,6 +4,12 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-10-14
+
+### Fixed
+- A reload keeps a written summary: the work stays big, so Jev is asked about an update rather than "big?" again, and Haiku updates the last summary (the pane's text, else the page on disk) instead of starting over
+- A reload keeps watching an open Orca tab, so one closed by hand still turns the button back to show
+
 ## [0.3.2] - 2026-10-14
 
 ### Fixed

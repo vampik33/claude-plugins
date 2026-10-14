@@ -379,13 +379,20 @@ const PANE = {
   } as never,
 };
 
+const SURFACES = ["terminal", "desktop"] as const;
+
 const PAGE = "/h/.claude/big-picture/s1.html";
 const html = (n: number) =>
   `<!doctype html><html><body>summary ${n}</body></html>`;
 
 function engine(
   on: any,
-  over: { env?: Record<string, string>; status?: number } = {},
+  over: {
+    env?: Record<string, string>;
+    status?: number;
+    /** Values the mod's state holds before it loads, as after a reload. */
+    state?: Record<string, unknown>;
+  } = {},
 ) {
   const seen = {
     /** Jev's p(yes) by question. */
@@ -426,6 +433,12 @@ function engine(
     ...over.env,
   });
   on("ui.render", () => h("Box", null));
+  on("state.get", async (_$: unknown, e: { key: string }, next: any) => {
+    const r = await next(e);
+    return r.value.version === 0 && over.state && e.key in over.state
+      ? { value: { value: over.state[e.key], version: 0 } }
+      : r;
+  });
   on("command.register", () => ({ value: undefined }));
   on("session.start", (_$: unknown, e: unknown) => e);
   on("session.end", (_$: unknown, e: { sessionId: string }) => ({
@@ -485,6 +498,11 @@ function engine(
   on("fs.exists", (_$: unknown, e: { path: string }) => ({
     value: seen.files.has(e.path),
   }));
+  on("fs.read", (_$: unknown, e: { path: string }) => {
+    const file = seen.files.get(e.path);
+    if (file === undefined) throw new Error(`ENOENT: ${e.path}`);
+    return { value: file };
+  });
   on("process.run", async (_$: unknown, e: { argv: string[] }) => {
     const [cmd, ...args] = e.argv;
     let stdout = "";
@@ -544,16 +562,18 @@ const turnEnd = ($: any) =>
     turnId: "t",
     reason: "answer",
   });
+/** The band as drawn; every surface draws the same line. */
 const band = async ($: any) => {
-  const ui = await $.ui.mount({
-    plugin: "big-picture",
-    surface: "terminal",
-    ...BAND,
-  });
-  const texts = (await ui.findAll({ type: "Text" })).map((t: any) => t.text);
-  const toggle = (await ui.find({ key: "big-picture-toggle" }))?.text;
-  await ui.unmount();
-  return { texts, toggle };
+  const drawn = [];
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
+    const texts = (await ui.findAll({ type: "Text" })).map((t: any) => t.text);
+    const toggle = (await ui.find({ key: "big-picture-toggle" }))?.text;
+    await ui.unmount();
+    drawn.push({ texts, toggle });
+  }
+  expect(drawn[1]).toEqual(drawn[0]);
+  return drawn[0]!;
 };
 /** A turn: the prompt, n tool calls, its end, and the checks run. */
 const turn = async (
@@ -772,14 +792,11 @@ describe("session", () => {
     expect(page).toContain("<body>ok</body>");
   });
 
-  test("the band toggles the Orca tab, a placeholder before any summary", async ($, on) => {
+  for (const surface of SURFACES)
+  test(`the band toggles the Orca tab, a placeholder before any summary (${surface})`, async ($, on) => {
     const { seen, clock } = engine(on);
     const press = async () => {
-      const ui = await $.ui.mount({
-        plugin: "big-picture",
-        surface: "terminal",
-        ...BAND,
-      });
+      const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
       await ui.press({ key: "big-picture-toggle" });
       await ui.unmount();
     };
@@ -844,6 +861,37 @@ describe("session", () => {
     }
   });
 
+  test("a reload keeps a written page: Jev asks update, Haiku updates the page on disk", async ($, on) => {
+    const { seen, clock } = engine(on, { state: { status: { kind: "ready", at: 1 } } });
+    seen.files.set(PAGE, html(7));
+    await $.session.start({ cwd: "/r" } as never);
+    await turn($, clock, "more work", 10);
+    expect(seen.asked).toEqual(["update"]);
+    expect(seen.writes[0]!.prompt).toContain(`<previous-summary>\n${html(7)}`);
+  });
+
+  test("outside Orca, a reload keeps the pane's text as the summary to update", async ($, on) => {
+    const { seen, clock } = engine(on, {
+      env: { TERM_PROGRAM: "ghostty" },
+      state: { status: { kind: "ready", at: 1 }, text: "# Rate limiter" },
+    });
+    seen.reply = { isAnswered: true, text: "# Newer" };
+    await $.session.start({ cwd: "/r" } as never);
+    await turn($, clock, "more work", 1);
+    expect(seen.asked).toEqual(["update"]);
+    expect(seen.writes[0]!.prompt).toContain("<previous-summary>\n# Rate limiter");
+  });
+
+  test("a reload keeps watching an open tab: closed in Orca, the button goes", async ($, on) => {
+    const { seen, clock } = engine(on, { state: { tab: "pg9" } });
+    seen.tabs = ["pg9"];
+    await $.session.start({ cwd: "/r" } as never);
+    expect((await band($)).toggle).toBe("hide");
+    seen.tabs = [];
+    await clock.advance(2_000);
+    expect((await band($)).toggle).toBeUndefined();
+  });
+
   test("the tab is looked for one look at a time, however slow Orca answers", async ($, on) => {
     const { seen, clock } = engine(on);
     await $.command.run({ command: "big-picture", args: "" } as never);
@@ -872,10 +920,11 @@ describe("session", () => {
     expect((await band($)).toggle).toBe("hide");
   });
 
-  test("outside Orca: a text summary in a terminal pane, toggled by the band", async ($, on) => {
+  for (const surface of SURFACES)
+  test(`outside Orca: a text summary in a pane, toggled by the band (${surface})`, async ($, on) => {
     const { seen, clock } = engine(on, { env: { TERM_PROGRAM: "ghostty" } });
     const paneTexts = async () => {
-      const ui = await $.ui.mount({ plugin: "big-picture", surface: "terminal", ...PANE });
+      const ui = await $.ui.mount({ plugin: "big-picture", surface, ...PANE });
       const texts = (await ui.findAll({ type: "Text" })).map((t: any) => t.text);
       await ui.unmount();
       return texts;
@@ -975,7 +1024,8 @@ describe("session", () => {
     ]);
   });
 
-  test("update: written now with no question, even before big work; presses while it writes run once after", async ($, on) => {
+  for (const surface of SURFACES)
+  test(`update: written now with no question, even before big work; presses while it writes run once after (${surface})`, async ($, on) => {
     const { seen, clock } = engine(on);
     const r = await $.command.run({ command: "big-picture", args: " update " } as never);
     expect((r as { text: string }).text).toBe("Updating the summary.");
@@ -984,7 +1034,7 @@ describe("session", () => {
     expect(seen.files.get(PAGE)).toBe(securePage(html(1)));
     expect(seen.orca.filter((c) => c.startsWith("tab create"))).toEqual([]);
 
-    const ui = await $.ui.mount({ plugin: "big-picture", surface: "terminal", ...BAND });
+    const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
     expect((await ui.find({ key: "big-picture-update" }))?.text).toBe("update");
     let release = () => {};
     seen.gate = new Promise<void>((g) => (release = g));

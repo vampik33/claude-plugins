@@ -359,6 +359,27 @@ async function watchTab($: EngineInterface): Promise<void> {
   }
 }
 
+function startTabWatch($: EngineInterface): void {
+  tabWatch?.cancel();
+  tabWatch = $.clock.every(TAB_WATCH_MS, () => void watchTab($));
+}
+
+/**
+ * After a reload: a written summary keeps the work big and is the one Haiku
+ * updates (the pane's text, else the page on disk), and an open tab is watched.
+ */
+async function restore($: EngineInterface): Promise<void> {
+  const s = await read($, status);
+  if (s.kind === "ready") {
+    isBig = true;
+    lastWrittenAt = s.at;
+    lastSummary =
+      (await read($, text)) ??
+      (await $.fs.read(await pagePath($)).catch(() => undefined));
+  }
+  if (await read($, tab)) startTabWatch($);
+}
+
 async function showTab($: EngineInterface): Promise<Said> {
   const path = await pagePath($);
   if (!(await $.fs.exists(path).catch(() => false)))
@@ -372,8 +393,7 @@ async function showTab($: EngineInterface): Promise<Said> {
   const id = ran?.exitCode === 0 ? parseTabId(ran.stdout) : undefined;
   if (!id) return { text: "Orca did not open a browser tab.", isDone: false };
   await update($, tab, () => id);
-  tabWatch?.cancel();
-  tabWatch = $.clock.every(TAB_WATCH_MS, () => void watchTab($));
+  startTabWatch($);
   return { text: "Summary shown.", isDone: true };
 }
 
@@ -433,6 +453,7 @@ export const register: Register = (on) => {
       PROGRESS_EVERY_MS,
       () => void check($, "progress"),
     );
+    await restore($);
     // a reload keeps an open pane
     const panes = await $.ui.panes().catch(() => []);
     await update($, pane, () => panes.some((p) => p.id === PANE && p.isPlaced));

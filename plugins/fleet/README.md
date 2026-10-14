@@ -30,7 +30,7 @@ claude plugin install fleet@vampik-plugins
 
 ## Behaviour
 
-- Opens by itself when 2 or more agents run at once (an unasked pane needs a 144-column terminal).
+- Opens by itself when 2 or more agents run at once (only in the fullscreen layout, where it docks beside the transcript, and from 144 columns).
 - `/fleet` toggles the pane any time. Once an agent or shell has run (or while the pane is open), a line above the prompt shows `fleet 2▶ 1✓ 0✗ · bg 1  show`: click `show`/`hide`, or focus the band (ctrl+x tab) and press `f`.
 - A toast for each finish or failure; when a batch of 2+ is all done, one more toast.
 - A chime (`paplay`, freedesktop sounds) on a failure and on all done.

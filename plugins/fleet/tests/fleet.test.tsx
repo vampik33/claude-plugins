@@ -324,6 +324,21 @@ const BAND = {
 const spawn = ($: any, description: string) =>
   $.agent.spawn({ prompt: "go", description, subagentType: "Explore" });
 
+/** Draws the band once, so the mod learns whether the surface docks a pane. */
+const drawBand = async (
+  $: any,
+  surface: "terminal" | "desktop",
+  isFullscreen: boolean,
+) => {
+  const ui = await $.ui.mount({
+    plugin: "fleet",
+    surface,
+    ...BAND,
+    viewport: { columns: 160, rows: 40, isFullscreen },
+  });
+  await ui.unmount();
+};
+
 describe("session", () => {
   test(
     "two agents open the pane; each end toasts; the batch's end says all done",
@@ -334,6 +349,7 @@ describe("session", () => {
         { id: "a2", status: "running" },
       ];
       const { seen, clock } = engine(on, list);
+      await drawBand($, "terminal", true);
 
       await spawn($, "review plan");
       expect(seen.opened).toBe(0);
@@ -405,6 +421,46 @@ describe("session", () => {
     },
   );
 
+  test(
+    "agents that end together raise one toast",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const list = [
+        { id: "a1", status: "running" },
+        { id: "a2", status: "running" },
+      ];
+      const { seen, clock } = engine(on, list);
+      await spawn($, "review plan");
+      await spawn($, "review apply");
+      list[0]!.status = "completed";
+      list[1]!.status = "failed";
+      await clock.advance(2_000);
+      expect(seen.toasts).toHaveLength(1);
+      expect(seen.toasts[0]).toMatch(
+        /^2 finished: ✓ Explore · review plan · \d+s; ✗ Explore failed · review apply · \d+s$/,
+      );
+    },
+  );
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(`an unasked open waits until the ${surface} docks the pane`, async ($, on) => {
+      const { seen } = engine(on, [
+        { id: "a1", status: "running" },
+        { id: "a2", status: "running" },
+        { id: "a3", status: "running" },
+      ]);
+      await spawn($, "review plan"); // nothing drawn yet: unknown, so no open
+      await drawBand($, surface, false);
+      await spawn($, "review apply");
+      expect(seen.opened).toBe(0); // inline it would cover the transcript
+      await drawBand($, surface, true);
+      await spawn($, "review docs");
+      expect(seen.opened).toBe(1);
+      // once per batch
+      await spawn($, "review tests");
+      expect(seen.opened).toBe(1);
+    });
+
   test("/fleet opens the pane, then closes it", async ($, on) => {
     const { seen } = engine(on, []);
     const run = () => $.command.run({ command: "fleet", args: "" } as never);
@@ -467,6 +523,7 @@ describe("session", () => {
       { id: "a2", status: "running" },
     ]);
     seen.placeNext = false;
+    await drawBand($, "terminal", true);
     await spawn($, "review plan");
     await spawn($, "review apply");
     expect([seen.opened, seen.isPlaced]).toEqual([1, false]);

@@ -1,6 +1,6 @@
 {
   "name": "fleet",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A side pane with this session's subagents, background shells and the repo's worktrees, with alerts when they finish or fail.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts",
@@ -8,7 +8,7 @@
     "autoOpen": {
       "type": "boolean",
       "title": "Open the pane by itself",
-      "description": "Open the fleet pane when 2 or more agents run at once (unasked panes need a terminal 144 columns wide); /fleet opens it any time",
+      "description": "Open the fleet pane when 2 or more agents run at once (only in the fullscreen layout, where it docks beside the transcript, and from 144 columns); /fleet opens it any time",
       "default": true
     },
     "sound": {

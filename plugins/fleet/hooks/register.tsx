@@ -38,6 +38,8 @@ type Tracker = {
   repo: string;
   root: string | undefined;
   lastPrompt: number;
+  /** Whether the surface docks a pane beside the transcript, as the band last drew; unknown until then. */
+  docks: boolean | undefined;
   poll: { cancel: () => void } | undefined;
 };
 
@@ -93,26 +95,33 @@ async function refreshTrees($: EngineInterface, t: Tracker): Promise<void> {
   await update($, fleet, (f) => ({ ...f, trees }));
 }
 
-/** Toasts each item that just ended; a chime for a failure. */
+/** One toast for everything that just ended (a toast replaces the plugin's last); a chime for a failure. */
 function announce(
   $: EngineInterface,
   t: Tracker,
   agents: FleetAgent[],
   shells: FleetShell[],
 ) {
-  for (const a of agents) {
-    if (!ENDED.has(a.status)) continue; // a teammate gone idle is no finish
-    $.ui.toast(
-      endToast(a.type, a.description, a.status, a.endedAt! - a.startedAt),
-    );
-    if (isFailed(a.status) && t.sound) chime($, "dialog-error");
-  }
-  for (const s of shells) {
-    $.ui.toast(
-      endToast("shell", s.command, s.status, s.endedAt! - s.startedAt),
-    );
-    if (isFailed(s.status) && t.sound) chime($, "dialog-error");
-  }
+  const ended = [
+    // a teammate gone idle is no finish
+    ...agents
+      .filter((a) => ENDED.has(a.status))
+      .map((a) => ({ ...a, name: a.type, what: a.description })),
+    ...shells.map((s) => ({ ...s, name: "shell", what: s.command })),
+  ].map((x) => ({
+    text: endToast(x.name, x.what, x.status, x.endedAt! - x.startedAt),
+    isFailed: isFailed(x.status),
+  }));
+  if (ended.length === 0) return;
+  $.ui.toast(
+    ended.length === 1
+      ? ended[0]!.text
+      : `${ended.length} finished: ${[
+          ...ended.slice(0, 3).map((x) => x.text),
+          ...(ended.length > 3 ? [`+${ended.length - 3} more`] : []),
+        ].join("; ")}`,
+  );
+  if (t.sound && ended.some((x) => x.isFailed)) chime($, "dialog-error");
 }
 
 /** When nothing is live any more: the all-done alert, and the batch closes. */
@@ -223,6 +232,7 @@ export const register: Register = (on, options) => {
     repo: "",
     root: undefined,
     lastPrompt: Date.now(),
+    docks: undefined,
     poll: undefined,
   };
 
@@ -299,7 +309,8 @@ export const register: Register = (on, options) => {
     await update($, fleet, (f) => {
       const agents = trim([...f.agents, agent]);
       const live = agents.filter((a) => isLive(a.status)).length;
-      open = t.autoOpen && !f.autoOpened && live >= 2;
+      // unasked, only where the pane is a sidebar; not marked opened, so a later spawn may still
+      open = t.autoOpen && t.docks === true && !f.autoOpened && live >= 2;
       return {
         ...f,
         agents,
@@ -402,6 +413,8 @@ export const register: Register = (on, options) => {
 
   // its own line under the other bands: the counts and a show/hide toggle
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
+    if (e.viewport?.isFullscreen !== undefined)
+      t.docks = e.viewport.isFullscreen;
     const f = await read($, fleet);
     const open = await read($, pane);
     const empty = f.agents.length === 0 && f.shells.length === 0;

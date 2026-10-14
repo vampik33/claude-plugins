@@ -4,6 +4,12 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-10-14
+
+### Fixed
+- Agents and shells that end together raise one toast (`2 finished: ✓ …; ✗ …`, the first three then `+n more`) instead of one each, where only the last was seen
+- The pane opens by itself only where the surface docks it beside the transcript (fullscreen); on the main screen, or before the band has drawn, it stays closed and `/fleet` or the band's toggle opens it
+
 ## [0.4.0] - 2026-10-06
 
 ### Added

@@ -515,6 +515,7 @@ describe("session", () => {
         scroll: { offset: 0, bodyRows: 10 },
         view: {},
       } as never,
+      viewport: { columns: 160, rows: 40, isFullscreen: true },
     });
     expect(await band.find({ key: "codex-band" })).toBeDefined();
     // its own line under the other bands, never beside them, a blank row between
@@ -599,6 +600,70 @@ describe("session", () => {
     await ui.press({ key: "codex-open" });
     expect(seen.opened).toBe(opened + 1);
     await ui.unmount();
+  });
+
+  test("a finished review opens the pane only where it docks; elsewhere a toast points to /cx last", async ($, on) => {
+    const { seen, clock } = engine(on, JSON.stringify(REAL));
+    for (const surface of ["terminal", "desktop"] as const) {
+      seen.alive = true;
+      const band = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        ...BAND,
+        viewport: { columns: 120, rows: 40, isFullscreen: false },
+      });
+      await band.press({ key: "codex-review" });
+      await band.unmount();
+      seen.alive = false;
+      await clock.advance(10_000);
+      expect(seen.opened).toBe(0);
+      expect(seen.toasts.at(-1)).toBe(
+        "Codex findings are ready: /cx last opens them",
+      );
+    }
+    expect(seen.started).toBe(2);
+  });
+
+  test("send takes the ticks as they are when pressed", async ($, on) => {
+    const { seen, clock } = engine(on, JSON.stringify(REAL));
+    await $.command.run({ command: "cx", args: "" } as never);
+    seen.alive = false;
+    await clock.advance(10_000);
+    for (const surface of ["terminal", "desktop"] as const) {
+      const ui = await $.ui.mount({
+        plugin: "codex-review",
+        surface,
+        component: "Pane",
+        requestId: "codex-review",
+        props: PANE_PROPS,
+      });
+      // the high one starts ticked: swap it for the low one
+      await ui.press({ key: "pick0" });
+      await ui.press({ key: "pick1" });
+      await ui.press({ key: "verify" });
+      const sent = seen.submitted.at(-1)!;
+      expect(sent).toContain("Empty array divides by zero");
+      expect(sent).not.toContain("Loop reads one element");
+      // back as it was for the next surface
+      await ui.press({ key: "pick0" });
+      await ui.press({ key: "pick1" });
+      await ui.unmount();
+    }
+    expect(seen.submitted.length).toBe(2);
+  });
+
+  test("the CodexReview tool is listed up front, not behind ToolSearch", async ($, on) => {
+    engine(on, JSON.stringify(REAL));
+    on("tool.describe", (_$: unknown, e: { description: string }) => ({
+      description: e.description,
+      isDeferred: true,
+    }));
+    const d = await $.tool.describe({
+      tool: "mcp__codex-review__CodexReview",
+      description: "Runs a real Codex review",
+    } as never);
+    expect(d.isDeferred).toBe(false);
+    expect(d.description).toBe("Runs a real Codex review");
   });
 
   test("cancel on the line stops the review; a cancelled one is not the last result", async ($, on) => {

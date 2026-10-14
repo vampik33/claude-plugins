@@ -4,6 +4,16 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-10-14
+
+### Fixed
+- A finished review opens the findings pane by itself only where the pane docks beside the transcript (fullscreen); elsewhere a toast says `/cx last` opens them, instead of the pane taking over the conversation
+- `Send` and `verify only` send the findings ticked at the press, not the ones ticked when the pane was last drawn
+- If the line's ticking module fails, the line falls back to plain text instead of disappearing for the rest of the session
+
+### Changed
+- The CodexReview tool is listed in Claude's tools from the start instead of behind ToolSearch
+
 ## [0.3.0] - 2026-10-07
 
 ### Added

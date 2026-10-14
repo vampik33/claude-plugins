@@ -41,6 +41,10 @@ type Tracker = {
   suggestPending: boolean;
   /** A start is between the press and the job landing in the state: a second press waits */
   starting: boolean;
+  /** Whether the surface docks a pane beside the transcript, as last drawn; undefined until known */
+  docks: boolean | undefined;
+  /** The band's Client failed: the line is plain text until a reload */
+  bandFailed: boolean;
 };
 
 type StartRequest = {
@@ -228,11 +232,11 @@ async function finishJob(
       picked: preselect(done.review?.findings ?? [], t.preselect),
     };
   });
-  if (fresh && done && !done.byTool) await announce($, done);
+  if (fresh && done && !done.byTool) await announce($, t, done);
   return done;
 }
 
-async function announce($: EngineInterface, job: CxJob) {
+async function announce($: EngineInterface, t: Tracker, job: CxJob) {
   const took = fmtElapsed((job.endedAt ?? job.startedAt) - job.startedAt);
   if (job.status === "failed") {
     $.ui.toast(
@@ -246,10 +250,14 @@ async function announce($: EngineInterface, job: CxJob) {
         : `Codex review done · ${took}`,
     );
   }
-  const opened = await $.ui
-    .open({ id: PANE, title: "Codex review" })
-    .catch(() => undefined);
-  if (opened && !opened.isPlaced)
+  // unasked, a pane opens only where it is a sidebar, never over the conversation
+  const opened =
+    t.docks === true
+      ? await $.ui
+          .open({ id: PANE, title: "Codex review" })
+          .catch(() => undefined)
+      : undefined;
+  if (!opened?.isPlaced)
     $.ui.toast("Codex findings are ready: /cx last opens them");
 }
 
@@ -396,6 +404,8 @@ export const register: Register = (on, options) => {
     poll: undefined,
     suggestPending: false,
     starting: false,
+    docks: undefined,
+    bandFailed: false,
   };
 
   on("session.start", async ($, e, next) => {
@@ -496,6 +506,18 @@ export const register: Register = (on, options) => {
     return { result: toolText(done) };
   });
 
+  // listed in the prompt's tools from the start, not behind ToolSearch
+  on("tool.describe", { tool: TOOL }, async ($, e, next) => ({
+    ...(await next(e)),
+    isDeferred: false,
+  }));
+
+  // the band's Client failed: the engine draws the line again, as plain text
+  on("ui.fault", async ($, e, next) => {
+    if (e.element === "codex-band") t.bandFailed = true;
+    return next(e);
+  });
+
   // a push or a new PR: propose a review once the turn is over
   on("tool.call", { tool: "Bash" }, async ($, e, next) => {
     const r = await next(e);
@@ -521,6 +543,8 @@ export const register: Register = (on, options) => {
   // always its own line under the other bands: the running review, else the last result
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
+    if (e.viewport?.isFullscreen !== undefined)
+      t.docks = e.viewport.isFullscreen;
     const jobs = (await read($, cx)).jobs;
     const running = jobs.filter((j) => j.status === "running");
     const job = running.at(-1);
@@ -541,7 +565,10 @@ export const register: Register = (on, options) => {
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
     let line;
-    if (e.surface === "terminal" || e.surface === "desktop") {
+    if (
+      !t.bandFailed &&
+      (e.surface === "terminal" || e.surface === "desktop")
+    ) {
       const { Client } = $.ui.resolve(e);
       line = <Client key="codex-band" module="./band.tsx" props={props} />;
     } else {
@@ -646,6 +673,14 @@ export const register: Register = (on, options) => {
 
     const { verdict, summary, findings } = job.review;
     const chosen = findings.filter((_, i) => s.picked[i]);
+    // the ticks as they are at the press, not as they were drawn
+    const sendPicked = async (verifyOnly: boolean) => {
+      const now = await read($, cx);
+      if (now.shown !== job.id) return;
+      const picked = findings.filter((_, i) => now.picked[i]);
+      if (picked.length > 0)
+        await send(buildPrompt(job, picked, verifyOnly));
+    };
     const sevColor = (sev: string) =>
       sev === "critical" || sev === "high"
         ? "red"
@@ -698,14 +733,14 @@ export const register: Register = (on, options) => {
               key="send"
               variant="primary"
               label={`Send ${chosen.length} to Claude: verify & fix`}
-              onPress={() => send(buildPrompt(job, chosen, false))}
+              onPress={() => sendPicked(false)}
             />
           )}
           {chosen.length > 0 && (
             <Button
               key="verify"
               label="verify only"
-              onPress={() => send(buildPrompt(job, chosen, true))}
+              onPress={() => sendPicked(true)}
             />
           )}
           <Button

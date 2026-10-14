@@ -187,6 +187,7 @@ async function setPhase(
 /** Note, compaction, then a prompt that continues from the note. */
 async function handover($: EngineInterface, t: Tracker): Promise<string> {
   t.grace = undefined;
+  const wasPaused = (await read($, mode)).paused;
   await setPhase($, "compacting");
   try {
     const messages = await $.session.messages();
@@ -203,6 +204,9 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
       $.ui.toast(`Handover written, compaction skipped: ${r.skip}`);
       return `Handover written to ${path}; compaction skipped: ${r.skip}`;
     }
+    // a /continuity off while it ran wins over the continue prompt
+    if (!wasPaused && (await read($, mode)).paused)
+      return `Handover written to ${path}, compacted; continuity paused, not continuing.`;
     await setPhase($, "idle");
     await $.prompt.submit({ text: continuePrompt(path, note) });
     return `Handover written to ${path}, compacted, continuing.`;
@@ -214,6 +218,19 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
     const m = await read($, mode);
     if (m.phase === "compacting") await setPhase($, "idle");
   }
+}
+
+/** Waits out the limit, then continues; a reset already past continues at once. */
+async function armResume($: EngineInterface, t: Tracker, resumeAt: number) {
+  t.resume?.cancel();
+  await setPhase($, "blocked", resumeAt);
+  t.resume = $.clock.after(Math.max(0, resumeAt - Date.now()), async () => {
+    t.resume = undefined;
+    await setPhase($, "idle");
+    await $.prompt.submit({
+      text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
+    });
+  });
 }
 
 function cancelTimers(t: Tracker) {
@@ -275,9 +292,16 @@ export const register: Register = (on, options) => {
     await refreshGauge($);
     t.cache.env = await readCacheEnv($);
     t.cache.setting = await readCacheSetting($);
-    // a reload drops the timers: a pending grace or a limit wait starts over as idle
+    // a reload drops the timers: a limit wait is armed again from its reset, a pending grace starts over as idle
     const m = await read($, mode);
-    if (m.phase !== "idle") await setPhase($, "idle");
+    if (
+      m.phase === "blocked" &&
+      m.resumeAt !== undefined &&
+      t.resumeAfterLimit &&
+      !m.paused
+    )
+      await armResume($, t, m.resumeAt);
+    else if (m.phase !== "idle") await setPhase($, "idle");
     return r;
   });
 
@@ -413,15 +437,7 @@ export const register: Register = (on, options) => {
       return r;
     }
     const resumeAt = limit.resetsAt + RESET_SLACK_MS;
-    t.resume?.cancel();
-    await setPhase($, "blocked", resumeAt);
-    t.resume = $.clock.after(resumeAt - now, async () => {
-      t.resume = undefined;
-      await setPhase($, "idle");
-      await $.prompt.submit({
-        text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
-      });
-    });
+    await armResume($, t, resumeAt);
     $.ui.toast(
       `Usage limit (${limit.kind}): continuing at ${new Date(resumeAt).toTimeString().slice(0, 5)}`,
     );
@@ -429,16 +445,22 @@ export const register: Register = (on, options) => {
   });
 
   on("command.run", { command: "handover" }, async ($) => {
-    t.grace?.cancel();
-    t.grace = undefined;
-    return { text: await handover($, t) };
+    // a limit wait too: the handover continues by itself
+    cancelTimers(t);
+    // compaction is refused under the command's own turn: start it once that has ended
+    t.grace = $.clock.after(0, () => void handover($, t));
+    return { text: "Writing the handover note, then compacting and continuing." };
   });
 
   on("command.run", { command: "continuity" }, async ($, e) => {
     const arg = e.args.trim().toLowerCase();
     if (arg === "off") {
       cancelTimers(t);
-      await update($, mode, () => ({ paused: true, phase: "idle" }));
+      // a handover under way finishes its compaction, then stops short of continuing
+      await update($, mode, (m): ContinuityMode => ({
+        paused: true,
+        phase: m.phase === "compacting" ? "compacting" : "idle",
+      }));
       return {
         text: "Continuity paused: no automatic handover or limit resume until /continuity on.",
       };
@@ -477,6 +499,7 @@ export const register: Register = (on, options) => {
         phase: m.phase,
         paused: m.paused,
         resumeAt: m.resumeAt ?? null,
+        columns: e.props.bodyColumns,
         cache: d && {
           ...d,
           yellowAt: t.cache.yellowAt,

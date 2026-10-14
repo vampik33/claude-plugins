@@ -4,6 +4,15 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-10-14
+
+### Fixed
+- `/handover` failed every time: the host refuses a compaction under the command's own turn, so it now starts once that turn has ended
+- `/handover` during a usage-limit wait also drops the wait, so the session no longer continues twice
+- A reload while waiting out a usage limit keeps the wait and its countdown instead of dropping the resume
+- `/continuity off` during a handover now stops it from continuing; the compaction under way finishes and the gauge shows it
+- The gauge fits a narrow band: under 60 columns it drops the token count and shortens the bar, and its note line is cut rather than wrapped
+
 ## [0.3.0] - 2026-10-07
 
 ### Changed

@@ -218,7 +218,12 @@ describe("facts", () => {
 });
 
 /** The engine's side: usage, messages, git, and records of compaction and prompts. */
-function engine(on: any, percent: number, skip?: string) {
+function engine(
+  on: any,
+  percent: number,
+  skip?: string,
+  gate?: Promise<void>,
+) {
   const seen = {
     toasts: [] as string[],
     compacted: [] as (string | undefined)[],
@@ -230,6 +235,7 @@ function engine(on: any, percent: number, skip?: string) {
   mock.env(on, { HOME: "/h" });
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
+  on("session.start", (_$: unknown, e: unknown) => e);
   on("session.cwd", () => ({ value: "/r/deployer" }));
   on("session.id", () => ({ value: "s1" }));
   on("session.usage", () => ({
@@ -274,13 +280,11 @@ function engine(on: any, percent: number, skip?: string) {
       { value: undefined }
     ),
   );
-  on(
-    "session.compact",
-    (_$: unknown, e: { instructions?: string }) => (
-      seen.compacted.push(e.instructions),
-      skip === undefined ? { messages: [user("summary")] } : { skip }
-    ),
-  );
+  on("session.compact", async (_$: unknown, e: { instructions?: string }) => {
+    seen.compacted.push(e.instructions);
+    await gate;
+    return skip === undefined ? { messages: [user("summary")] } : { skip };
+  });
   on(
     "prompt.submit",
     (_$: unknown, e: { text: string }) => (
@@ -418,6 +422,90 @@ describe("session", () => {
     expect(
       seen.submitted.some((t) => t.startsWith("Continue where you left off")),
     ).toBe(true);
+  });
+
+  test("a reload while waiting out the limit keeps the wait and continues once", async ($, on) => {
+    const { seen, clock } = engine(on, 30);
+    await $.classic.StopFailure({ error: "rate_limit" } as never);
+    await $.session.start({ cwd: "/r/deployer" } as never);
+    const status = await $.command.run({
+      command: "continuity",
+      args: "",
+    } as never);
+    expect(JSON.stringify(status)).toContain("blocked until");
+    await clock.advance(3_600_000 + 60_000);
+    expect(
+      seen.submitted.filter((t) => t.startsWith("Continue where you left off")),
+    ).toHaveLength(1);
+  });
+
+  test("/handover during a limit wait drops the wait: one continue, from the note", async ($, on) => {
+    const { seen, clock } = engine(on, 30);
+    await $.classic.StopFailure({ error: "rate_limit" } as never);
+    await $.command.run({ command: "handover", args: "" } as never);
+    await clock.advance(0);
+    expect(seen.compacted).toHaveLength(1);
+    await clock.advance(3_600_000 + 60_000);
+    expect(seen.submitted).toHaveLength(1);
+    expect(seen.submitted[0]).toContain("Continue from this handover");
+  });
+
+  test("/continuity off during a handover lets it compact but not continue", async ($, on) => {
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const { seen, clock } = engine(on, 80, undefined, gate);
+    await turnEnd($);
+    await clock.advance(5_000);
+    expect(seen.compacted).toHaveLength(1);
+    const off = await $.command.run({ command: "continuity", args: "off" } as never);
+    expect(JSON.stringify(off)).toContain("Continuity paused");
+    release();
+    await clock.advance(1_000);
+    expect(seen.compacted).toHaveLength(1);
+    expect(seen.submitted).toHaveLength(0);
+    const status = await $.command.run({
+      command: "continuity",
+      args: "",
+    } as never);
+    expect(JSON.stringify(status)).toContain("paused");
+    expect(JSON.stringify(status)).toContain("idle");
+  });
+
+  test("a narrow band drops the token count and shortens the bar", async ($, on) => {
+    engine(on, 50);
+    await $.session.measure({
+      context: { window: 1_000_000, percent: 50 },
+      rateLimits: [],
+      changed: ["context"],
+    } as never);
+    for (const surface of ["terminal", "desktop"] as const) {
+      for (const [bodyColumns, cells, tokens] of [
+        [120, 16, true],
+        [50, 8, false],
+      ] as const) {
+        const ui = await $.ui.mount({
+          plugin: "continuity",
+          surface,
+          component: "AbovePrompt",
+          props: {
+            hasSurvey: false,
+            isWorking: false,
+            maxRows: 10,
+            bodyColumns,
+            scroll: { offset: 0, bodyRows: 10 },
+            view: {},
+          } as never,
+        });
+        expect(
+          await ui.find({ in: "continuity-gauge", type: "Text", text: bar(50, cells) }),
+        ).toBeDefined();
+        expect(
+          (await ui.find({ in: "continuity-gauge", type: "Text", text: " 500k/1M" })) !==
+            undefined,
+        ).toBe(tokens);
+        await ui.unmount();
+      }
+    }
   });
 
   test("the gauge draws on terminal and desktop", async ($, on) => {

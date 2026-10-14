@@ -19,9 +19,14 @@ export type GaugeProps = {
   phase: "idle" | "pending" | "compacting" | "blocked";
   paused: boolean;
   resumeAt: number | null;
+  /** The band's width: under NARROW the line drops the token count and shortens the bar */
+  columns: number;
   /** The prompt cache's countdown, once a request touched the cache */
   cache: CacheClock | null;
 };
+
+/** About the full line's width: ctx, a 16-cell bar, fill, tokens, session and the cache clock. */
+const NARROW = 60;
 
 /** Context fill, session length and the cache countdown; the clocks tick with no hook call. */
 const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
@@ -32,6 +37,8 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
   const { Box, Text } = surface.elements;
   const now = surface.state ?? Date.now();
   const pct = p.percent;
+  const narrow = p.columns < NARROW;
+  const cells = narrow ? 8 : 16;
 
   const cacheLeft = p.cache && p.cache.expiresAt - now;
 
@@ -50,19 +57,19 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
       <Text>
         <Text dimColor>ctx </Text>
         {pct === null ? (
-          <Text dimColor>{`${bar(0, 16)} --`}</Text>
+          <Text dimColor>{`${bar(0, cells)} --`}</Text>
         ) : (
           <Text>
-            <Text color={gaugeColor(pct, p.threshold)}>{bar(pct, 16)}</Text>
+            <Text color={gaugeColor(pct, p.threshold)}>{bar(pct, cells)}</Text>
             <Text bold>{` ${pct}%`}</Text>
-            <Text dimColor>{` ${fmtTokens(p.tokens ?? 0)}/${fmtTokens(p.window)}`}</Text>
+            {!narrow && <Text dimColor>{` ${fmtTokens(p.tokens ?? 0)}/${fmtTokens(p.window)}`}</Text>}
           </Text>
         )}
-        <Text dimColor>{"   session "}</Text>
+        <Text dimColor>{narrow ? "  " : "   session "}</Text>
         <Text>{fmtLength(now - p.startedAt)}</Text>
         {p.cache && cacheLeft !== null && (
           <Text>
-            {"   "}
+            {narrow ? "  " : "   "}
             {cacheLeft <= 0 ? (
               <Text color="red">● cache cold</Text>
             ) : (
@@ -74,7 +81,7 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
         )}
       </Text>
       {note && (
-        <Text color={note.color} dimColor={note.dim}>
+        <Text color={note.color} dimColor={note.dim} wrap="truncate-end">
           {note.text}
         </Text>
       )}

@@ -1,14 +1,16 @@
 import { atom, read, update } from "claude-code";
-import type { EngineInterface, Register } from "claude-code";
+import type { EngineInterface, Register, SettingsSource } from "claude-code";
 
 import type { MemoryChange } from "../types";
 import {
   addChange,
   headline,
   memoryFile,
+  normalizeDir,
   title,
   toChange,
   type Hunk,
+  type MemoryRoots,
 } from "./core.ts";
 
 const PANE = "memory-watch";
@@ -26,6 +28,31 @@ async function record($: EngineInterface, change: MemoryChange) {
   if (!(await read($, pane))) await update($, unread, (n) => n + 1);
 }
 
+/** The settings sources `autoMemoryDirectory` is taken from, highest first:
+ * the engine ignores it in the checked-in project settings. */
+const MEMORY_DIR_SOURCES: readonly SettingsSource[] = [
+  "policy",
+  "flag",
+  "local",
+  "user",
+];
+
+/** Where memory lives besides `~/.claude`, read at each write (both can change). */
+async function memoryRoots($: EngineInterface): Promise<MemoryRoots> {
+  const home = await $.env.get("HOME");
+  const configDir = normalizeDir(await $.env.get("CLAUDE_CONFIG_DIR"), home);
+  let memoryDir = "";
+  for (const source of MEMORY_DIR_SOURCES) {
+    const s = await $.settings.read({ source }).catch(() => ({}));
+    const dir = (s as { autoMemoryDirectory?: unknown }).autoMemoryDirectory;
+    if (typeof dir === "string" && dir.trim() !== "") {
+      memoryDir = normalizeDir(dir, home);
+      break;
+    }
+  }
+  return { configDir, memoryDir };
+}
+
 /**
  * Records a write when the path is an auto-memory file. `text` is the file's
  * new text; without it (an Edit's result holds the text before) it is read.
@@ -37,7 +64,7 @@ async function note(
   patch: readonly Hunk[],
   text?: string,
 ) {
-  const file = memoryFile(path);
+  const file = memoryFile(path, await memoryRoots($));
   if (!file) return;
   const after = text ?? (await $.fs.read(path).catch(() => ""));
   await record($, toChange(file, action, after, patch, await $.clock.now()));
@@ -71,6 +98,16 @@ export const register: Register = (on) => {
     // a reload keeps an open pane
     const panes = await $.ui.panes().catch(() => []);
     await update($, pane, () => panes.some((p) => p.id === PANE && p.isPlaced));
+    return r;
+  });
+
+  // a /clear starts a new conversation: its memory writes start over
+  on("session.end", async ($, e, next) => {
+    const r = await next(e);
+    if (e.reason === "clear") {
+      await update($, changes, () => []);
+      await update($, unread, () => 0);
+    }
     return r;
   });
 

@@ -4,10 +4,45 @@ export const MAX_CHANGES = 50;
 
 /** `~/.claude/projects/<slug>/memory/<file>.md`, any project's. */
 const MEMORY_PATH = /\/\.claude\/projects\/[^/]+\/memory\/([^/]+\.md)$/;
+/** `<slug>/memory/<file>.md` under a config dir's `projects/`. */
+const UNDER_PROJECTS = /^[^/]+\/memory\/([^/]+\.md)$/;
+/** `<file>.md` directly in a memory dir. */
+const IN_DIR = /^([^/]+\.md)$/;
+
+/** Where auto-memory lives besides `~/.claude`: both absolute, `/`-separated. */
+export type MemoryRoots = {
+  /** `CLAUDE_CONFIG_DIR`: memory is `<configDir>/projects/<slug>/memory/`. */
+  configDir?: string;
+  /** The `autoMemoryDirectory` setting: memory is `<memoryDir>/`. */
+  memoryDir?: string;
+};
+
+/** `/` separators, `~` expanded with `home`, no trailing slash or space; "" for none. */
+export function normalizeDir(dir: string | undefined, home?: string): string {
+  const strip = (s: string) => s.replaceAll("\\", "/").replace(/[\s/]+$/, "");
+  let d = strip((dir ?? "").trimStart());
+  if (d === "~" || d.startsWith("~/")) {
+    if (!home) return "";
+    d = strip(home) + d.slice(1);
+  }
+  return strip(d);
+}
 
 /** The file's name when the path is an auto-memory file, else undefined. */
-export function memoryFile(path: string): string | undefined {
-  return MEMORY_PATH.exec(path.replaceAll("\\", "/"))?.[1];
+export function memoryFile(
+  path: string,
+  roots: MemoryRoots = {},
+): string | undefined {
+  const p = path.replaceAll("\\", "/");
+  const inside = (root: string | undefined, re: RegExp) =>
+    root && p.startsWith(`${root}/`)
+      ? re.exec(p.slice(root.length + 1))?.[1]
+      : undefined;
+  return (
+    MEMORY_PATH.exec(p)?.[1] ??
+    inside(roots.configDir && `${roots.configDir}/projects`, UNDER_PROJECTS) ??
+    inside(roots.memoryDir, IN_DIR)
+  );
 }
 
 export type Frontmatter = {

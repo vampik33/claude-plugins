@@ -6,6 +6,7 @@ import {
   countLines,
   headline,
   memoryFile,
+  normalizeDir,
   parseFrontmatter,
   title,
   toChange,
@@ -41,6 +42,29 @@ describe("core", () => {
     expect(memoryFile(`${DIR}/notes.txt`)).toBeUndefined();
     expect(memoryFile("/home/u/projects/x/memory/a.md")).toBeUndefined();
     expect(memoryFile("/home/u/.claude/projects/s/memory.md")).toBeUndefined();
+  });
+
+  test("memory files under CLAUDE_CONFIG_DIR and the autoMemoryDirectory", () => {
+    const roots = { configDir: "/cfg/claude", memoryDir: "/data/mem" };
+    expect(memoryFile("/cfg/claude/projects/s/memory/a.md", roots)).toBe("a.md");
+    expect(memoryFile("/data/mem/MEMORY.md", roots)).toBe("MEMORY.md");
+    expect(memoryFile("/cfg/claude/projects/s/memory/x/a.md", roots)).toBeUndefined();
+    expect(memoryFile("/cfg/claude/projects/memory/a.md", roots)).toBeUndefined();
+    expect(memoryFile("/data/mem/sub/a.md", roots)).toBeUndefined();
+    expect(memoryFile("/data/memo/a.md", roots)).toBeUndefined();
+    expect(memoryFile("/data/mem/a.md")).toBeUndefined();
+    // the default place still counts with roots given
+    expect(memoryFile(`${DIR}/a.md`, roots)).toBe("a.md");
+  });
+
+  test("dirs: ~ expanded, trailing slashes and backslashes normalized", () => {
+    expect(normalizeDir("~/mem/", "/home/u")).toBe("/home/u/mem");
+    expect(normalizeDir("~", "/home/u/")).toBe("/home/u");
+    expect(normalizeDir("~/mem", undefined)).toBe("");
+    expect(normalizeDir("C:\\mem\\", "/home/u")).toBe("C:/mem");
+    expect(normalizeDir("  /cfg//  ")).toBe("/cfg");
+    expect(normalizeDir(undefined)).toBe("");
+    expect(normalizeDir("/")).toBe("");
   });
 
   test("frontmatter: name, description, nested type; quotes stripped", () => {
@@ -124,10 +148,23 @@ const PANE = {
   } as never,
 };
 
-function engine(on: any) {
+function engine(
+  on: any,
+  env: Record<string, string> = {},
+  settings: Record<string, Record<string, unknown>> = {},
+) {
   const seen = { opened: 0, closed: 0, isOpen: false };
   const files = new Map<string, string>();
   on("clock.now", () => ({ value: AT }));
+  on("env.get", (_$: unknown, e: { name: string }) => ({
+    value: env[e.name],
+  }));
+  on("settings.read", (_$: unknown, e: { source?: string }) => ({
+    value: settings[e.source ?? "merged"] ?? {},
+  }));
+  on("session.end", (_$: unknown, e: { sessionId: string }) => ({
+    sessionId: e.sessionId,
+  }));
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
   on("fs.read", (_$: unknown, e: { path: string }) => ({
@@ -299,4 +336,58 @@ describe("session", () => {
     expect(await ui.find({ type: "Text", text: /new/ })).toBeUndefined();
     await ui.unmount();
   });
+  for (const surface of ["terminal", "desktop"] as const) {
+    test(`${surface}: /clear empties the list and the unread count`, async ($, on) => {
+      engine(on);
+      await write($, `${DIR}/a.md`, MEMO);
+      const band = () =>
+        $.ui.mount({ plugin: "memory-watch", surface, ...BAND });
+      let ui = await band();
+      expect(await ui.find({ type: "Text", text: "● 1 new" })).toBeDefined();
+      await ui.unmount();
+
+      // another reason keeps them
+      await $.session.end({ reason: "other", sessionId: "s1" } as never);
+      ui = await band();
+      expect(await ui.find({ type: "Text", text: "● 1 new" })).toBeDefined();
+      await ui.unmount();
+
+      await $.session.end({ reason: "clear", sessionId: "s1" } as never);
+      ui = await band();
+      expect(await ui.find({ key: "memory-watch-toggle" })).toBeUndefined();
+      await ui.unmount();
+
+      await $.command.run({ command: "memory-watch", args: "" } as never);
+      const paneUi = await $.ui.mount({ plugin: "memory-watch", surface, ...PANE });
+      expect(
+        await paneUi.find({ type: "Text", text: "No memory written this session." }),
+      ).toBeDefined();
+      await paneUi.unmount();
+    });
+
+    test(`${surface}: memory under CLAUDE_CONFIG_DIR and autoMemoryDirectory lists`, async ($, on) => {
+      engine(
+        on,
+        { HOME: "/home/u", CLAUDE_CONFIG_DIR: "/cfg/claude/" },
+        {
+          // the checked-in project settings' value is ignored, as the engine does
+          project: { autoMemoryDirectory: "/repo/mem" },
+          user: { autoMemoryDirectory: "~/mem" },
+        },
+      );
+      await write($, "/cfg/claude/projects/s/memory/cfg.md", "a\n");
+      await write($, "/home/u/mem/custom.md", "b\n");
+      await write($, "/repo/mem/project.md", "c\n");
+      await $.command.run({ command: "memory-watch", args: "" } as never);
+      const ui = await $.ui.mount({ plugin: "memory-watch", surface, ...PANE });
+      const texts = (await ui.findAll({ type: "Text" })).map(
+        (t: any) => t.text,
+      );
+      expect(texts.filter((t: string) => t.endsWith(".md"))).toEqual([
+        "custom.md",
+        "cfg.md",
+      ]);
+      await ui.unmount();
+    });
+  }
 });

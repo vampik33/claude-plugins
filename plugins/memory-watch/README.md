@@ -21,11 +21,11 @@ claude plugin install memory-watch@vampik-plugins
 
 - `/memory-watch` shows or hides the pane. It docks beside the transcript in the fullscreen layout (110+ columns), inline above the prompt otherwise.
 - A `memory  show` line sits above the prompt once the session has written memory (or while the pane is open): `show` / `hide` toggles the pane (hotkey `m` once the band has the keys, ctrl+x tab or a click). While the pane is hidden, `● N new` counts the writes since it was last open.
-- Newest first, the last 50 writes of the session. The pane never opens by itself.
+- Newest first, the last 50 writes of the session; `/clear` empties it. The pane never opens by itself.
 
 ## How It Works
 
-A `tool.call` hook on `Write` and `Edit` looks at each call that went through (not denied, not failed, not held for review) whose path is `…/.claude/projects/<slug>/memory/<file>.md`. The summary comes from the file's frontmatter (`name`, `description`, `type`, at any indent, so `metadata.type` counts) and the tool result's patch. No model is called.
+A `tool.call` hook on `Write` and `Edit` looks at each call that went through (not denied, not failed, not held for review) whose path is `…/.claude/projects/<slug>/memory/<file>.md`, `$CLAUDE_CONFIG_DIR/projects/<slug>/memory/<file>.md`, or `<file>.md` in the directory the `autoMemoryDirectory` setting names. The summary comes from the file's frontmatter (`name`, `description`, `type`, at any indent, so `metadata.type` counts) and the tool result's patch. No model is called.
 
 Not seen: writes by other sessions, by hand, or through Bash (`rm`, `mv`, `sed -i`), so deletions are not listed.
 

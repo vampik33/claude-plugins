@@ -9,6 +9,7 @@ import {
   countLines,
   memoryFile,
   headline,
+  normalizeDir,
   parseFrontmatter,
   title,
   toChange,
@@ -36,6 +37,37 @@ describe("memoryFile", () => {
         const base = `/${pre.join("/")}/.claude/projects/${slug}/memory`;
         expect(memoryFile(`${base}/${name}.md`)).toBe(`${name}.md`);
         expect(memoryFile(`${base}/${name}/${name}.md`)).toBeUndefined();
+      }),
+    );
+  });
+});
+
+describe("memoryFile with roots", () => {
+  test("files directly in the memory dir, or a config dir's project memory", () => {
+    fc.assert(
+      fc.property(fc.array(segment, { minLength: 1 }), segment, segment, (pre, slug, name) => {
+        const root = `/${pre.join("/")}`;
+        const roots = { configDir: `${root}/cfg`, memoryDir: `${root}/mem` };
+        expect(memoryFile(`${root}/mem/${name}.md`, roots)).toBe(`${name}.md`);
+        expect(memoryFile(`${root}/mem/${slug}/${name}.md`, roots)).toBeUndefined();
+        expect(memoryFile(`${root}/cfg/projects/${slug}/memory/${name}.md`, roots)).toBe(`${name}.md`);
+        expect(memoryFile(`${root}/cfg/${slug}/memory/${name}.md`, roots)).toBeUndefined();
+        // a sibling that merely shares the prefix is not inside
+        expect(memoryFile(`${root}/memx/${name}.md`, roots)).toBeUndefined();
+      }),
+    );
+  });
+});
+
+describe("normalizeDir", () => {
+  test("idempotent; never ends in a slash; no ~ left when home is given", () => {
+    fc.assert(
+      fc.property(fc.string(), fc.array(segment, { minLength: 1 }), (d, h) => {
+        const home = `/${h.join("/")}`;
+        const once = normalizeDir(d, home);
+        expect(normalizeDir(once, home)).toBe(once);
+        expect(once.endsWith("/")).toBe(false);
+        expect(once === "~" || once.startsWith("~/")).toBe(false);
       }),
     );
   });

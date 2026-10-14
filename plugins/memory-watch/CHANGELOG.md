@@ -4,6 +4,12 @@ All notable changes to the memory-watch plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.2] - 2026-10-14
+
+### Fixed
+- A `/clear` empties the pane's list and the `● N new` count, as the new conversation has written no memory yet
+- Memory written under a non-default `CLAUDE_CONFIG_DIR`, or in the directory the `autoMemoryDirectory` setting names (`~/` expanded; ignored in the checked-in project settings, as Claude Code does), is listed too
+
 ## [0.1.1] - 2026-10-13
 
 ### Changed

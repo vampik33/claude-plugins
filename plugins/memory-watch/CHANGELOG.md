@@ -4,6 +4,11 @@ All notable changes to the memory-watch plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.3] - 2026-10-14
+
+### Changed
+- Every pane and band test runs on both the terminal and the desktop surface
+
 ## [0.1.2] - 2026-10-14
 
 ### Fixed

@@ -116,7 +116,7 @@ function engine(
   on("session.usage", () => ({
     value: {
       startedAt: 0,
-      context: { window: 1_000_000 },
+      context: { window: 1_000_000, percent: 29 },
       rateLimits: [{ kind: "five_hour", percentUsed: 10 }],
     },
   }));
@@ -162,20 +162,18 @@ async function step($: any) {
 const CLOCK = /^⏱ (59|1:00):\d\d$/;
 
 describe("band", () => {
-  test("no clock before the first request", async ($, on) => {
-    engine(on, null);
-    await measure($);
-    const ui = await $.ui.mount({
-      plugin: "continuity",
-      surface: "terminal",
-      ...BAND,
+  for (const surface of ["terminal", "desktop"] as const) {
+    test(`no clock before the first request (${surface})`, async ($, on) => {
+      engine(on, null);
+      await measure($);
+      const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
+      expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
+      expect(
+        await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
+      ).toBeUndefined();
+      await ui.unmount();
     });
-    expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
-    expect(
-      await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
-    ).toBeUndefined();
-    await ui.unmount();
-  });
+  }
 
   test("a request that hit the cache starts a ticking clock on the gauge's line", async ($, on) => {
     engine(on, { read: 80_000, write: 1_000 });
@@ -193,60 +191,67 @@ describe("band", () => {
     }
   });
 
-  test("a request that touched no cache draws no clock", async ($, on) => {
-    engine(on, { read: 0, write: 0 });
-    await measure($);
-    await step($);
-    const ui = await $.ui.mount({
-      plugin: "continuity",
-      surface: "terminal",
-      ...BAND,
+  for (const surface of ["terminal", "desktop"] as const) {
+    test(`a request that touched no cache draws no clock (${surface})`, async ($, on) => {
+      engine(on, { read: 0, write: 0 });
+      await measure($);
+      await step($);
+      const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
+      expect(
+        await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
+      ).toBeUndefined();
+      await ui.unmount();
     });
-    expect(
-      await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
-    ).toBeUndefined();
-    await ui.unmount();
-  });
+  }
 
-  test("a subagent's request leaves the clock alone", async ($, on) => {
-    engine(on, { read: 80_000, write: 1_000 });
-    await measure($);
-    const stream = $.turn.step({
-      turnId: "t1",
-      index: 0,
-      model: "claude-opus-5-5",
-      messageCount: 1,
-      agentId: "a1",
-    } as never);
-    for await (const _ of stream) {
-      // drain
-    }
-    const ui = await $.ui.mount({
-      plugin: "continuity",
-      surface: "terminal",
-      ...BAND,
+  for (const surface of ["terminal", "desktop"] as const) {
+    test(`a subagent's request leaves the clock alone (${surface})`, async ($, on) => {
+      engine(on, { read: 80_000, write: 1_000 });
+      await measure($);
+      const stream = $.turn.step({
+        turnId: "t1",
+        index: 0,
+        model: "claude-opus-5-5",
+        messageCount: 1,
+        agentId: "a1",
+      } as never);
+      for await (const _ of stream) {
+        // drain
+      }
+      const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
+      expect(
+        await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
+      ).toBeUndefined();
+      await ui.unmount();
     });
-    expect(
-      await ui.find({ in: "continuity-gauge", type: "Text", text: CLOCK }),
-    ).toBeUndefined();
-    await ui.unmount();
-  });
+  }
 
-  test("its lines stack over other bands, a blank row above them", async ($, on) => {
+  for (const surface of ["terminal", "desktop"] as const) {
+    test(`its lines stack over other bands, a blank row above them (${surface})`, async ($, on) => {
+      engine(on, { read: 80_000, write: 1_000 }, h("Text", null, "Heads up"));
+      await measure($);
+      const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
+      const outer: any = await ui.drawn();
+      expect(outer.type).toBe("Box");
+      expect(outer.props).toMatchObject({
+        flexDirection: "column",
+        marginTop: 1,
+      });
+      expect(outer.children.map((c: any) => c.type)).toEqual(["Client", "Text"]);
+      await ui.unmount();
+    });
+  }
+
+  test("a surface with no Client draws the gauge as one plain line", async ($, on) => {
     engine(on, { read: 80_000, write: 1_000 }, h("Text", null, "Heads up"));
     await measure($);
-    const ui = await $.ui.mount({
-      plugin: "continuity",
-      surface: "terminal",
-      ...BAND,
-    });
+    await step($);
+    const ui = await $.ui.mount({ plugin: "continuity", surface: "mobile", ...BAND });
     const outer: any = await ui.drawn();
-    expect(outer.type).toBe("Box");
-    expect(outer.props).toMatchObject({
-      flexDirection: "column",
-      marginTop: 1,
-    });
-    expect(outer.children.map((c: any) => c.type)).toEqual(["Client", "Text"]);
+    expect(outer.children.map((c: any) => c.type)).toEqual(["Text", "Text"]);
+    expect(
+      await ui.find({ type: "Text", text: /^ctx [█░]+ 29% · session .* · cache until \d\d:\d\d$/ }),
+    ).toBeDefined();
     await ui.unmount();
   });
 });

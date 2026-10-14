@@ -56,3 +56,5 @@ The note holds: your first and latest prompts, cwd, branch and worktree, uncommi
 | `cacheToast` | `true` | one toast when it turns red |
 
 Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+
+Where an organization manages Claude Code, the classic `StopFailure` hook and `session.compact` run only for plugins the organization lists, so there `resumeAfterLimit` does nothing and a compaction carries no handover note.

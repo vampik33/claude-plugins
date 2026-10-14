@@ -4,6 +4,12 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-10-14
+
+### Changed
+- The band tests run on terminal and desktop; a test covers the plain-text gauge on surfaces with no `Client`
+- README: where an organization manages Claude Code, the limit resume and the compaction note do not run
+
 ## [0.3.1] - 2026-10-14
 
 ### Fixed

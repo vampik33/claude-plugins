@@ -1,0 +1,4 @@
+{
+  "description": "ship: reads git status, the repo's marketplace.json and the installed plugins at each main turn's end; /ship pushes, refreshes the marketplace and updates the stale mods",
+  "modules": ["./register.tsx"]
+}

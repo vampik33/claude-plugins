@@ -1,0 +1,7 @@
+{
+  "name": "ship",
+  "version": "0.1.0",
+  "description": "A line above the prompt with unpushed commits and installed mods behind the repo, and /ship to push, refresh the marketplace and update those mods",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts"
+}

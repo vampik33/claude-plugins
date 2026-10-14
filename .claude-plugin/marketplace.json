@@ -153,6 +153,18 @@
       "category": "Workflow",
       "keywords": ["agents", "skills", "commands", "launcher", "mod"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "ship",
+      "description": "A line above the prompt with unpushed commits and installed mods behind the repo, and /ship to push, refresh the marketplace and update those mods",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/ship",
+      "category": "Workflow",
+      "keywords": ["git", "push", "marketplace", "release", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

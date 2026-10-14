@@ -145,7 +145,7 @@
     {
       "name": "palette",
       "description": "A side pane listing the session's agents, skills and commands; click one to put it in the prompt box",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "author": {
         "name": "vampik33"
       },

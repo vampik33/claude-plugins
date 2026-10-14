@@ -338,6 +338,19 @@ function engine(
 }
 
 describe("pane", () => {
+  test("a command runs without waiting for its count to be stored", async ($, on) => {
+    let release = () => {};
+    const storeGate = new Promise<void>((r) => (release = r));
+    const { store, counted } = engine(on, { storeGate });
+    on("command.run", { command: "think" }, () => ({ text: "ran" }));
+    const r = await $.command.run({ command: "think", args: "" } as never);
+    expect(r).toMatchObject({ text: "ran" });
+    expect(store.get("usage")).toBeUndefined();
+    release();
+    await counted((u) => u?.["command:think"]?.count === 1);
+    expect(store.get("usage")).toMatchObject({ "command:think": { count: 1 } });
+  });
+
   for (const surface of ["terminal", "desktop"] as const) {
     test(`${surface}: /palette opens it, lists items, a press fills the prompt`, async ($, on) => {
       const { seen, draft } = engine(on);
@@ -387,169 +400,156 @@ describe("pane", () => {
       expect(await ui.find({ key: "command:think" })).toBeDefined();
       await ui.unmount();
     });
+
+    test(`${surface}: agent.offer descriptions show beside the agent`, async ($, on) => {
+      engine(on);
+      on("agent.offer", () => ({ isOffered: true }));
+      await $.command.run({ command: "palette", args: "" } as never);
+      await $.agent.offer({
+        agent: "rust-engineer",
+        description: "Rust expert",
+        source: "userSettings",
+      } as never);
+      const ui = await $.ui.mount({
+        plugin: "palette",
+        surface,
+        ...PANE,
+      });
+      expect(await ui.find({ type: "Text", text: "Rust expert" })).toBeDefined();
+      await ui.unmount();
+    });
+
+    test(`${surface}: project commands are found under the project root`, async ($, on) => {
+      engine(on, { exists: (p) => p === "/proj/.claude/commands/think.md" });
+      await $.command.run({ command: "palette", args: "" } as never);
+      const ui = await $.ui.mount({
+        plugin: "palette",
+        surface,
+        ...PANE,
+      });
+      expect((await ui.find({ key: "group:project" }))?.text).toBe("▾ project (1)");
+      expect(await ui.find({ key: "group:user" })).toBeDefined();
+      await ui.unmount();
+    });
+
+    test(`${surface}: used items show first under most used, kept in the store`, async ($, on) => {
+      const { seen, store, counted } = engine(on);
+      on("command.run", { command: "think" }, () => ({ text: "" }));
+      on("agent.spawn", () => ({ model: "m" }));
+      await $.command.run({ command: "palette", args: "" } as never);
+      await $.command.run({ command: "think", args: "" } as never);
+      await $.agent.spawn({ subagentType: "rust-engineer" } as never);
+      await $.command.run({ command: "think", args: "" } as never);
+      await counted(
+        (u) =>
+          u?.["command:think"]?.count === 2 &&
+          u?.["agent:rust-engineer"]?.count === 1,
+      );
+
+      expect(store.get("usage")).toMatchObject({
+        "command:think": { count: 2 },
+        "agent:rust-engineer": { count: 1 },
+      });
+      const ui = await $.ui.mount({
+        plugin: "palette",
+        surface,
+        ...PANE,
+      });
+      expect((await ui.find({ key: "group:most used" }))?.text).toBe(
+        "▾ most used (2)",
+      );
+      expect((await ui.find({ key: "top:command:think" }))?.text).toBe("/think");
+      expect((await ui.find({ key: "top:agent:rust-engineer" }))?.text).toBe(
+        "@rust-engineer",
+      );
+      expect(await ui.find({ key: "command:think" })).toBeDefined();
+      await ui.press({ key: "top:command:think" });
+      expect(seen.fills).toEqual([{ text: "/think ", mode: "replace" }]);
+      await ui.unmount();
+    });
+
+    test(`${surface}: typing filters the items, opening folded groups; Enter puts the first`, async ($, on) => {
+      const { seen } = engine(on);
+      await $.command.run({ command: "palette", args: "" } as never);
+      const ui = await $.ui.mount({
+        plugin: "palette",
+        surface,
+        ...PANE,
+      });
+      await ui.press({ key: "group:plugin:hookify" });
+      expect(await ui.find({ key: "command:hookify:list" })).toBeUndefined();
+
+      await ui.input({ key: "palette-search", text: "hook", kind: "change" });
+      expect(await ui.find({ key: "command:hookify:list" })).toBeDefined();
+      expect(await ui.find({ key: "command:think" })).toBeUndefined();
+      expect(await ui.find({ key: "agent:rust-engineer" })).toBeUndefined();
+
+      await ui.input({ key: "palette-search", text: "hook", kind: "submit" });
+      expect(seen.fills).toEqual([{ text: "/hookify:list ", mode: "replace" }]);
+
+      await ui.input({ key: "palette-search", text: "nope", kind: "change" });
+      expect(await ui.find({ type: "Text", text: 'Nothing matches "nope".' })).toBeDefined();
+
+      await ui.input({ key: "palette-search", text: "", kind: "change" });
+      expect(await ui.find({ key: "command:think" })).toBeDefined();
+      expect(await ui.find({ key: "command:hookify:list" })).toBeUndefined();
+      await ui.unmount();
+    });
+
+    test(`${surface}: /palette asks for the keyboard; the search field takes it`, async ($, on) => {
+      const { seen } = engine(on);
+      await $.command.run({ command: "palette", args: "" } as never);
+      expect(seen.openArgs[0]).toMatchObject({ id: "palette", focus: true });
+      const ui = await $.ui.mount({
+        plugin: "palette",
+        surface,
+        ...PANE,
+      });
+      const drawn = JSON.stringify(await ui.drawn());
+      expect(drawn).toContain('"key":"palette-search"');
+      expect(drawn).toContain('"autoFocus":true');
+      await ui.unmount();
+    });
+
+    // the kit has no implementation of $.ui.focus: the refocus is not asserted
+    test(`${surface}: ✕ clears the search`, async ($, on) => {
+      engine(on);
+      await $.command.run({ command: "palette", args: "" } as never);
+      const ui = await $.ui.mount({
+        plugin: "palette",
+        surface,
+        ...PANE,
+      });
+      expect(await ui.find({ key: "palette-search-clear" })).toBeUndefined();
+      await ui.input({ key: "palette-search", text: "hook", kind: "change" });
+      expect(await ui.find({ key: "command:think" })).toBeUndefined();
+
+      await ui.press({ key: "palette-search-clear" });
+      expect(await ui.find({ key: "command:think" })).toBeDefined();
+      expect(await ui.find({ key: "palette-search-clear" })).toBeUndefined();
+      await ui.unmount();
+    });
+
+    test(`${surface}: the band line shows and hides the pane`, async ($, on) => {
+      const { seen } = engine(on);
+      const mount = () =>
+        $.ui.mount({ plugin: "palette", surface, ...BAND });
+
+      let ui = await mount();
+      expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
+      await ui.press({ key: "palette-toggle" });
+      expect(seen.opened).toBe(1);
+      await ui.unmount();
+
+      ui = await mount();
+      expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("hide");
+      await ui.press({ key: "palette-toggle" });
+      expect(seen.closed).toBe(1);
+      await ui.unmount();
+
+      ui = await mount();
+      expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
+      await ui.unmount();
+    });
   }
-
-  test("agent.offer descriptions show beside the agent", async ($, on) => {
-    engine(on);
-    on("agent.offer", () => ({ isOffered: true }));
-    await $.command.run({ command: "palette", args: "" } as never);
-    await $.agent.offer({
-      agent: "rust-engineer",
-      description: "Rust expert",
-      source: "userSettings",
-    } as never);
-    const ui = await $.ui.mount({
-      plugin: "palette",
-      surface: "terminal",
-      ...PANE,
-    });
-    expect(await ui.find({ type: "Text", text: "Rust expert" })).toBeDefined();
-    await ui.unmount();
-  });
-
-  test("a command runs without waiting for its count to be stored", async ($, on) => {
-    let release = () => {};
-    const storeGate = new Promise<void>((r) => (release = r));
-    const { store, counted } = engine(on, { storeGate });
-    on("command.run", { command: "think" }, () => ({ text: "ran" }));
-    const r = await $.command.run({ command: "think", args: "" } as never);
-    expect(r).toMatchObject({ text: "ran" });
-    expect(store.get("usage")).toBeUndefined();
-    release();
-    await counted((u) => u?.["command:think"]?.count === 1);
-    expect(store.get("usage")).toMatchObject({ "command:think": { count: 1 } });
-  });
-
-  test("project commands are found under the project root", async ($, on) => {
-    engine(on, { exists: (p) => p === "/proj/.claude/commands/think.md" });
-    await $.command.run({ command: "palette", args: "" } as never);
-    const ui = await $.ui.mount({
-      plugin: "palette",
-      surface: "terminal",
-      ...PANE,
-    });
-    expect((await ui.find({ key: "group:project" }))?.text).toBe("▾ project (1)");
-    expect(await ui.find({ key: "group:user" })).toBeDefined();
-    await ui.unmount();
-  });
-
-  test("used items show first under most used, kept in the store", async ($, on) => {
-    const { seen, store, counted } = engine(on);
-    on("command.run", { command: "think" }, () => ({ text: "" }));
-    on("agent.spawn", () => ({ model: "m" }));
-    await $.command.run({ command: "palette", args: "" } as never);
-    await $.command.run({ command: "think", args: "" } as never);
-    await $.agent.spawn({ subagentType: "rust-engineer" } as never);
-    await $.command.run({ command: "think", args: "" } as never);
-    await counted(
-      (u) =>
-        u?.["command:think"]?.count === 2 &&
-        u?.["agent:rust-engineer"]?.count === 1,
-    );
-
-    expect(store.get("usage")).toMatchObject({
-      "command:think": { count: 2 },
-      "agent:rust-engineer": { count: 1 },
-    });
-    const ui = await $.ui.mount({
-      plugin: "palette",
-      surface: "terminal",
-      ...PANE,
-    });
-    expect((await ui.find({ key: "group:most used" }))?.text).toBe(
-      "▾ most used (2)",
-    );
-    expect((await ui.find({ key: "top:command:think" }))?.text).toBe("/think");
-    expect((await ui.find({ key: "top:agent:rust-engineer" }))?.text).toBe(
-      "@rust-engineer",
-    );
-    expect(await ui.find({ key: "command:think" })).toBeDefined();
-    await ui.press({ key: "top:command:think" });
-    expect(seen.fills).toEqual([{ text: "/think ", mode: "replace" }]);
-    await ui.unmount();
-  });
-
-  test("typing filters the items, opening folded groups; Enter puts the first", async ($, on) => {
-    const { seen } = engine(on);
-    await $.command.run({ command: "palette", args: "" } as never);
-    const ui = await $.ui.mount({
-      plugin: "palette",
-      surface: "terminal",
-      ...PANE,
-    });
-    await ui.press({ key: "group:plugin:hookify" });
-    expect(await ui.find({ key: "command:hookify:list" })).toBeUndefined();
-
-    await ui.input({ key: "palette-search", text: "hook", kind: "change" });
-    expect(await ui.find({ key: "command:hookify:list" })).toBeDefined();
-    expect(await ui.find({ key: "command:think" })).toBeUndefined();
-    expect(await ui.find({ key: "agent:rust-engineer" })).toBeUndefined();
-
-    await ui.input({ key: "palette-search", text: "hook", kind: "submit" });
-    expect(seen.fills).toEqual([{ text: "/hookify:list ", mode: "replace" }]);
-
-    await ui.input({ key: "palette-search", text: "nope", kind: "change" });
-    expect(await ui.find({ type: "Text", text: 'Nothing matches "nope".' })).toBeDefined();
-
-    await ui.input({ key: "palette-search", text: "", kind: "change" });
-    expect(await ui.find({ key: "command:think" })).toBeDefined();
-    expect(await ui.find({ key: "command:hookify:list" })).toBeUndefined();
-    await ui.unmount();
-  });
-
-  test("/palette asks for the keyboard; the search field takes it", async ($, on) => {
-    const { seen } = engine(on);
-    await $.command.run({ command: "palette", args: "" } as never);
-    expect(seen.openArgs[0]).toMatchObject({ id: "palette", focus: true });
-    const ui = await $.ui.mount({
-      plugin: "palette",
-      surface: "terminal",
-      ...PANE,
-    });
-    const drawn = JSON.stringify(await ui.drawn());
-    expect(drawn).toContain('"key":"palette-search"');
-    expect(drawn).toContain('"autoFocus":true');
-    await ui.unmount();
-  });
-
-  // the kit has no implementation of $.ui.focus: the refocus is not asserted
-  test("✕ clears the search", async ($, on) => {
-    engine(on);
-    await $.command.run({ command: "palette", args: "" } as never);
-    const ui = await $.ui.mount({
-      plugin: "palette",
-      surface: "terminal",
-      ...PANE,
-    });
-    expect(await ui.find({ key: "palette-search-clear" })).toBeUndefined();
-    await ui.input({ key: "palette-search", text: "hook", kind: "change" });
-    expect(await ui.find({ key: "command:think" })).toBeUndefined();
-
-    await ui.press({ key: "palette-search-clear" });
-    expect(await ui.find({ key: "command:think" })).toBeDefined();
-    expect(await ui.find({ key: "palette-search-clear" })).toBeUndefined();
-    await ui.unmount();
-  });
-
-  test("the band line shows and hides the pane", async ($, on) => {
-    const { seen } = engine(on);
-    const mount = () =>
-      $.ui.mount({ plugin: "palette", surface: "terminal", ...BAND });
-
-    let ui = await mount();
-    expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
-    await ui.press({ key: "palette-toggle" });
-    expect(seen.opened).toBe(1);
-    await ui.unmount();
-
-    ui = await mount();
-    expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("hide");
-    await ui.press({ key: "palette-toggle" });
-    expect(seen.closed).toBe(1);
-    await ui.unmount();
-
-    ui = await mount();
-    expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
-    await ui.unmount();
-  });
 });

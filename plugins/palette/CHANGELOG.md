@@ -4,6 +4,13 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-10-14
+
+### Changed
+- The README says that, where an organization manages Claude Code, skills the model calls are not counted (`skill.prompt` runs only for the organization's plugins there)
+- Every pane and band test runs on both the terminal and the desktop surface
+- The README says project commands are found under the project root, as they are since 0.4.1
+
 ## [0.4.1] - 2026-10-14
 
 ### Fixed

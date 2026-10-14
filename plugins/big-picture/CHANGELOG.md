@@ -4,6 +4,12 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-10-14
+
+### Fixed
+- A `/clear` carried the old conversation's work, verdict and summary into the new one, and left the Orca tab on the old session's page (the next summary went to the new session's file). Now a `/clear` starts over: no summary, the line hidden, the old page's tab closed, and Jev asks "big?" again
+- The `summary` line had no width, so a long failure reason was not cut at the band's edge; it is now as wide as the band's box
+
 ## [0.3.1] - 2026-10-13
 
 ### Changed

@@ -439,6 +439,26 @@ export const register: Register = (on) => {
     return r;
   });
 
+  // a /clear: the new session starts with no work and no summary; the old page's tab
+  // is closed (Orca can be slow, so on a timer, outside session.end's short bound)
+  on("session.end", async ($, e, next) => {
+    const r = await next(e);
+    if (e.reason !== "clear") return r;
+    activity = emptyActivity("");
+    since = emptyActivity("");
+    isBig = false;
+    lastSummary = undefined;
+    lastWrittenAt = undefined;
+    lastProgress = undefined;
+    await setStatus($, { kind: "none" });
+    await update($, text, () => null);
+    const id = await read($, tab);
+    await forgetTab($);
+    if (id)
+      $.clock.after(0, () => void orca($, ["tab", "close", "--page", id]));
+    return r;
+  });
+
   on("command.run", { command: "big-picture" }, async ($, e) => {
     if (e.args.trim() !== "update") return { text: (await toggle($)).text };
     $.clock.after(0, () => void check($, "manual"));
@@ -518,7 +538,12 @@ export const register: Register = (on) => {
     return (
       <Box flexDirection="column">
         {below}
-        <Box flexDirection="row" columnGap={2} marginTop={1}>
+        <Box
+          flexDirection="row"
+          columnGap={2}
+          marginTop={1}
+          width={e.props.bodyColumns}
+        >
           <Text dimColor>summary</Text>
           {s.kind === "working" && <Text color="yellow">{`● ${s.step}…`}</Text>}
           {s.kind === "ready" && (

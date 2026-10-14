@@ -428,6 +428,9 @@ function engine(
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
   on("session.start", (_$: unknown, e: unknown) => e);
+  on("session.end", (_$: unknown, e: { sessionId: string }) => ({
+    sessionId: e.sessionId,
+  }));
   on("session.id", () => ({ value: "s1" }));
   on("session.messages", () => ({ value: seen.messages }));
   on("prompt.submit", (_$: unknown, e: { text: string }) => ({ text: e.text }));
@@ -801,6 +804,44 @@ describe("session", () => {
     await press();
     expect(seen.tabs.length).toBe(1);
     expect((await band($)).toggle).toBe("hide");
+  });
+
+  test("a /clear starts over: no summary, the old page's tab closed, Jev asks big again", async ($, on) => {
+    const { seen, clock } = engine(on);
+    await turn($, clock, "big refactor", 10);
+    await $.command.run({ command: "big-picture", args: "" } as never);
+    expect(seen.tabs).toEqual(["pg1"]);
+
+    await $.session.end({ reason: "clear", sessionId: "s1", resume: {} } as never);
+    await clock.advance(1);
+    expect(seen.orca).toContain("tab close --page pg1 --json");
+    expect(seen.tabs).toEqual([]);
+    expect(await band($)).toEqual({ texts: [], toggle: undefined });
+
+    await turn($, clock, "next task", 10);
+    expect(seen.asked).toEqual(["big", "big"]);
+    expect(seen.writes[1]!.prompt).not.toContain("<previous-summary>");
+  });
+
+  test("an exit keeps the summary and its tab", async ($, on) => {
+    const { seen, clock } = engine(on);
+    await turn($, clock, "big refactor", 10);
+    await $.command.run({ command: "big-picture", args: "" } as never);
+    await $.session.end({ reason: "prompt_input_exit", sessionId: "s1", resume: {} } as never);
+    await clock.advance(1);
+    expect(seen.tabs).toEqual(["pg1"]);
+    expect((await band($)).toggle).toBe("hide");
+  });
+
+  test("the band row is as wide as its box, so a long failure is cut", async ($, on) => {
+    const { clock } = engine(on, { status: 500 });
+    await turn($, clock, "big refactor", 10);
+    for (const surface of ["terminal", "desktop"] as const) {
+      const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
+      const boxes = await ui.findAll({ type: "Box" });
+      expect(boxes.some((b: any) => b.props.width === 120)).toBe(true);
+      await ui.unmount();
+    }
   });
 
   test("the tab is looked for one look at a time, however slow Orca answers", async ($, on) => {

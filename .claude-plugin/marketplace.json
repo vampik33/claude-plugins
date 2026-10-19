@@ -165,6 +165,18 @@
       "category": "Workflow",
       "keywords": ["git", "push", "marketplace", "release", "mod"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "watchdog",
+      "description": "Watches every Bash command, foreground and background: stops one with no output and no CPU for 10 minutes and tells the model, which decides whether to re-run it",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/watchdog",
+      "category": "Workflow",
+      "keywords": ["bash", "shell", "stuck", "timeout", "background", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

@@ -1,0 +1,15 @@
+{
+  "name": "watchdog",
+  "version": "0.1.0",
+  "description": "Watches every Bash command, foreground and background: stops one that has gone quiet (no output, no CPU) and tells the model, which decides whether to re-run it.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "quietMinutes": {
+      "type": "number",
+      "title": "Stop after (minutes)",
+      "description": "Stop a Bash command once it has printed nothing and used no CPU for this long",
+      "default": 10
+    }
+  }
+}

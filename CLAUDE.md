@@ -31,7 +31,8 @@ claude-plugins/
     ├── plan-renamer/                 # Rename plan files to meaningful titles
     ├── prompt-clock/                 # Mod: send times on prompts and turn lines
     ├── ship/                         # Mod: unshipped commits + stale installed mods; /ship pushes and updates
-    └── telegram-notifier/            # Telegram session notifications (has hooks)
+    ├── telegram-notifier/            # Telegram session notifications (has hooks)
+    └── watchdog/                     # Mod: stops stuck Bash commands (no output, no CPU), tells the model
 ```
 
 ## Plugin Architecture
@@ -55,7 +56,7 @@ Each plugin in `plugins/<name>/` follows this structure:
 
 ## Mods (function-hook plugins)
 
-big-picture, codex-review, continuity, fleet, memory-watch, palette, prompt-clock and ship are TypeScript mods, not shell hooks:
+big-picture, codex-review, continuity, fleet, memory-watch, palette, prompt-clock, ship and watchdog are TypeScript mods, not shell hooks:
 
 ```
 <mod>/

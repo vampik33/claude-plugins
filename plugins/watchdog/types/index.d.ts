@@ -21,8 +21,6 @@ export type WatchRun = {
   activeAt?: number;
   /** The last non-blank line of output */
   line?: string;
-  /** A wait loop (`until …; do …; done`): quiet by design */
-  waiter?: boolean;
   /** A `sleep` in its tree at the last look */
   sleeping?: boolean;
   /** When the watchdog stopped it */

@@ -7,7 +7,6 @@ import {
   bandItems,
   ended,
   isStuck,
-  isWaiter,
   isWatched,
   killTargets,
   killLine,
@@ -200,7 +199,6 @@ export const register: Register = (on, options) => {
       id,
       command: e.command,
       startedAt: now,
-      ...(isWaiter(e.command) ? { waiter: true } : {}),
     };
     if (!e.run_in_background) {
       await update($, runs, (prev) => trim([...prev, base]));

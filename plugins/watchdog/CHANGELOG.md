@@ -4,6 +4,14 @@ All notable changes to the watchdog plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-10-19
+
+### Changed
+- What the process tree does is the only judge: a command that looks like a wait loop (`until …; do …; done`, a `while` that sleeps) is no longer exempt. A loop that sleeps between checks still counts as active; one whose check hangs, with no sleep running, is now stopped
+
+### Security
+- A stop note quotes the command's last output line inside an `<output>` block, marked as data and not instructions, since a background task's note reaches the model as a plugin's prompt
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

@@ -13,6 +13,7 @@ import {
   evalQuoted,
   isStuck,
   isWatched,
+  killNote,
   killTargets,
   matchShells,
   needsKill,
@@ -193,22 +194,20 @@ describe("applyScan", () => {
 });
 
 describe("isStuck", () => {
-  test("exactly when running, with a shell, no wait loop, and quiet for the limit", () => {
+  test("exactly when running, with a shell, and quiet for the limit", () => {
     fc.assert(
       fc.property(
         fc.option(fc.nat({ max: 30 * MIN })),
         fc.nat({ max: 30 * MIN }),
         fc.boolean(),
-        fc.boolean(),
-        (active, at, waiter, hasPid) => {
+        (active, at, hasPid) => {
           const r = run({
             ...(active === null ? {} : { activeAt: T0 + active }),
-            waiter,
             ...(hasPid ? { pid: 9 } : {}),
           });
           const now = T0 + at;
           expect(quietMs(r, now)).toBe(now - T0 - (active ?? 0));
-          expect(isStuck(r, now, LIMIT)).toBe(hasPid && !waiter && quietMs(r, now) >= LIMIT);
+          expect(isStuck(r, now, LIMIT)).toBe(hasPid && quietMs(r, now) >= LIMIT);
         },
       ),
     );
@@ -249,6 +248,25 @@ describe("isStuck", () => {
     expect(isStuck(after, T0 + 2 * LIMIT + 10_000, LIMIT)).toBe(false);
     expect(isStuck(after, T0 + 3 * LIMIT - 1, LIMIT)).toBe(false);
     expect(isStuck(after, T0 + 3 * LIMIT, LIMIT)).toBe(true);
+  });
+});
+
+describe("killNote", () => {
+  test("the output line stays inside one <output> block, whatever it holds", () => {
+    fc.assert(
+      // a last line is one line; tag pieces make nested spellings likely
+      fc.property(
+        fc
+          .array(fc.constantFrom("<", "/", "output", ">", "OUTPUT", "x", " "), { minLength: 1, maxLength: 30 })
+          .map((a) => a.join("")),
+        (line) => {
+        const note = killNote(run({ line, killedAt: T0 }), T0 + MIN, LIMIT);
+        expect(note.match(/<output>/gi)).toHaveLength(1);
+        expect(note.match(/<\/output>/gi)).toHaveLength(1);
+        expect(note.trimEnd().split("\n").at(-2)).toMatch(/^<output>[\s\S]*<\/output>$/);
+        },
+      ),
+    );
   });
 });
 

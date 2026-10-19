@@ -15,7 +15,7 @@ claude plugin install watchdog@vampik-plugins
 ## Behaviour
 
 - **Stuck** means the output file has not grown and the command's whole process tree has used under 5% of a core, for `quietMinutes`. A quiet build that is linking, or a simulation that prints nothing, is busy, not stuck.
-- Never stuck: a wait loop (`until …; do …; done`, a `while` that sleeps) or a tree with a `sleep` running in it. A sleep pauses the quiet clock: the step after it gets the whole limit.
+- A `sleep` running in the tree counts as activity: a wait loop that sleeps between checks is never stopped, and the step after a long sleep gets the whole limit. A wait loop whose check hangs (a `curl` that never returns, no sleep running) is stopped like any other command.
 - **Foreground** command: its shell's process group and tree get SIGTERM. The model reads why beside the call's result.
 - **Background** task: stopped through TaskStop (SIGTERM to the group and tree, if that fails), and a message tells the model why, starting a turn once the session is idle.
 - Either way, at the next look (10 s later) the process group gets SIGKILL: a child that ignored the TERM and outlived its shell (reparented out of the engine's tree, it keeps the group) goes too.

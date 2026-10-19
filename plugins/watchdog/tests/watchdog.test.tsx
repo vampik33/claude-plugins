@@ -104,7 +104,7 @@ describe("foreground", () => {
     release();
     const r = await call;
     expect(r.context?.[0]).toContain("The watchdog plugin stopped this foreground Bash command");
-    expect(r.context?.[0]).toContain("Last output line: connecting…");
+    expect(r.context?.[0]).toContain("<output>connecting…</output>");
     expect(seen.prompts).toEqual([]);
   });
 
@@ -146,15 +146,16 @@ describe("foreground", () => {
     expect((await b).context).toBeUndefined();
   });
 
-  test("a wait loop and a sleeping tree are left alone", async ($, on) => {
+  test("a sleeping tree is left alone; a wait loop whose body hangs is not", async ($, on) => {
     const { procs, seen, clock, release } = engine(on);
     await start($);
-    const a = bash($, "until test -f done; do sleep 5; done");
+    const a = bash($, "until curl -sf localhost:8080; do sleep 5; done");
     const b = bash($, "sleep 900 && ./check.sh");
-    procs.set("/t/tasks/f1.output", { pid: 501, pids: [501], ticks: 0, out: "", command: "until test -f done; do sleep 5; done" });
+    // the loop's curl hangs: no sleep in its tree, no output, no CPU
+    procs.set("/t/tasks/f1.output", { pid: 501, pids: [501, 502], ticks: 0, out: "", command: "until curl -sf localhost:8080; do sleep 5; done" });
     procs.set("/t/tasks/f2.output", { pid: 601, pids: [601, 602], ticks: 0, sleeping: true, out: "", command: "sleep 900 && ./check.sh" });
     await clock.advance(20 * MIN);
-    expect(seen.kills).toEqual([]);
+    expect(seen.kills.filter((k) => k[0] === "-TERM")).toEqual([["-TERM", "--", "-501", "501", "502"]]);
     procs.clear();
     release();
     release();
@@ -175,7 +176,7 @@ describe("background", () => {
     expect(seen.kills).toEqual([["-KILL", "--", "-701"]]);
     expect(seen.prompts).toHaveLength(1);
     expect(seen.prompts[0]).toContain("background task b1");
-    expect(seen.prompts[0]).toContain("Last output line: month 3/30");
+    expect(seen.prompts[0]).toContain("<output>month 3/30</output>");
     expect(seen.prompts[0]).toContain("re-run it");
     await clock.advance(10_000);
     const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;

@@ -384,6 +384,13 @@ describe("trim / words", () => {
 });
 
 describe("SCAN_SCRIPT on this machine", () => {
+  /** Scans this process's children; answers the shell writing to `file`. */
+  const scanFor = (file: string) => {
+    const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)]);
+    expect(p.exitCode).toBe(0);
+    return parseScan(p.stdout.toString()).find((s) => s.file === file);
+  };
+
   test("finds a child shell writing to a task file, its tree, its CPU and a sleep in it", async () => {
     const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-scan-${process.pid}/tasks`;
     await Bun.$`mkdir -p ${dir}`;
@@ -396,17 +403,7 @@ describe("SCAN_SCRIPT on this machine", () => {
       },
     );
     try {
-      const scan = () => {
-        const p = Bun.spawnSync([
-          "bash",
-          "-c",
-          SCAN_SCRIPT,
-          "scan",
-          String(process.pid),
-        ]);
-        expect(p.exitCode).toBe(0);
-        return parseScan(p.stdout.toString()).find((s) => s.file === file);
-      };
+      const scan = () => scanFor(file);
       await Bun.sleep(300);
       const busy = scan();
       expect(busy?.pid).toBe(child.pid);
@@ -438,22 +435,17 @@ describe("SCAN_SCRIPT on this machine", () => {
       Bun.spawn(["bash", "-c", cmd], { stdout: Bun.file(`${dir}/${name}.output`) }),
     );
     try {
-      const scan = () => {
-        const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)]);
-        expect(p.exitCode).toBe(0);
-        const shells = parseScan(p.stdout.toString());
-        return (name: string) => shells.find((s) => s.file === `${dir}/${name}.output`)!;
-      };
+      const scan = (name: string) => scanFor(`${dir}/${name}.output`)!;
       await Bun.sleep(200);
-      const before = scan();
+      const before = { copy: scan("copy"), idle: scan("idle") };
       await Bun.sleep(1_800);
-      const after = scan();
+      const after = (name: string) => scan(name);
       expect(after("server").serving).toBe(true);
       expect(after("watcher").serving).toBe(true);
       expect(after("idle").serving).toBe(false);
       // head has exited and been reaped: its reads stay in its parent's count
-      expect(after("copy").io - before("copy").io).toBeGreaterThanOrEqual(10_000_000);
-      expect(after("idle").io - before("idle").io).toBeLessThan(ACTIVE_IO_BYTES);
+      expect(after("copy").io - before.copy.io).toBeGreaterThanOrEqual(10_000_000);
+      expect(after("idle").io - before.idle.io).toBeLessThan(ACTIVE_IO_BYTES);
       // started about 2 s before the second scan
       expect(after("idle").ageMs).toBeGreaterThanOrEqual(1_500);
       expect(after("idle").ageMs).toBeLessThan(5_000);
@@ -492,11 +484,7 @@ time.sleep(30)`;
       child = Bun.spawn(["bash", "-c", `sleep 0.5; python3 -c '${client}' ${port}; true`], {
         stdout: Bun.file(`${dir}/client.output`),
       });
-      const scan = () => {
-        const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)]);
-        expect(p.exitCode).toBe(0);
-        return parseScan(p.stdout.toString()).find((s) => s.file === `${dir}/client.output`)!;
-      };
+      const scan = () => scanFor(`${dir}/client.output`)!;
       await Bun.sleep(200);
       const before = scan();
       await Bun.sleep(1_800);

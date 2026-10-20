@@ -53,57 +53,52 @@ END {
 # one find over every child's stdout: the shells write theirs to a task's output file
 links=$(find $(printf '%s\n' "$trees" | awk '{ print "/proc/" $1 "/fd/1" }') -maxdepth 0 -lname '*/tasks/*.output' -printf '%h\t%l\n' 2>/dev/null)
 [ -n "$links" ] || exit 0
-# listening TCP sockets' inodes (state 0A), read once a scan
-listening=$(awk 'FNR > 1 && $4 == "0A" { printf " %s", $10 }' /proc/net/tcp /proc/net/tcp6 2>/dev/null)
-# TCP bytes acked and received per pid, " pid:bytes", read once a scan;
-# ss prints a socket line (its users' pids, if we may see them), then an indented line of counters
-tcp=$(ss -tinpH 2>/dev/null | awk '
+# every TCP socket, once a scan: "socket:[inode] L" when it listens, else the bytes it sent (acked) and
+# received, since recv and send bypass rchar/wchar; ss prints a socket line, then an indented line of counters
+tcp=$(ss -taieH 2>/dev/null | awk '
 /^[ \t]/ {
+  if (ino == "") next
   b = 0
   if (match($0, /bytes_acked:[0-9]+/)) b += substr($0, RSTART + 12, RLENGTH - 12)
   if (match($0, /bytes_received:[0-9]+/)) b += substr($0, RSTART + 15, RLENGTH - 15)
-  n = split(users, u, " "); for (i = 1; i <= n; i++) by[u[i]] += b
-  users = ""; next
+  printf "socket:[%s] %.0f\n", ino, b; ino = ""; next
 }
 {
-  users = ""; s = $0
-  while (match(s, /pid=[0-9]+/)) {
-    p = substr(s, RSTART + 4, RLENGTH - 4); s = substr(s, RSTART + RLENGTH)
-    if (index(users " ", " " p " ") == 0) users = users " " p
-  }
-}
-END { for (p in by) printf " %s:%.0f", p, by[p] }')
+  ino = match($0, / ino:[0-9]+/) ? substr($0, RSTART + 5, RLENGTH - 5) : ""
+  if ($1 == "LISTEN" && ino != "") { printf "socket:[%s] L\n", ino; ino = "" }
+}')
 hz=$(getconf CLK_TCK)
 read -r up _ < /proc/uptime
 printf '%s\n' "$trees" | awk -v links="$links" '
 BEGIN { n = split(links, l, "\n"); for (i = 1; i <= n; i++) { split(l[i], a, "\t"); split(a[1], d, "/"); file[d[3]] = a[2] } }
 ($1 in file) { print file[$1] "\t" $0 }' |
 while IFS="$tab" read -r f tree; do
-  stats= comms= ios= fds=
+  set -- $tree
+  shell=$1 stats= comms= ios= fds=
   for p in $tree; do
     stats="$stats /proc/$p/stat"; comms="$comms /proc/$p/comm"; ios="$ios /proc/$p/io"; fds="$fds /proc/$p/fd"
   done
-  # utime stime cutime cstime: fields 14-17 of a stat line, counted after the ") " that ends the name;
-  # rchar + wchar: every byte read and written, plus the tree's TCP bytes (recv/send bypass rchar/wchar), so a download counts
-  set -- $(cat $stats $comms $ios 2>/dev/null | awk -v tcp="$tcp" -v tree="$tree" '
-    BEGIN { n = split(tcp, a, " "); for (i = 1; i <= n; i++) { split(a[i], kv, ":"); net[kv[1]] = kv[2] } }
-    /\) / { sub(/^.*\) /, ""); t += $12 + $13 + $14 + $15; next }
+  # one pass over the tree: stat lines give utime stime cutime cstime (fields 14-17, counted after the ") "
+  # that ends the name) and, the shell's own, its start (field 22, clock ticks since boot); rchar + wchar
+  # every byte read and written; the fds an inotify watch or a listening socket (a watcher or a server,
+  # idle by design) and each TCP socket's bytes, counted once however many pids hold it
+  set -- $({ cat $stats $comms $ios; find $fds -mindepth 1 -maxdepth 1 \( -lname 'anon_inode:inotify' -o -lname 'socket:*' \) -printf '%l\n'; } 2>/dev/null |
+    awk -v tcp="$tcp" -v shell="$shell" -v up="$up" -v hz="$hz" '
+    BEGIN { n = split(tcp, a, "\n"); for (i = 1; i <= n; i++) { split(a[i], kv, " "); net[kv[1]] = kv[2] } }
+    /\) / { pid = $1; sub(/^.*\) /, ""); t += $12 + $13 + $14 + $15; if (pid == shell) start = $20; next }
     /^[rw]char: / { io += $2; next }
+    $0 == "anon_inode:inotify" || (($0 in net) && net[$0] == "L") { serving = 1; next }
+    ($0 in net) { if (!seen[$0]++) io += net[$0]; next }
     $0 == "sleep" { s = 1 }
-    END { n = split(tree, p, " "); for (i = 1; i <= n; i++) io += net[p[i]]; printf "%.0f %d %.0f\n", t, s, io }')
-  ticks=$1 sleeping=$2 io=$3
-  # a listening socket or an inotify watch: a server or a watcher, idle by design
-  serving=$(find $fds -mindepth 1 -maxdepth 1 \( -lname 'anon_inode:inotify' -o -lname 'socket:*' \) -printf '%l\n' 2>/dev/null |
-    awk -v listening="$listening" '
-    BEGIN { n = split(listening, l, " "); for (i = 1; i <= n; i++) on["socket:[" l[i] "]"] = 1 }
-    $0 == "anon_inode:inotify" || ($0 in on) { s = 1 }
-    END { print s + 0 }')
-  set -- $tree
-  # field 22 of the shell's stat: when it started, in clock ticks since boot
-  age=$(awk -v up="$up" -v hz="$hz" '{ sub(/^.*\) /, ""); a = (up - $20 / hz) * 1000; printf "%d\n", a < 0 ? 0 : a }' "/proc/$1/stat" 2>/dev/null || echo -1)
+    END {
+      age = -1
+      if (start != "") { age = int((up - start / hz) * 1000); if (age < 0) age = 0 }
+      printf "%.0f %d %.0f %d %d\n", t, s, io, serving, age
+    }')
+  ticks=$1 sleeping=$2 io=$3 serving=$4 age=$5
   size=$(stat -c %s "$f" 2>/dev/null || echo 0)
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t' "$1" "$tree" "$ticks" "$sleeping" "$io" "$serving" "$age" "$size" "$f"
-  tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t' "$shell" "$tree" "$ticks" "$sleeping" "$io" "$serving" "$age" "$size" "$f"
+  tr '\0' ' ' < "/proc/$shell/cmdline" 2>/dev/null
   printf '\0'
 done
 `;

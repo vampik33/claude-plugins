@@ -92,6 +92,10 @@ const bash = ($: any, command: string, bg = false) =>
 
 const start = ($: any) => $.session.start({ cwd: "/r" } as never);
 
+/** The /watchdog summary's text. */
+const status = async ($: any): Promise<string> =>
+  (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+
 describe("foreground", () => {
   test("a quiet, idle foreground command is stopped and its result tells the model why", async ($, on) => {
     const { procs, seen, clock, release } = engine(on);
@@ -188,34 +192,23 @@ describe("foreground", () => {
     await b;
   });
 
-  test("a waiting call is never paired with a shell that stood before it", async ($, on) => {
-    const { procs, seen, clock, release } = engine(on);
-    await start($);
-    // someone else's shell, an hour old, that no call of this session owns
-    procs.set("/t/tasks/x.output", { pid: 1101, pids: [1101], ticks: 0, born: clock.now() - 60 * MIN, out: "", command: "other" });
-    // its own shell has not spawned yet: a permission prompt holds it
-    const call = bash($, "./deploy.sh");
-    await clock.advance(20 * MIN);
-    expect(seen.kills).toEqual([]);
-    const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
-    expect(text).toMatch(/▶ fg deploy\.sh · 20m00s · starting/);
-    release();
-    await call;
-  });
-
-  test("a slow scan does not make a shell that stood before the call look new", async ($, on) => {
-    const { procs, seen, clock, release } = engine(on, { scanDelay: 5_000 });
-    await start($);
-    // someone else's shell, 2 s old: a scan that answers 5 s late must not date it after the call
-    procs.set("/t/tasks/x.output", { pid: 1101, pids: [1101], ticks: 0, born: clock.now() - 2_000, out: "", command: "other" });
-    const call = bash($, "./deploy.sh");
-    await clock.advance(20 * MIN);
-    expect(seen.kills).toEqual([]);
-    const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
-    expect(text).toMatch(/▶ fg deploy\.sh · \S+ · starting/);
-    release();
-    await call;
-  });
+  // someone else's shell that no call of this session owns: an hour old, or 2 s old with a scan that answers 5 s late
+  for (const { name, born, scanDelay } of [
+    { name: "a waiting call is never paired with a shell that stood before it", born: 60 * MIN, scanDelay: 0 },
+    { name: "a slow scan does not make a shell that stood before the call look new", born: 2_000, scanDelay: 5_000 },
+  ])
+    test(name, async ($, on) => {
+      const { procs, seen, clock, release } = engine(on, { scanDelay });
+      await start($);
+      procs.set("/t/tasks/x.output", { pid: 1101, pids: [1101], ticks: 0, born: clock.now() - born, out: "", command: "other" });
+      // its own shell has not spawned yet: a permission prompt holds it
+      const call = bash($, "./deploy.sh");
+      await clock.advance(20 * MIN);
+      expect(seen.kills).toEqual([]);
+      expect(await status($)).toMatch(/▶ fg deploy\.sh · \S+ · starting/);
+      release();
+      await call;
+    });
 
   test("a background call made while a foreground one waits keeps its own shell", async ($, on) => {
     const { procs, clock, release } = engine(on, { holdBackground: true });
@@ -225,13 +218,13 @@ describe("foreground", () => {
     // the background shell spawns before its call answers; the foreground one has none yet
     procs.set("/t/tasks/b1.output", { pid: 1201, pids: [1201], ticks: 0, serving: true, out: "", command: "./serve.sh" });
     await clock.advance(10_000);
-    let text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    let text = await status($);
     expect(text).toMatch(/▶ fg deploy\.sh · 10s · starting/);
     expect(text).toMatch(/▶ fg serve\.sh · 10s · serving/);
     release(1);
     await bg;
     await clock.advance(10_000);
-    text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    text = await status($);
     expect(text).toMatch(/▶ fg deploy\.sh · 20s · starting/);
     expect(text).toMatch(/▶ bg serve\.sh · 20s · serving/);
     release();
@@ -254,7 +247,7 @@ describe("background", () => {
     expect(seen.prompts[0]).toContain("<output>month 3/30</output>");
     expect(seen.prompts[0]).toContain("re-run it");
     await clock.advance(10_000);
-    const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    const text = await status($);
     expect(text).toContain("0 running · 1 stopped");
     expect(text).toMatch(/✗ bg python sim\.py · 10m\d\ds · stopped by watchdog · month 3\/30/);
   });
@@ -275,7 +268,7 @@ describe("background", () => {
     } as never);
     await clock.advance(20 * MIN);
     expect(seen.stops).toEqual([]);
-    const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    const text = await status($);
     expect(text).toMatch(/✓ bg cargo test · 10s · ended/);
   });
 

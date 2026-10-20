@@ -4,6 +4,11 @@ All notable changes to the watchdog plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - 2026-10-20
+
+### Fixed
+- A command stopped less than 10 s before a `/clear` keeps its row until its process group gets the SIGKILL; before, `/clear` dropped it and the KILL was never sent
+
 ## [0.2.0] - 2026-10-19
 
 ### Changed

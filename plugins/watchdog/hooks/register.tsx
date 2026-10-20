@@ -87,12 +87,13 @@ async function look($: EngineInterface, w: Watch): Promise<void> {
   }
   w.root ??= await findRoot($);
   if (w.root === undefined) return;
+  // read before the scan samples the uptime: a slow scan then dates a shell earlier, never later
+  const now = await $.clock.now();
   const out = await $.process
     .run(["bash", "-c", SCAN_SCRIPT, "watchdog-scan", String(w.root)])
     .catch(() => undefined);
   if (!out || out.exitCode !== 0) return;
   const shells = parseScan(out.stdout);
-  const now = await $.clock.now();
   const grew: WatchRun[] = [];
   const stuck: WatchRun[] = [];
   const kill: WatchRun[] = [];

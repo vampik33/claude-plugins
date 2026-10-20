@@ -464,4 +464,50 @@ describe("SCAN_SCRIPT on this machine", () => {
       await Bun.$`rm -rf ${dir}/..`;
     }
   });
+
+  test("a quiet client receiving into memory from a server outside its tree moves data", async () => {
+    const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-tcp-${process.pid}/tasks`;
+    await Bun.$`mkdir -p ${dir}`;
+    // the server's stdout is a pipe, not a task file: no shell of the scan's
+    const server = Bun.spawn([
+      "python3",
+      "-c",
+      `import socket, time
+l = socket.socket(); l.bind(("127.0.0.1", 0)); l.listen(1)
+print(l.getsockname()[1], flush=True)
+c, _ = l.accept(); c.sendall(b"x" * 10_000_000); time.sleep(30)`,
+    ], { stdout: "pipe" });
+    let child: ReturnType<typeof Bun.spawn> | undefined;
+    try {
+      const { value } = await server.stdout.getReader().read();
+      const port = Number(new TextDecoder().decode(value).trim());
+      // recv into memory: no read/write, so rchar/wchar barely move; the socket stays open so its counters do
+      const client = `import socket, sys, time
+s = socket.create_connection(("127.0.0.1", int(sys.argv[1]))); n = 0
+while n < 10_000_000:
+    b = s.recv(1 << 20)
+    if not b: break
+    n += len(b)
+time.sleep(30)`;
+      child = Bun.spawn(["bash", "-c", `sleep 0.5; python3 -c '${client}' ${port}; true`], {
+        stdout: Bun.file(`${dir}/client.output`),
+      });
+      const scan = () => {
+        const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)]);
+        expect(p.exitCode).toBe(0);
+        return parseScan(p.stdout.toString()).find((s) => s.file === `${dir}/client.output`)!;
+      };
+      await Bun.sleep(200);
+      const before = scan();
+      await Bun.sleep(1_800);
+      const after = scan();
+      expect(after.io - before.io).toBeGreaterThanOrEqual(10_000_000);
+    } finally {
+      // the shell's children first: an orphaned client would hold the test's output open
+      if (child) Bun.spawnSync(["pkill", "-P", String(child.pid)]);
+      child?.kill();
+      server.kill();
+      await Bun.$`rm -rf ${dir}/..`;
+    }
+  });
 });

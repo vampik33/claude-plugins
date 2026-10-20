@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.3.0] - 2026-10-20
 
 ### Changed
-- Reading or writing data counts as activity: a tree that moved 64 KiB or more since the last look (`rchar` + `wchar` from `/proc/<pid>/io`, sockets included) is not quiet, so a quiet `curl -o`, `wget -q`, `aws s3 cp --quiet`, `rsync` or `git clone --quiet` is no longer stopped
+- Reading or writing data counts as activity: a tree that moved 64 KiB or more since the last look (`rchar` + `wchar` from `/proc/<pid>/io` for files, pipes and TCP sockets, with socket `recv`/`send` counted from `ss`'s TCP counters) is not quiet, so a quiet `curl -o`, `wget -q`, `aws s3 cp --quiet`, `rsync` or `git clone --quiet` is no longer stopped
 - A tree that listens on a TCP port or holds an inotify watch is serving and never stopped: idle dev servers (`npm run dev`, `vite`, `python -m http.server`) and watchers (`tsc --watch`, `tail -f`) are left alone; `/watchdog` shows them as `serving`
 - The stop note says the command printed nothing, used no CPU and read or wrote no data
 

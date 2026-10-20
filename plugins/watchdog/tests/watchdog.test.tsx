@@ -14,14 +14,14 @@ type Proc = {
   /** Bytes read and written */
   io?: number;
   serving?: boolean;
-  /** How long ago the shell started, ms */
-  age?: number;
+  /** When the shell started, on the mock clock */
+  born?: number;
   out: string;
   command: string;
 };
 
-/** The engine beneath the mod: a process table, Bash calls held until released (background ones too, if asked), and what the mod did. */
-function engine(on: any, { holdBackground = false } = {}) {
+/** The engine beneath the mod: a process table, Bash calls held until released (background ones too, if asked), scans that answer late (if asked), and what the mod did. */
+function engine(on: any, { holdBackground = false, scanDelay = 0 } = {}) {
   const procs = new Map<string, Proc>();
   const seen = {
     kills: [] as string[][],
@@ -38,15 +38,19 @@ function engine(on: any, { holdBackground = false } = {}) {
   on("process.run", (_$: unknown, e: { argv: string[] }) => {
     const [cmd] = e.argv;
     if (cmd === "sh") return run(`${ROOT}\n`);
-    if (cmd === "bash")
-      return run(
+    if (cmd === "bash") {
+      // the ages are taken as the scan starts, as the real one samples the uptime
+      const t = clock.now();
+      const out = run(
         [...procs.entries()]
           .map(
             ([file, p]) =>
-              `${p.pid}\t${p.pids.join(" ")}\t${p.ticks}\t${p.sleeping ? 1 : 0}\t${p.io ?? 0}\t${p.serving ? 1 : 0}\t${p.age ?? 0}\t${p.out.length}\t${file}\t/usr/bin/zsh -c source snap && ${evalQuoted(p.command)} && pwd -P \0`,
+              `${p.pid}\t${p.pids.join(" ")}\t${p.ticks}\t${p.sleeping ? 1 : 0}\t${p.io ?? 0}\t${p.serving ? 1 : 0}\t${t - (p.born ?? t)}\t${p.out.length}\t${file}\t/usr/bin/zsh -c source snap && ${evalQuoted(p.command)} && pwd -P \0`,
           )
           .join(""),
       );
+      return scanDelay ? clock.sleep(scanDelay).then(() => out) : out;
+    }
     if (cmd === "tail") {
       const p = procs.get(e.argv.at(-1)!);
       return p ? run(p.out) : run("", 1);
@@ -188,13 +192,27 @@ describe("foreground", () => {
     const { procs, seen, clock, release } = engine(on);
     await start($);
     // someone else's shell, an hour old, that no call of this session owns
-    procs.set("/t/tasks/x.output", { pid: 1101, pids: [1101], ticks: 0, age: 60 * MIN, out: "", command: "other" });
+    procs.set("/t/tasks/x.output", { pid: 1101, pids: [1101], ticks: 0, born: clock.now() - 60 * MIN, out: "", command: "other" });
     // its own shell has not spawned yet: a permission prompt holds it
     const call = bash($, "./deploy.sh");
     await clock.advance(20 * MIN);
     expect(seen.kills).toEqual([]);
     const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
     expect(text).toMatch(/▶ fg deploy\.sh · 20m00s · starting/);
+    release();
+    await call;
+  });
+
+  test("a slow scan does not make a shell that stood before the call look new", async ($, on) => {
+    const { procs, seen, clock, release } = engine(on, { scanDelay: 5_000 });
+    await start($);
+    // someone else's shell, 2 s old: a scan that answers 5 s late must not date it after the call
+    procs.set("/t/tasks/x.output", { pid: 1101, pids: [1101], ticks: 0, born: clock.now() - 2_000, out: "", command: "other" });
+    const call = bash($, "./deploy.sh");
+    await clock.advance(20 * MIN);
+    expect(seen.kills).toEqual([]);
+    const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    expect(text).toMatch(/▶ fg deploy\.sh · \S+ · starting/);
     release();
     await call;
   });

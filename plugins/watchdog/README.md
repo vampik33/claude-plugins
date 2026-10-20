@@ -14,7 +14,7 @@ claude plugin install watchdog@vampik-plugins
 
 ## Behaviour
 
-- **Stuck** means the output file has not grown, the command's whole process tree has used under 5% of a core and read or written under 64 KiB per 10 s (sockets included), for `quietMinutes`. A quiet build that is linking, a simulation that prints nothing, or a `curl -o` / `rsync` / `git clone --quiet` moving data is busy, not stuck.
+- **Stuck** means the output file has not grown, the command's whole process tree has used under 5% of a core and read or written under 64 KiB per 10 s (files, pipes and TCP sockets; socket `recv`/`send` counted from `ss`'s TCP counters), for `quietMinutes`. A quiet build that is linking, a simulation that prints nothing, or a `curl -o` / `rsync` / `git clone --quiet` moving data is busy, not stuck.
 - A tree that listens on a TCP port or holds an inotify watch is a server or a watcher, idle by design, and is never stopped: `npm run dev`, `vite`, `python -m http.server`, `tsc --watch`, `tail -f app.log`.
 - Work that runs outside the local process tree is invisible to it: `ssh host make` or `docker run` of a job that prints nothing, `docker compose up` with quiet containers. Such a command is stopped after `quietMinutes` like a hung one; raise `quietMinutes` if you run them.
 - A `sleep` running in the tree counts as activity: a wait loop that sleeps between checks is never stopped, and the step after a long sleep gets the whole limit. A wait loop whose check hangs (a `curl` that never returns, no sleep running) is stopped like any other command.

@@ -182,9 +182,9 @@ export const register: Register = (on, options) => {
   });
 
   on("session.end", async ($, e, next) => {
-    // shells outlive a /clear; the ended rows go
+    // shells outlive a /clear; the ended rows go, but a stopped one keeps its row until its KILL is sent
     if (e.reason === "clear")
-      await update($, runs, (prev) => prev.filter((r) => r.endedAt === undefined));
+      await update($, runs, (prev) => prev.filter(isWatched));
     return next(e);
   });
 

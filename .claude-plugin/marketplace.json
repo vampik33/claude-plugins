@@ -169,7 +169,7 @@
     {
       "name": "watchdog",
       "description": "Watches every Bash command, foreground and background: stops one with no output and no CPU for 10 minutes and tells the model, which decides whether to re-run it",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "vampik33"
       },

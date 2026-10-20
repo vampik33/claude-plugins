@@ -17,12 +17,16 @@ export type WatchRun = {
   size?: number;
   /** CPU clock ticks of the tree at the last look */
   ticks?: number;
-  /** When it last printed, used CPU or ran a sleep */
+  /** Bytes the tree had read and written at the last look */
+  io?: number;
+  /** When it last printed, used CPU, moved data, ran a sleep or served */
   activeAt?: number;
   /** The last non-blank line of output */
   line?: string;
   /** A `sleep` in its tree at the last look */
   sleeping?: boolean;
+  /** A listening TCP socket or an inotify watch in its tree at the last look: a server or a watcher */
+  serving?: boolean;
   /** When the watchdog stopped it */
   killedAt?: number;
   /** The KILL after the grace went out */

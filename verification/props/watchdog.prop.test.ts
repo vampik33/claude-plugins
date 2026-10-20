@@ -7,6 +7,7 @@ import fc from "fast-check";
 
 import type { WatchRun } from "../../plugins/watchdog/types";
 import {
+  ACTIVE_IO_BYTES,
   ACTIVE_TICKS,
   applyScan,
   bandItems,
@@ -42,6 +43,9 @@ const shell = (o: Partial<ScanShell> = {}): ScanShell => ({
   pids: [10, 11],
   ticks: 0,
   sleeping: false,
+  io: 0,
+  serving: false,
+  ageMs: 0,
   size: 0,
   file: "/t/tasks/a.output",
   cmdline: "zsh -c eval './hang.sh'",
@@ -49,7 +53,7 @@ const shell = (o: Partial<ScanShell> = {}): ScanShell => ({
 });
 
 const record = (s: ScanShell) =>
-  `${s.pid}\t${s.pids.join(" ")}\t${s.ticks}\t${s.sleeping ? 1 : 0}\t${s.size}\t${s.file}\t${s.cmdline}\0`;
+  `${s.pid}\t${s.pids.join(" ")}\t${s.ticks}\t${s.sleeping ? 1 : 0}\t${s.io}\t${s.serving ? 1 : 0}\t${s.ageMs}\t${s.size}\t${s.file}\t${s.cmdline}\0`;
 
 const arbShell = fc.record({
   pid: fc.integer({ min: 2, max: 4_000_000 }),
@@ -59,6 +63,9 @@ const arbShell = fc.record({
   }),
   ticks: fc.nat(),
   sleeping: fc.boolean(),
+  io: fc.nat(),
+  serving: fc.boolean(),
+  ageMs: fc.nat(),
   size: fc.nat(),
   file: fc.stringMatching(/^\/[a-z/]{1,20}\.output$/),
   // a command line may hold tabs and newlines, never a NUL
@@ -81,9 +88,14 @@ describe("parseScan", () => {
         for (const s of parseScan(junk)) {
           expect(Number.isInteger(s.pid) && s.pid > 0).toBe(true);
           expect(s.file.length).toBeGreaterThan(0);
+          expect(s.ageMs).toBeGreaterThanOrEqual(0);
         }
       }),
     );
+  });
+
+  test("a shell gone mid-scan (age -1) is skipped", () => {
+    expect(parseScan(record(shell({ ageMs: -1 })))).toEqual([]);
   });
 });
 
@@ -115,7 +127,7 @@ describe("evalQuoted / matchShells", () => {
               cmdline: `zsh -c x && ${evalQuoted(a)} && pwd`,
             }),
           ];
-          const m = matchShells(runs, shells);
+          const m = matchShells(runs, shells, T0 + 10_000);
           expect(m.get("A")?.file).toBe("/t/a.output");
           expect(m.get("B")?.file).toBe("/t/b.output");
         },
@@ -131,6 +143,7 @@ describe("evalQuoted / matchShells", () => {
         shell({ file: "/t/x.output", cmdline: "x" }),
         shell({ file: "/t/y.output", cmdline: "y" }),
       ],
+      T0 + 10_000,
     );
     expect(m.get("A")?.file).toBe("/t/y.output");
     expect(m.has("bg")).toBe(false);
@@ -143,8 +156,35 @@ describe("evalQuoted / matchShells", () => {
         shell({ file: "/t/1.output", cmdline: "?" }),
         shell({ file: "/t/2.output", cmdline: "?" }),
       ],
+      T0 + 10_000,
     );
     expect(m.size).toBe(0);
+  });
+
+  test("the fallback takes a shell only if it started after the call (a second of slack)", () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 60 * MIN }), fc.nat({ max: 10 * MIN }), (ageMs, after) => {
+        const now = T0 + after;
+        const m = matchShells(
+          [run({ id: "A", command: "quoted differently" })],
+          [shell({ ageMs, cmdline: "?" })],
+          now,
+        );
+        expect(m.has("A")).toBe(now - ageMs >= T0 - 1_000);
+      }),
+    );
+  });
+
+  test("a shell that stood before the call does not count against a new one", () => {
+    const m = matchShells(
+      [run({ id: "A", command: "quoted differently" })],
+      [
+        shell({ file: "/t/old.output", ageMs: 60 * MIN, cmdline: "?" }),
+        shell({ file: "/t/new.output", ageMs: 0, cmdline: "?" }),
+      ],
+      T0 + 10_000,
+    );
+    expect(m.get("A")?.file).toBe("/t/new.output");
   });
 });
 
@@ -168,6 +208,31 @@ describe("applyScan", () => {
       T0 + 40_000,
     ).runs[0]!;
     expect(busy.activeAt).toBe(T0 + 40_000);
+  });
+
+  test("reading or writing a slow download's worth of data moves the quiet clock; less does not", () => {
+    const first = applyScan([run()], [shell({ io: 1_000_000 })], T0 + 10_000).runs[0]!;
+    expect(first.activeAt).toBeUndefined();
+    const idle = applyScan([first], [shell({ io: 1_000_000 + ACTIVE_IO_BYTES - 1 })], T0 + 20_000).runs[0]!;
+    expect(idle.activeAt).toBeUndefined();
+    const moving = applyScan([idle], [shell({ io: 1_000_000 + 2 * ACTIVE_IO_BYTES })], T0 + 30_000).runs[0]!;
+    expect(moving.activeAt).toBe(T0 + 30_000);
+    // a tree whose processes exit sums less: never activity
+    const shrunk = applyScan([moving], [shell({ io: 0 })], T0 + 40_000).runs[0]!;
+    expect(shrunk.activeAt).toBe(T0 + 30_000);
+  });
+
+  test("a serving tree is never stuck, however long it idles", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 400 }), (looks) => {
+        let r = run();
+        for (let i = 1; i <= looks; i++)
+          r = applyScan([r], [shell({ serving: true })], T0 + i * 10_000).runs[0]!;
+        expect(isStuck(r, T0 + looks * 10_000, LIMIT)).toBe(false);
+        expect(summary([r], T0 + looks * 10_000, LIMIT)).toContain("· serving");
+      }),
+      { numRuns: 50 },
+    );
   });
 
   test("a run whose file no shell holds has ended; a stopped one stays stopped", () => {
@@ -319,6 +384,13 @@ describe("trim / words", () => {
 });
 
 describe("SCAN_SCRIPT on this machine", () => {
+  /** Scans this process's children; answers the shell writing to `file`. */
+  const scanFor = (file: string) => {
+    const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)]);
+    expect(p.exitCode).toBe(0);
+    return parseScan(p.stdout.toString()).find((s) => s.file === file);
+  };
+
   test("finds a child shell writing to a task file, its tree, its CPU and a sleep in it", async () => {
     const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-scan-${process.pid}/tasks`;
     await Bun.$`mkdir -p ${dir}`;
@@ -331,17 +403,7 @@ describe("SCAN_SCRIPT on this machine", () => {
       },
     );
     try {
-      const scan = () => {
-        const p = Bun.spawnSync([
-          "bash",
-          "-c",
-          SCAN_SCRIPT,
-          "scan",
-          String(process.pid),
-        ]);
-        expect(p.exitCode).toBe(0);
-        return parseScan(p.stdout.toString()).find((s) => s.file === file);
-      };
+      const scan = () => scanFor(file);
       await Bun.sleep(300);
       const busy = scan();
       expect(busy?.pid).toBe(child.pid);
@@ -353,6 +415,86 @@ describe("SCAN_SCRIPT on this machine", () => {
       expect(after!.pids.length).toBeGreaterThanOrEqual(2);
     } finally {
       child.kill();
+      await Bun.$`rm -rf ${dir}/..`;
+    }
+  });
+
+  test("a server and a watcher serve, an idle shell does not; a reaped child's I/O stays in the tree; the age is the shell's", async () => {
+    const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-serve-${process.pid}/tasks`;
+    await Bun.$`mkdir -p ${dir}`;
+    const log = `${dir}/../app.log`;
+    await Bun.write(log, "");
+    // each `; true` keeps bash from exec-ing into its last command
+    const kids = {
+      server: "python3 -m http.server 0 --bind 127.0.0.1; true",
+      watcher: `tail -f ${log}; true`,
+      idle: "sleep 30; true",
+      copy: "sleep 0.5; head -c 10000000 /dev/zero > /dev/null; sleep 30; true",
+    };
+    const children = Object.entries(kids).map(([name, cmd]) =>
+      Bun.spawn(["bash", "-c", cmd], { stdout: Bun.file(`${dir}/${name}.output`) }),
+    );
+    try {
+      const scan = (name: string) => scanFor(`${dir}/${name}.output`)!;
+      await Bun.sleep(200);
+      const before = { copy: scan("copy"), idle: scan("idle") };
+      await Bun.sleep(1_800);
+      const after = (name: string) => scan(name);
+      expect(after("server").serving).toBe(true);
+      expect(after("watcher").serving).toBe(true);
+      expect(after("idle").serving).toBe(false);
+      // head has exited and been reaped: its reads stay in its parent's count
+      expect(after("copy").io - before.copy.io).toBeGreaterThanOrEqual(10_000_000);
+      expect(after("idle").io - before.idle.io).toBeLessThan(ACTIVE_IO_BYTES);
+      // started about 2 s before the second scan
+      expect(after("idle").ageMs).toBeGreaterThanOrEqual(1_500);
+      expect(after("idle").ageMs).toBeLessThan(5_000);
+    } finally {
+      // the shells' children first: an orphaned server would hold the test's output open
+      for (const c of children) Bun.spawnSync(["pkill", "-P", String(c.pid)]);
+      for (const c of children) c.kill();
+      await Bun.$`rm -rf ${dir}/..`;
+    }
+  });
+
+  test("a quiet client receiving into memory from a server outside its tree moves data", async () => {
+    const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-tcp-${process.pid}/tasks`;
+    await Bun.$`mkdir -p ${dir}`;
+    // the server's stdout is a pipe, not a task file: no shell of the scan's
+    const server = Bun.spawn([
+      "python3",
+      "-c",
+      `import socket, time
+l = socket.socket(); l.bind(("127.0.0.1", 0)); l.listen(1)
+print(l.getsockname()[1], flush=True)
+c, _ = l.accept(); c.sendall(b"x" * 10_000_000); time.sleep(30)`,
+    ], { stdout: "pipe" });
+    let child: ReturnType<typeof Bun.spawn> | undefined;
+    try {
+      const { value } = await server.stdout.getReader().read();
+      const port = Number(new TextDecoder().decode(value).trim());
+      // recv into memory: no read/write, so rchar/wchar barely move; the socket stays open so its counters do
+      const client = `import socket, sys, time
+s = socket.create_connection(("127.0.0.1", int(sys.argv[1]))); n = 0
+while n < 10_000_000:
+    b = s.recv(1 << 20)
+    if not b: break
+    n += len(b)
+time.sleep(30)`;
+      child = Bun.spawn(["bash", "-c", `sleep 0.5; python3 -c '${client}' ${port}; true`], {
+        stdout: Bun.file(`${dir}/client.output`),
+      });
+      const scan = () => scanFor(`${dir}/client.output`)!;
+      await Bun.sleep(200);
+      const before = scan();
+      await Bun.sleep(1_800);
+      const after = scan();
+      expect(after.io - before.io).toBeGreaterThanOrEqual(10_000_000);
+    } finally {
+      // the shell's children first: an orphaned client would hold the test's output open
+      if (child) Bun.spawnSync(["pkill", "-P", String(child.pid)]);
+      child?.kill();
+      server.kill();
       await Bun.$`rm -rf ${dir}/..`;
     }
   });

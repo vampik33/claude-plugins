@@ -87,12 +87,13 @@ async function look($: EngineInterface, w: Watch): Promise<void> {
   }
   w.root ??= await findRoot($);
   if (w.root === undefined) return;
+  // read before the scan samples the uptime: a slow scan then dates a shell earlier, never later
+  const now = await $.clock.now();
   const out = await $.process
     .run(["bash", "-c", SCAN_SCRIPT, "watchdog-scan", String(w.root)])
     .catch(() => undefined);
   if (!out || out.exitCode !== 0) return;
   const shells = parseScan(out.stdout);
-  const now = await $.clock.now();
   const grew: WatchRun[] = [];
   const stuck: WatchRun[] = [];
   const kill: WatchRun[] = [];
@@ -200,10 +201,9 @@ export const register: Register = (on, options) => {
       command: e.command,
       startedAt: now,
     };
-    if (!e.run_in_background) {
-      await update($, runs, (prev) => trim([...prev, base]));
-      ensurePoll($, w);
-    }
+    // recorded before the call, background ones too: a shell spawned meanwhile is matched by its command, never left for the fallback
+    await update($, runs, (prev) => trim([...prev, base]));
+    ensurePoll($, w);
     const r = await next(e);
     const taskId =
       r.deny === undefined
@@ -216,7 +216,8 @@ export const register: Register = (on, options) => {
         const bg = (x: WatchRun): WatchRun => ({
           ...x,
           taskId,
-          ...(file && !x.outputFile ? { outputFile: file } : {}),
+          // the file the result names wins over any shell matched meanwhile
+          ...(file ? { outputFile: file } : {}),
         });
         return prev.some((x) => x.id === id)
           ? prev.map((x) => (x.id === id ? bg(x) : x))

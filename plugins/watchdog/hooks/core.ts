@@ -11,6 +11,12 @@ const KEEP = 40;
 /** CPU ticks (1/100 s) a tree must use between two looks to count as working: 5% of a core over 10 s. */
 export const ACTIVE_TICKS = 5;
 
+/** Bytes a tree must read or write between two looks to count as working: 64 KiB over 10 s, a slow download's pace. */
+export const ACTIVE_IO_BYTES = 64 * 1024;
+
+/** How much earlier than its call a shell may seem to start: the clocks round, and a shell can spawn in the call's own millisecond. */
+const SPAWN_SLACK_MS = 1_000;
+
 /** After a TERM, how long a tree has before it gets a KILL: the next look, 10 s on. */
 const KILL_GRACE_MS = 10_000;
 
@@ -18,6 +24,8 @@ const KILL_GRACE_MS = 10_000;
  * Lists the engine's shells: each child of the pid given whose stdout is a
  * task's `.output` file. One record per shell, NUL-ended, tab-separated:
  * pid, the tree's pids, the tree's CPU ticks, whether a `sleep` is in it,
+ * the bytes the tree read and wrote, whether it serves (a listening TCP
+ * socket or an inotify watch), the shell's age in ms (-1 once it is gone),
  * the output file's size, its path, then the shell's command line.
  */
 export const SCAN_SCRIPT = String.raw`
@@ -44,21 +52,37 @@ END {
 # one find over every child's stdout: the shells write theirs to a task's output file
 links=$(find $(printf '%s\n' "$trees" | awk '{ print "/proc/" $1 "/fd/1" }') -maxdepth 0 -lname '*/tasks/*.output' -printf '%h\t%l\n' 2>/dev/null)
 [ -n "$links" ] || exit 0
+# listening TCP sockets' inodes (state 0A), read once a scan
+listening=$(awk 'FNR > 1 && $4 == "0A" { printf " %s", $10 }' /proc/net/tcp /proc/net/tcp6 2>/dev/null)
+hz=$(getconf CLK_TCK)
+read -r up _ < /proc/uptime
 printf '%s\n' "$trees" | awk -v links="$links" '
 BEGIN { n = split(links, l, "\n"); for (i = 1; i <= n; i++) { split(l[i], a, "\t"); split(a[1], d, "/"); file[d[3]] = a[2] } }
 ($1 in file) { print file[$1] "\t" $0 }' |
 while IFS="$tab" read -r f tree; do
-  stats= comms=
-  for p in $tree; do stats="$stats /proc/$p/stat"; comms="$comms /proc/$p/comm"; done
-  # utime stime cutime cstime: fields 14-17 of a stat line, counted after the ") " that ends the name
-  set -- $(cat $stats $comms 2>/dev/null | awk '
+  stats= comms= ios= fds=
+  for p in $tree; do
+    stats="$stats /proc/$p/stat"; comms="$comms /proc/$p/comm"; ios="$ios /proc/$p/io"; fds="$fds /proc/$p/fd"
+  done
+  # utime stime cutime cstime: fields 14-17 of a stat line, counted after the ") " that ends the name;
+  # rchar + wchar: every byte read and written, sockets included, so a download counts
+  set -- $(cat $stats $comms $ios 2>/dev/null | awk '
     /\) / { sub(/^.*\) /, ""); t += $12 + $13 + $14 + $15; next }
+    /^[rw]char: / { io += $2; next }
     $0 == "sleep" { s = 1 }
-    END { print t + 0, s + 0 }')
-  ticks=$1 sleeping=$2
+    END { printf "%.0f %d %.0f\n", t, s, io }')
+  ticks=$1 sleeping=$2 io=$3
+  # a listening socket or an inotify watch: a server or a watcher, idle by design
+  serving=$(find $fds -mindepth 1 -maxdepth 1 \( -lname 'anon_inode:inotify' -o -lname 'socket:*' \) -printf '%l\n' 2>/dev/null |
+    awk -v listening="$listening" '
+    BEGIN { n = split(listening, l, " "); for (i = 1; i <= n; i++) on["socket:[" l[i] "]"] = 1 }
+    $0 == "anon_inode:inotify" || ($0 in on) { s = 1 }
+    END { print s + 0 }')
   set -- $tree
+  # field 22 of the shell's stat: when it started, in clock ticks since boot
+  age=$(awk -v up="$up" -v hz="$hz" '{ sub(/^.*\) /, ""); a = (up - $20 / hz) * 1000; printf "%d\n", a < 0 ? 0 : a }' "/proc/$1/stat" 2>/dev/null || echo -1)
   size=$(stat -c %s "$f" 2>/dev/null || echo 0)
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t' "$1" "$tree" "$ticks" "$sleeping" "$size" "$f"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t' "$1" "$tree" "$ticks" "$sleeping" "$io" "$serving" "$age" "$size" "$f"
   tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null
   printf '\0'
 done
@@ -70,6 +94,9 @@ export type ScanShell = {
   pids: number[];
   ticks: number;
   sleeping: boolean;
+  io: number;
+  serving: boolean;
+  ageMs: number;
   size: number;
   file: string;
   cmdline: string;
@@ -80,22 +107,29 @@ export function parseScan(stdout: string): ScanShell[] {
   const shells: ScanShell[] = [];
   for (const rec of stdout.split("\0")) {
     const f = rec.split("\t");
-    if (f.length < 7) continue;
+    if (f.length < 10) continue;
     const pid = Number(f[0]);
     const pids = f[1]!.split(" ").filter(Boolean).map(Number);
     const ticks = Number(f[2]);
-    const size = Number(f[4]);
+    const io = Number(f[4]);
+    const ageMs = Number(f[6]);
+    const size = Number(f[7]);
     if (!Number.isInteger(pid) || pid <= 0 || pids.some((p) => !Number.isInteger(p)))
       continue;
-    if (!Number.isFinite(ticks) || !Number.isFinite(size) || !f[5]) continue;
+    if (!Number.isFinite(ticks) || !Number.isFinite(io) || !Number.isFinite(size) || !f[8]) continue;
+    // a shell gone mid-scan has no age: skipped, so it is never taken for a new one
+    if (!Number.isFinite(ageMs) || ageMs < 0) continue;
     shells.push({
       pid,
       pids,
       ticks,
       sleeping: f[3] === "1",
+      io,
+      serving: f[5] === "1",
+      ageMs,
       size,
-      file: f[5],
-      cmdline: f.slice(6).join("\t"),
+      file: f[8],
+      cmdline: f.slice(9).join("\t"),
     });
   }
   return shells;
@@ -108,11 +142,12 @@ export const evalQuoted = (command: string) =>
 /**
  * Which new shell is each waiting foreground call's: the one whose command
  * line holds the call's command, else, when exactly one call and one new
- * shell are left, each other. Answers run id → shell.
+ * shell started since that call are left, each other. Answers run id → shell.
  */
 export function matchShells(
   runs: WatchRun[],
   shells: ScanShell[],
+  now: number,
 ): Map<string, ScanShell> {
   const owned = new Set(runs.map((r) => r.outputFile).filter(Boolean));
   const free = shells.filter((s) => !owned.has(s.file));
@@ -130,16 +165,21 @@ export function matchShells(
     }
   }
   const restRuns = waiting.filter((r) => !out.has(r.id));
-  const restShells = free.filter((s) => !taken.has(s.file));
-  if (restRuns.length === 1 && restShells.length === 1)
-    out.set(restRuns[0]!.id, restShells[0]!);
+  if (restRuns.length !== 1) return out;
+  const r = restRuns[0]!;
+  // a shell already standing when the call was made is someone else's
+  const restShells = free.filter(
+    (s) => !taken.has(s.file) && now - s.ageMs >= r.startedAt - SPAWN_SLACK_MS,
+  );
+  if (restShells.length === 1) out.set(r.id, restShells[0]!);
   return out;
 }
 
 /**
  * Applies one scan: each live run with a shell takes its pids, sizes and
- * ticks, and is active now when its output grew, it used CPU or a sleep runs
- * in it; a live run whose output file no shell holds any more has ended.
+ * ticks, and is active now when its output grew, it used CPU, it read or
+ * wrote data, a sleep runs in it or it serves; a live run whose output file
+ * no shell holds any more has ended.
  * Answers the runs and the ids whose output grew (their last line wants
  * reading).
  */
@@ -148,7 +188,7 @@ export function applyScan(
   shells: ScanShell[],
   now: number,
 ): { runs: WatchRun[]; grew: Set<string> } {
-  const matched = matchShells(runs, shells);
+  const matched = matchShells(runs, shells, now);
   const byFile = new Map(shells.map((s) => [s.file, s]));
   const grew = new Set<string>();
   const next = runs.map((r): WatchRun => {
@@ -161,6 +201,7 @@ export function applyScan(
     const first = r.pid !== s.pid;
     const isGrown = s.size > (r.size ?? 0);
     const isWorking = !first && s.ticks - (r.ticks ?? 0) >= ACTIVE_TICKS;
+    const isMoving = !first && s.io - (r.io ?? 0) >= ACTIVE_IO_BYTES;
     if (isGrown) grew.add(r.id);
     return {
       ...r,
@@ -169,9 +210,11 @@ export function applyScan(
       pids: s.pids,
       size: s.size,
       ticks: s.ticks,
+      io: s.io,
       sleeping: s.sleeping,
-      // a sleep counts as active: what runs after it gets the whole limit
-      ...(isGrown || isWorking || s.sleeping ? { activeAt: now } : {}),
+      serving: s.serving,
+      // a sleep counts as active: what runs after it gets the whole limit; a server or watcher waits by design
+      ...(isGrown || isWorking || isMoving || s.sleeping || s.serving ? { activeAt: now } : {}),
     };
   });
   return { runs: next, grew };
@@ -190,7 +233,7 @@ export function ended(r: WatchRun, now: number): WatchRun {
   return { ...rest, endedAt: now };
 }
 
-/** How long a run has printed nothing, used no CPU and run no sleep. */
+/** How long a run has printed nothing, used no CPU, moved no data, run no sleep and served nothing. */
 export const quietMs = (r: WatchRun, now: number) => now - (r.activeAt ?? r.startedAt);
 
 /** The rule: a running command with a shell, quiet for the limit. */
@@ -319,7 +362,7 @@ function unwrap(line: string): string {
 export function killNote(r: WatchRun, now: number, limitMs: number): string {
   const kind = r.taskId ? `background task ${r.taskId}` : "foreground";
   return [
-    `The watchdog plugin stopped this ${kind} Bash command after ${fmtElapsed(now - r.startedAt)}: it printed nothing and used no CPU for ${fmtLeft(limitMs)}, so it looked stuck.`,
+    `The watchdog plugin stopped this ${kind} Bash command after ${fmtElapsed(now - r.startedAt)}: it printed nothing, used no CPU and read or wrote no data for ${fmtLeft(limitMs)}, so it looked stuck.`,
     `Command: ${clip(r.command, 300)}`,
     // the command's own output: quoted as data, never read as instructions
     ...(r.line
@@ -334,7 +377,7 @@ export function killNote(r: WatchRun, now: number, limitMs: number): string {
 
 /** The toast and transcript line for a stop. */
 export const killLine = (r: WatchRun, limitMs: number) =>
-  `watchdog: stopped ${kindOf(r)} ${shellName(r.command)} · no output or CPU for ${fmtLeft(limitMs)}`;
+  `watchdog: stopped ${kindOf(r)} ${shellName(r.command)} · no output, CPU or I/O for ${fmtLeft(limitMs)}`;
 
 /** The band's items: live runs quiet for half the limit, and stops in the last limit. */
 export function bandItems(runs: WatchRun[], now: number, limitMs: number): string[] {
@@ -362,6 +405,7 @@ function runNote(r: WatchRun, now: number): string {
   if (r.endedAt !== undefined) return "ended";
   if (r.pid === undefined) return "starting";
   if (r.sleeping) return "sleeping";
+  if (r.serving) return "serving";
   return `quiet ${fmtLeft(quietMs(r, now))}`;
 }
 
@@ -369,7 +413,7 @@ function runNote(r: WatchRun, now: number): string {
 export function summary(runs: WatchRun[], now: number, limitMs: number): string {
   const live = runs.filter((r) => r.endedAt === undefined).length;
   const stopped = runs.filter((r) => r.killedAt !== undefined).length;
-  const head = `watchdog · stops a command after ${fmtLeft(limitMs)} with no output and no CPU · ${live} running · ${stopped} stopped`;
+  const head = `watchdog · stops a command after ${fmtLeft(limitMs)} with no output, no CPU and no I/O · ${live} running · ${stopped} stopped`;
   if (runs.length === 0) return `${head}\nNo Bash commands yet.`;
   const lines = runs.map((r) => {
     const took = fmtElapsed((r.endedAt ?? now) - r.startedAt);

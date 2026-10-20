@@ -11,12 +11,17 @@ type Proc = {
   pids: number[];
   ticks: number;
   sleeping?: boolean;
+  /** Bytes read and written */
+  io?: number;
+  serving?: boolean;
+  /** How long ago the shell started, ms */
+  age?: number;
   out: string;
   command: string;
 };
 
-/** The engine beneath the mod: a process table, Bash calls held until released, and what the mod did. */
-function engine(on: any) {
+/** The engine beneath the mod: a process table, Bash calls held until released (background ones too, if asked), and what the mod did. */
+function engine(on: any, { holdBackground = false } = {}) {
   const procs = new Map<string, Proc>();
   const seen = {
     kills: [] as string[][],
@@ -25,7 +30,7 @@ function engine(on: any) {
     toasts: [] as string[],
     logs: [] as string[],
   };
-  const held: ((r: unknown) => void)[] = [];
+  const held: (() => void)[] = [];
   const clock = mock.clock(on, { now: Date.parse("2026-10-19T10:00:00Z") });
   const run = (stdout: string, exitCode = 0) => ({
     value: { exitCode, stdout, stderr: "", isStdoutTruncated: false, isStderrTruncated: false },
@@ -38,7 +43,7 @@ function engine(on: any) {
         [...procs.entries()]
           .map(
             ([file, p]) =>
-              `${p.pid}\t${p.pids.join(" ")}\t${p.ticks}\t${p.sleeping ? 1 : 0}\t${p.out.length}\t${file}\t/usr/bin/zsh -c source snap && ${evalQuoted(p.command)} && pwd -P \0`,
+              `${p.pid}\t${p.pids.join(" ")}\t${p.ticks}\t${p.sleeping ? 1 : 0}\t${p.io ?? 0}\t${p.serving ? 1 : 0}\t${p.age ?? 0}\t${p.out.length}\t${file}\t/usr/bin/zsh -c source snap && ${evalQuoted(p.command)} && pwd -P \0`,
           )
           .join(""),
       );
@@ -65,16 +70,16 @@ function engine(on: any) {
     }
     if (e.run_in_background) {
       const id = `b${++task}`;
-      return {
+      const r = {
         result: { stdout: "", stderr: "", interrupted: false, backgroundTaskId: id },
         text: `Command running in background with ID: ${id}. Output is being written to: /t/tasks/${id}.output`,
       };
+      return holdBackground ? new Promise((res) => held.push(() => res(r))) : r;
     }
-    return new Promise((res) => held.push(res));
+    return new Promise((res) => held.push(() => res({ result: { stdout: "", stderr: "", interrupted: false }, text: "" })));
   });
-  /** Lets the oldest held foreground call answer. */
-  const release = () =>
-    held.shift()!({ result: { stdout: "", stderr: "", interrupted: false }, text: "" });
+  /** Lets a held call answer: the oldest, or the one at `i`. */
+  const release = (i = 0) => held.splice(i, 1)[0]!();
   return { procs, seen, clock, release };
 }
 
@@ -95,7 +100,7 @@ describe("foreground", () => {
     expect(seen.kills).toEqual([]);
     await clock.advance(2 * MIN);
     expect(seen.kills[0]).toEqual(["-TERM", "--", "-201", "201", "202"]);
-    expect(seen.toasts.at(-1)).toMatch(/^watchdog: stopped fg ssh build-box · no output or CPU for 10m$/);
+    expect(seen.toasts.at(-1)).toMatch(/^watchdog: stopped fg ssh build-box · no output, CPU or I\/O for 10m$/);
     expect(seen.logs.at(-1)).toBe(seen.toasts.at(-1));
     // still standing after the grace: KILL
     await clock.advance(10_000);
@@ -178,6 +183,42 @@ describe("foreground", () => {
     await a;
     await b;
   });
+
+  test("a waiting call is never paired with a shell that stood before it", async ($, on) => {
+    const { procs, seen, clock, release } = engine(on);
+    await start($);
+    // someone else's shell, an hour old, that no call of this session owns
+    procs.set("/t/tasks/x.output", { pid: 1101, pids: [1101], ticks: 0, age: 60 * MIN, out: "", command: "other" });
+    // its own shell has not spawned yet: a permission prompt holds it
+    const call = bash($, "./deploy.sh");
+    await clock.advance(20 * MIN);
+    expect(seen.kills).toEqual([]);
+    const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    expect(text).toMatch(/▶ fg deploy\.sh · 20m00s · starting/);
+    release();
+    await call;
+  });
+
+  test("a background call made while a foreground one waits keeps its own shell", async ($, on) => {
+    const { procs, clock, release } = engine(on, { holdBackground: true });
+    await start($);
+    const fg = bash($, "./deploy.sh");
+    const bg = bash($, "./serve.sh", true);
+    // the background shell spawns before its call answers; the foreground one has none yet
+    procs.set("/t/tasks/b1.output", { pid: 1201, pids: [1201], ticks: 0, serving: true, out: "", command: "./serve.sh" });
+    await clock.advance(10_000);
+    let text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    expect(text).toMatch(/▶ fg deploy\.sh · 10s · starting/);
+    expect(text).toMatch(/▶ fg serve\.sh · 10s · serving/);
+    release(1);
+    await bg;
+    await clock.advance(10_000);
+    text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
+    expect(text).toMatch(/▶ fg deploy\.sh · 20s · starting/);
+    expect(text).toMatch(/▶ bg serve\.sh · 20s · serving/);
+    release();
+    await fg;
+  });
 });
 
 describe("background", () => {
@@ -218,6 +259,29 @@ describe("background", () => {
     expect(seen.stops).toEqual([]);
     const text = (await $.command.run({ command: "watchdog", args: "" } as never)).text;
     expect(text).toMatch(/✓ bg cargo test · 10s · ended/);
+  });
+
+  test("an idle server or watcher is never stopped; a quiet download is, once its data stops", async ($, on) => {
+    const { procs, seen, clock } = engine(on);
+    await start($);
+    await bash($, "npm run dev", true);
+    await bash($, "tsc --watch", true);
+    await bash($, "curl -sSLo model.bin https://example.com/model.bin", true);
+    procs.set("/t/tasks/b1.output", { pid: 1301, pids: [1301, 1302], ticks: 0, serving: true, out: "", command: "npm run dev" });
+    procs.set("/t/tasks/b2.output", { pid: 1401, pids: [1401, 1402], ticks: 0, serving: true, out: "", command: "tsc --watch" });
+    procs.set("/t/tasks/b3.output", { pid: 1501, pids: [1501, 1502], ticks: 0, io: 0, out: "", command: "curl -sSLo model.bin https://example.com/model.bin" });
+    for (let i = 0; i < 180; i++) {
+      // a megabyte a look: far under 5% of a core, nothing on stdout
+      procs.get("/t/tasks/b3.output")!.io! += 1 << 20;
+      await clock.advance(10_000);
+    }
+    expect(seen.stops).toEqual([]);
+    // the download stalls: its data stops, and it is stopped a limit later
+    await clock.advance(9 * MIN);
+    expect(seen.stops).toEqual([]);
+    await clock.advance(2 * MIN);
+    expect(seen.stops).toEqual(["b3"]);
+    expect(seen.prompts[0]).toContain("read or wrote no data");
   });
 
   test("a reload while a task runs picks the look up again", async ($, on) => {

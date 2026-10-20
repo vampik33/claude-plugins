@@ -200,10 +200,9 @@ export const register: Register = (on, options) => {
       command: e.command,
       startedAt: now,
     };
-    if (!e.run_in_background) {
-      await update($, runs, (prev) => trim([...prev, base]));
-      ensurePoll($, w);
-    }
+    // recorded before the call, background ones too: a shell spawned meanwhile is matched by its command, never left for the fallback
+    await update($, runs, (prev) => trim([...prev, base]));
+    ensurePoll($, w);
     const r = await next(e);
     const taskId =
       r.deny === undefined
@@ -216,7 +215,8 @@ export const register: Register = (on, options) => {
         const bg = (x: WatchRun): WatchRun => ({
           ...x,
           taskId,
-          ...(file && !x.outputFile ? { outputFile: file } : {}),
+          // the file the result names wins over any shell matched meanwhile
+          ...(file ? { outputFile: file } : {}),
         });
         return prev.some((x) => x.id === id)
           ? prev.map((x) => (x.id === id ? bg(x) : x))

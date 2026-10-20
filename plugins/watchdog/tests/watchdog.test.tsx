@@ -126,6 +126,22 @@ describe("foreground", () => {
     expect(seen.kills).toHaveLength(2);
   });
 
+  test("a /clear in the grace still lets the KILL go", async ($, on) => {
+    const { procs, seen, clock, release } = engine(on);
+    on("session.end", (_$: unknown, e: unknown) => e as never);
+    await start($);
+    const call = bash($, "./serve.sh");
+    procs.set("/t/tasks/f1.output", { pid: 251, pids: [251, 252], ticks: 0, out: "", command: "./serve.sh" });
+    await clock.advance(10 * MIN);
+    procs.delete("/t/tasks/f1.output");
+    release();
+    await call;
+    await $.session.end({ reason: "clear", sessionId: "s1" } as never);
+    await start($);
+    await clock.advance(10_000);
+    expect(seen.kills.at(-1)).toEqual(["-KILL", "--", "-251"]);
+  });
+
   test("a command using CPU or printing is never stopped", async ($, on) => {
     const { procs, seen, clock, release } = engine(on);
     await start($);

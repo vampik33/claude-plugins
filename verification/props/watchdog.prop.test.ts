@@ -457,6 +457,39 @@ describe("SCAN_SCRIPT on this machine", () => {
     }
   });
 
+  test("thousands of TCP sockets on the machine still leave the tree's CPU, I/O and age read", async () => {
+    const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-many-${process.pid}/tasks`;
+    await Bun.$`mkdir -p ${dir}/../bin`;
+    // an ss listing 8000 established sockets: as one awk argument, past the kernel's 128 KiB limit
+    await Bun.write(
+      `${dir}/../bin/ss`,
+      `#!/bin/sh\nawk 'BEGIN { for (i = 0; i < 8000; i++) printf "ESTAB 0 0 127.0.0.1:%d 127.0.0.1:1 ino:%d sk:1 <->\\n\\t cubic bytes_acked:1 bytes_received:123456\\n", i, 9000000 + i }'\n`,
+    );
+    await Bun.$`chmod +x ${dir}/../bin/ss`;
+    const file = `${dir}/busy.output`;
+    const child = Bun.spawn(["bash", "-c", "timeout 1 yes >/dev/null; sleep 30; true"], {
+      stdout: Bun.file(file),
+    });
+    const env = { ...process.env, PATH: `${dir}/../bin:${process.env.PATH}` };
+    const scan = () => {
+      const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)], { env });
+      expect(p.exitCode).toBe(0);
+      return parseScan(p.stdout.toString()).find((s) => s.file === file)!;
+    };
+    try {
+      await Bun.sleep(300);
+      const busy = scan();
+      await Bun.sleep(1_200);
+      const after = scan();
+      expect(after.ticks - busy.ticks).toBeGreaterThanOrEqual(ACTIVE_TICKS);
+      expect(after.ageMs).toBeGreaterThanOrEqual(1_000);
+    } finally {
+      Bun.spawnSync(["pkill", "-P", String(child.pid)]);
+      child.kill();
+      await Bun.$`rm -rf ${dir}/..`;
+    }
+  });
+
   test("a quiet client receiving into memory from a server outside its tree moves data", async () => {
     const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-tcp-${process.pid}/tasks`;
     await Bun.$`mkdir -p ${dir}`;

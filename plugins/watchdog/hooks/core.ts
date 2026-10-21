@@ -81,10 +81,12 @@ while IFS="$tab" read -r f tree; do
   # one pass over the tree: stat lines give utime stime cutime cstime (fields 14-17, counted after the ") "
   # that ends the name) and, the shell's own, its start (field 22, clock ticks since boot); rchar + wchar
   # every byte read and written; the fds an inotify watch or a listening socket (a watcher or a server,
-  # idle by design) and each TCP socket's bytes, counted once however many pids hold it
-  set -- $({ cat $stats $comms $ios; find $fds -mindepth 1 -maxdepth 1 \( -lname 'anon_inode:inotify' -o -lname 'socket:*' \) -printf '%l\n'; } 2>/dev/null |
-    awk -v tcp="$tcp" -v shell="$shell" -v up="$up" -v hz="$hz" '
-    BEGIN { n = split(tcp, a, "\n"); for (i = 1; i <= n; i++) { split(a[i], kv, " "); net[kv[1]] = kv[2] } }
+  # idle by design) and each TCP socket's bytes, counted once however many pids hold it. The socket list
+  # comes first on stdin, ended by "--": as an awk -v argument it would pass the kernel's 128 KiB limit on
+  # one argument once a few thousand sockets are open, and awk would not run at all
+  set -- $({ printf '%s\n' "$tcp" --; cat $stats $comms $ios; find $fds -mindepth 1 -maxdepth 1 \( -lname 'anon_inode:inotify' -o -lname 'socket:*' \) -printf '%l\n'; } 2>/dev/null |
+    awk -v shell="$shell" -v up="$up" -v hz="$hz" '
+    !body { if ($0 == "--") body = 1; else if ($0 != "") { split($0, kv, " "); net[kv[1]] = kv[2] } next }
     /\) / { pid = $1; sub(/^.*\) /, ""); t += $12 + $13 + $14 + $15; if (pid == shell) start = $20; next }
     /^[rw]char: / { io += $2; next }
     $0 == "anon_inode:inotify" || (($0 in net) && net[$0] == "L") { serving = 1; next }

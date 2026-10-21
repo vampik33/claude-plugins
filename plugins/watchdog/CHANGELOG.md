@@ -4,6 +4,11 @@ All notable changes to the watchdog plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-10-21
+
+### Fixed
+- On a machine with thousands of TCP sockets (past the kernel's 128 KiB limit on one argument), the scan no longer reads every command as idle (0 CPU, 0 bytes, not serving, age 0) and stops busy ones after the limit: the socket map goes to the scan's awk on stdin
+
 ## [0.3.0] - 2026-10-20
 
 ### Changed

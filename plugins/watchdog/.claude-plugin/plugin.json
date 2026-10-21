@@ -1,6 +1,6 @@
 {
   "name": "watchdog",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Watches every Bash command, foreground and background: stops one that has gone quiet (no output, no CPU, no I/O) and tells the model, which decides whether to re-run it.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts",

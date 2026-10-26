@@ -1,6 +1,6 @@
 {
   "name": "big-picture",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated in an Orca browser tab (a terminal pane outside Orca) while the work goes on.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts"

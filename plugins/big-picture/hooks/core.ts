@@ -324,7 +324,8 @@ export function summaryPrompt(
 /** The HTML document in the model's reply, fences and prose around it dropped. */
 export function extractHtml(text: string): string | undefined {
   const start = text.search(/<!doctype html|<html[\s>]/i);
-  const end = text.toLowerCase().lastIndexOf("</html>");
+  // searched in the text itself: toLowerCase can change its length (İ)
+  const end = [...text.matchAll(/<\/html>/gi)].at(-1)?.index ?? -1;
   if (start < 0 || end < start) return undefined;
   return text.slice(start, end + "</html>".length);
 }

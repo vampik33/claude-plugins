@@ -4,6 +4,12 @@ All notable changes to the prompt-clock plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.3] - 2026-10-26
+
+### Fixed
+- A prompt typed `__proto__` keeps its send time: the time maps have no prototype
+- A prompt typed `constructor`, `toString` or another `Object.prototype` name is no longer shown an inherited function as its send time
+
 ## [0.1.2] - 2026-10-14
 
 ### Changed

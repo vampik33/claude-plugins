@@ -74,11 +74,16 @@ export function cap(
   );
 }
 
+// no prototype: a prompt typed `__proto__` is a key like any other
 export const emptyTimes = (): PromptClockTimes => ({
-  sent: {},
-  byText: {},
-  turns: {},
+  sent: Object.create(null),
+  byText: Object.create(null),
+  turns: Object.create(null),
 });
+
+/** The map's own time for `key`; a prompt typed `constructor` finds no inherited one. */
+export const timeOf = (times: Record<string, number>, key: string) =>
+  Object.hasOwn(times, key) ? times[key] : undefined;
 
 /** The typed text of a user row's content, or undefined for a tool result or a meta row. */
 export function promptText(content: unknown): string | undefined {

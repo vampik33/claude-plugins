@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.1] - 2026-10-26
+
+### Fixed
+- `1000%` and other numbers over three digits before `%` no longer read as a percentage of their last digits (`1000%` was 0 %, `1050%` 50 %)
+
 ## [0.5.0] - 2026-10-14
 
 ### Added

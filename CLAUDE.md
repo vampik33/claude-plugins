@@ -10,6 +10,8 @@ claude --plugin-dir /path/to/claude-plugins/plugins/<plugin-name>
 
 All checks (Lean proofs, property + differential tests, mod tests, telegram-notifier shellcheck + bats): `verification/run.sh`. See `verification/README.md`.
 
+One target: `claude plugin test plugins/<mod>`; `(cd verification && bun test props/<mod>)`; `bats plugins/telegram-notifier/tests`.
+
 ## Repository Structure
 
 ```
@@ -17,7 +19,7 @@ claude-plugins/
 ├── .claude-plugin/marketplace.json   # Marketplace manifest (all plugins)
 ├── .claude/                          # Local Claude state (gitignored)
 ├── plans/                            # Implementation plans from Claude sessions
-├── verification/                     # Lean proofs, fast-check + differential tests, run.sh
+├── verification/                     # lean/ models+proofs; props/*.prop|fv|diff tests (bun); run.sh
 └── plugins/
     ├── big-picture/                  # Mod: Jev-gated live HTML summary of big work, in an Orca tab
     ├── claudemd-gen/                 # CLAUDE.md generator and auditor
@@ -82,6 +84,7 @@ Mod gotchas:
 - `classic.*`, `session.compact` and `skill.prompt` hooks don't run where an organization manages Claude Code; say so in the mod's README
 - Tests: loop UI mounts over `['terminal','desktop'] as const`; use `$.clock.now()` (not `Date.now()`) so the mocked clock applies; fire `session.start` again on the same state to simulate a reload
 - Mod `.tsx` files aren't prettier-clean, so the format-on-save hook reflows unrelated lines; revert that churn to keep diffs surgical
+- Some `core.ts`/`ttl.ts` functions (fleet `trim`/`applyStatuses`/`endShell`, codex-review `trimJobs`, continuity `decideTtl`/`observeTtl`, prompt-clock `turnEnd`/`cap`) have Lean models in `verification/lean/Plugins/`: change the behaviour and update the model and proofs too. `diff.lean.test.ts` fails when they drift, and `run.sh` rejects `sorry`.
 
 ## Conventions
 
@@ -137,7 +140,6 @@ Use markdown files with YAML frontmatter for user-facing config:
 
 ## Gotchas
 
-- **Version sync is mandatory**: `plugin.json` and `marketplace.json` versions must match exactly — easy to forget one
 - **Only telegram-notifier has shell hooks**: the mods' `hooks/` hold a TypeScript module instead; the other plugins are command+skill only
 - **The `scripts/lib/` shared libraries are telegram-notifier-specific**: `config.sh`, `html.sh`, `session.sh`, `yaml.sh` live under telegram-notifier's hooks — they are not cross-plugin shared code
 - **gtr has no CHANGELOG.md**: Unlike other plugins, gtr is missing its changelog

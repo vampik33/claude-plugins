@@ -20,3 +20,6 @@ plugins/*/.claude-plugin/types/
 
 # Verification dependencies
 verification/node_modules/
+
+# formal-verify state and reports
+.formal-verify/

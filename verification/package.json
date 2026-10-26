@@ -1,7 +1,9 @@
 {
   "private": true,
   "devDependencies": {
-    "fast-check": "^3.22.0"
+    "@stryker-mutator/core": "^10.1.1",
+    "fast-check": "^3.22.0",
+    "parse5": "^8.0.1"
   },
   "scripts": {
     "test": "bun test props"

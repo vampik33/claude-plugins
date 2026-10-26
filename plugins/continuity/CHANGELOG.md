@@ -4,6 +4,12 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.4] - 2026-10-26
+
+### Fixed
+- A quoted `<handover-note` or `</handover-note` with no closing `>` is neutralised too, so it cannot open or close the note's fence
+- A TodoWrite call with a `null` to-do no longer makes the handover note throw
+
 ## [0.3.3] - 2026-10-14
 
 ### Changed

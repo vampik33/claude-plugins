@@ -4,6 +4,14 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-10-26
+
+### Fixed
+- Codex's text holding `<codex-review` or `</codex-review` with no closing `>` is neutralised too, so it cannot open or close the review's fence
+- A review whose `next_steps` holds a non-string is rejected as not matching the schema, instead of having those entries dropped
+- A non-string `parseError` or `stderr` from the companion no longer becomes the job's error; the default message is used
+- A companion job with a non-string id is not taken for ours
+
 ## [0.3.2] - 2026-10-14
 
 ### Changed

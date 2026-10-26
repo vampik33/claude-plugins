@@ -109,7 +109,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "author": {
         "name": "vampik33"
       },

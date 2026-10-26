@@ -285,7 +285,7 @@ export function lastLine(tail: string): string | undefined {
  * date or a path (2026/10/12, src/10/12) is no count.
  */
 export function parseProgress(line: string): number | undefined {
-  const pct = /(\d{1,3}(?:\.\d+)?)\s*%/.exec(line);
+  const pct = /(?<![\d.])(\d{1,3}(?:\.\d+)?)\s*%/.exec(line);
   if (pct && Number(pct[1]) <= 100) return Number(pct[1]) / 100;
   for (const m of line.matchAll(/(?<![\d./-])(\d+)\s*\/\s*(\d+)(?![\d./-])/g)) {
     const done = Number(m[1]);

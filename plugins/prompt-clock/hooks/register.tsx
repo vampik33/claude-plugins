@@ -9,6 +9,7 @@ import {
   parseTranscript,
   promptText,
   stampText,
+  timeOf,
   turnEnd,
   turnRange,
 } from "./core.ts";
@@ -82,7 +83,8 @@ export const register: Register = (on, options) => {
     if (e.props.origin.kind !== "composer") return next(e);
     const t = await read($, times);
     const at =
-      (e.requestId ? t.sent[e.requestId] : undefined) ?? t.byText[e.props.text];
+      (e.requestId ? timeOf(t.sent, e.requestId) : undefined) ??
+      timeOf(t.byText, e.props.text);
     if (at === undefined) return next(e);
     return next({
       ...e,

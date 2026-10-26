@@ -4,6 +4,16 @@ All notable changes to the watchdog plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-10-26
+
+### Fixed
+- Two calls running the same command at once no longer swap shells (the second call's shell could be up first, so a stop signalled the other call's processes): while both wait, neither is matched to a shell, and each is matched once the other is no longer waiting
+- A waiting call is no longer matched to the shell of another call whose command starts with its own (`a` took the shell of `a' b`), which could stop the other call's processes: the quoted command must appear whole in the shell's command line
+- A scan record with a malformed number (a pid of `0` or `-1`, a negative size, a fraction, a flag other than `0`/`1`) is skipped, so `-1` can never reach kill's targets
+
+### Changed
+- A call held back that way counts as active while it waits and at the look it gets its shell, so CPU, output, a sleep or serving it did unseen never shortens its limit; two identical foreground commands running together are not stopped while both wait
+
 ## [0.3.1] - 2026-10-21
 
 ### Fixed

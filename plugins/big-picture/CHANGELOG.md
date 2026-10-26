@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.4] - 2026-10-26
+
+### Fixed
+- A summary with a length-changing letter such as `İ` before `</html>` no longer gets its page cut a character off: the end tag is searched in the text itself, not a lower-cased copy
+
 ## [0.3.3] - 2026-10-14
 
 ### Fixed

@@ -119,6 +119,9 @@ export type ScanShell = {
   cmdline: string;
 };
 
+const COUNT = /^\d+$/;
+const FLAG = /^[01]$/;
+
 /** The scan's records; a malformed one is skipped. */
 export function parseScan(stdout: string): ScanShell[] {
   const shells: ScanShell[] = [];
@@ -126,16 +129,18 @@ export function parseScan(stdout: string): ScanShell[] {
     const f = rec.split("\t");
     if (f.length < 10) continue;
     const pid = Number(f[0]);
-    const pids = f[1]!.split(" ").filter(Boolean).map(Number);
+    const tree = f[1]!.split(" ").filter(Boolean);
+    const pids = tree.map(Number);
     const ticks = Number(f[2]);
     const io = Number(f[4]);
     const ageMs = Number(f[6]);
     const size = Number(f[7]);
-    if (!Number.isInteger(pid) || pid <= 0 || pids.some((p) => !Number.isInteger(p)))
+    // every number the scan prints is a whole count; a pid of 0 or -1 would make kill signal a whole group
+    if (![f[0], ...tree, f[2], f[4], f[7]].every((n) => COUNT.test(n!)) || pid <= 0 || pids.some((p) => p <= 0))
       continue;
-    if (!Number.isFinite(ticks) || !Number.isFinite(io) || !Number.isFinite(size) || !f[8]) continue;
-    // a shell gone mid-scan has no age: skipped, so it is never taken for a new one
-    if (!Number.isFinite(ageMs) || ageMs < 0) continue;
+    if (!FLAG.test(f[3]!) || !FLAG.test(f[5]!) || !f[8]) continue;
+    // a shell gone mid-scan has no age (-1): skipped, so it is never taken for a new one
+    if (!COUNT.test(f[6]!)) continue;
     shells.push({
       pid,
       pids,
@@ -156,10 +161,19 @@ export function parseScan(stdout: string): ScanShell[] {
 export const evalQuoted = (command: string) =>
   `eval '${command.replaceAll("'", `'"'"'`)}'`;
 
+/** Foreground calls still waiting for their shell. */
+const waitingOf = (runs: WatchRun[]) =>
+  runs.filter((r) => r.endedAt === undefined && !r.taskId && !r.outputFile);
+
+/** A waiting call another waiting call shares its command with: which shell is whose can't be told. */
+const isTwin = (r: WatchRun, waiting: WatchRun[]) =>
+  waiting.includes(r) && waiting.some((o) => o !== r && o.command === r.command);
+
 /**
  * Which new shell is each waiting foreground call's: the one whose command
  * line holds the call's command, else, when exactly one call and one new
- * shell started since that call are left, each other. Answers run id → shell.
+ * shell started since that call are left, each other. Calls waiting with the
+ * same command get no shell: theirs can't be told apart. Answers run id → shell.
  */
 export function matchShells(
   runs: WatchRun[],
@@ -168,14 +182,15 @@ export function matchShells(
 ): Map<string, ScanShell> {
   const owned = new Set(runs.map((r) => r.outputFile).filter(Boolean));
   const free = shells.filter((s) => !owned.has(s.file));
-  const waiting = runs.filter(
-    (r) => r.endedAt === undefined && !r.taskId && !r.outputFile,
-  );
+  const waiting = waitingOf(runs);
   const out = new Map<string, ScanShell>();
   const taken = new Set<string>();
   for (const r of waiting) {
+    // a twin's shell may be up first, so either shell could be this call's
+    if (isTwin(r, waiting)) continue;
     const q = evalQuoted(r.command);
-    const s = free.find((x) => !taken.has(x.file) && x.cmdline.includes(q));
+    // the quoted command whole, not the start of a longer one (`a` inside `a' b`)
+    const s = free.find((x) => !taken.has(x.file) && ` ${x.cmdline} `.includes(` ${q} `));
     if (s) {
       out.set(r.id, s);
       taken.add(s.file);
@@ -206,6 +221,7 @@ export function applyScan(
   now: number,
 ): { runs: WatchRun[]; grew: Set<string> } {
   const matched = matchShells(runs, shells, now);
+  const waiting = waitingOf(runs);
   const byFile = new Map(shells.map((s) => [s.file, s]));
   const grew = new Set<string>();
   const next = runs.map((r): WatchRun => {
@@ -213,9 +229,13 @@ export function applyScan(
     const s =
       matched.get(r.id) ?? (r.outputFile ? byFile.get(r.outputFile) : undefined);
     if (!s) {
-      return r.outputFile ? ended(r, now) : r;
+      if (r.outputFile) return ended(r, now);
+      // a held twin's shell may be working unseen: it counts as active until it gets its shell
+      return isTwin(r, waiting) ? { ...r, activeAt: now } : r;
     }
     const first = r.pid !== s.pid;
+    // only a held twin has an activeAt and no shell yet: what it did unseen counts at this look too
+    const wasHeld = r.pid === undefined && r.activeAt !== undefined;
     const isGrown = s.size > (r.size ?? 0);
     const isWorking = !first && s.ticks - (r.ticks ?? 0) >= ACTIVE_TICKS;
     const isMoving = !first && s.io - (r.io ?? 0) >= ACTIVE_IO_BYTES;
@@ -231,7 +251,7 @@ export function applyScan(
       sleeping: s.sleeping,
       serving: s.serving,
       // a sleep counts as active: what runs after it gets the whole limit; a server or watcher waits by design
-      ...(isGrown || isWorking || isMoving || s.sleeping || s.serving ? { activeAt: now } : {}),
+      ...(wasHeld || isGrown || isWorking || isMoving || s.sleeping || s.serving ? { activeAt: now } : {}),
     };
   });
   return { runs: next, grew };

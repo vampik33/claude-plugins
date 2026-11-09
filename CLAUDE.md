@@ -26,6 +26,7 @@ claude-plugins/
     ├── codex-review/                 # Mod: background Codex reviews, findings pane, CodexReview tool
     ├── continuity/                   # Mod: context gauge + cache timer, handover + compact + continue
     ├── explain-changes/              # Git diff explainer with educational insights
+    ├── fix-findings/                 # Mod + skill: prove review findings, fix the valid ones; converge loop with a Stop hook
     ├── fleet/                        # Mod: agents / shells / worktrees pane with alerts
     ├── gtr/                          # Git worktree management (wraps git-worktree-runner)
     ├── memory-watch/                 # Mod: pane summarizing auto-memory writes
@@ -58,7 +59,7 @@ Each plugin in `plugins/<name>/` follows this structure:
 
 ## Mods (function-hook plugins)
 
-big-picture, codex-review, continuity, fleet, memory-watch, palette, prompt-clock, ship and watchdog are TypeScript mods, not shell hooks:
+big-picture, codex-review, continuity, fix-findings, fleet, memory-watch, palette, prompt-clock, ship and watchdog are TypeScript mods, not shell hooks:
 
 ```
 <mod>/

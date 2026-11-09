@@ -1,0 +1,6 @@
+{
+  "name": "fix-findings",
+  "version": "0.1.0",
+  "description": "Prove review findings against the code and fix only the valid ones; `converge` repeats failing test, fix and independent review for up to five rounds, and a Stop hook keeps the loop from ending early",
+  "author": { "name": "vampik33" }
+}

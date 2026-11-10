@@ -675,7 +675,7 @@ describe("session", () => {
         flexDirection: "column",
         marginTop: 1,
       });
-      expect(drawn.children.at(-1).props.key).toBe("band:fleet");
+      expect(drawn.children.at(-1).props.key).toBe("band:70-fleet");
       expect(drawn.children.at(-1).props.marginTop).toBeUndefined();
       expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
       expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");

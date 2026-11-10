@@ -4,6 +4,11 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.4] - 2026-11-10
+
+### Changed
+- The band line takes its new fixed slot; top to bottom the band reads palette, memory, summary, ship, watchdog, codex, fleet, then the continuity gauge
+
 ## [0.4.3] - 2026-11-10
 
 ### Changed

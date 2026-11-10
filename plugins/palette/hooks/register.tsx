@@ -271,7 +271,7 @@ export const register: Register = (on) => {
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
     const row = (
-      <Box key="band:palette" flexDirection="row" columnGap={2}>
+      <Box key="band:10-palette" flexDirection="row" columnGap={2}>
         <Text dimColor>palette</Text>
         <Button
           key="palette-toggle"

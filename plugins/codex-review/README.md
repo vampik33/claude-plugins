@@ -49,7 +49,7 @@ A choice with nothing in it (no commits ahead, a clean tree) starts no review an
 
 ## The line
 
-Always drawn as the top line of the band above the prompt, on its own row: the running review with `cancel`, else the session's last finished review (`no review yet` before one) with `open` and `review`. `review` runs what `/cx adv` runs, dialog included. While the band is focused (ctrl+x tab), `x` presses `review`/`cancel` and `o` presses `open`. Reviews Claude ran through the tool count as the last result too.
+Always drawn on its own line in the band above the prompt, between the watchdog and fleet lines: the running review with `cancel`, else the session's last finished review (`no review yet` before one) with `open` and `review`. `review` runs what `/cx adv` runs, dialog included. While the band is focused (ctrl+x tab), `x` presses `review`/`cancel` and `o` presses `open`. Reviews Claude ran through the tool count as the last result too.
 
 ## CodexReview tool
 

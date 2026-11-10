@@ -94,6 +94,7 @@ const BAND = {
   component: "AbovePrompt" as const,
   props: {
     hasSurvey: false,
+    isCollapsed: false,
     isWorking: false,
     maxRows: 10,
     bodyColumns: 120,
@@ -227,17 +228,42 @@ describe("band", () => {
   }
 
   for (const surface of ["terminal", "desktop"] as const) {
-    test(`its lines stack under other bands, a blank row above them (${surface})`, async ($, on) => {
+    test(`its lines stack under other bands, no blank row between them (${surface})`, async ($, on) => {
       engine(on, { read: 80_000, write: 1_000 }, h("Text", null, "Heads up"));
       await measure($);
       const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
       const outer: any = await ui.drawn();
       expect(outer.type).toBe("Box");
+      // the band's shared column: one blank row above it, none between its rows
       expect(outer.props).toMatchObject({
+        key: "band-stack",
         flexDirection: "column",
         marginTop: 1,
       });
-      expect(outer.children.map((c: any) => c.type)).toEqual(["Text", "Client"]);
+      expect(outer.children.map((c: any) => c.type)).toEqual(["Text", "Box"]);
+      expect(outer.children[1].props.key).toBe("band-bottom:continuity");
+      expect(outer.children[1].props.marginTop).toBeUndefined();
+      expect(outer.children[1].children[0].type).toBe("Client");
+      await ui.unmount();
+    });
+
+    test(`another mod's column below is flattened, the gauge last in it (${surface})`, async ($, on) => {
+      const column = h(
+        "Box",
+        { key: "band-stack", flexDirection: "column", marginTop: 1 },
+        h("Box", { key: "band-top:codex" }, h("Text", null, "codex")),
+        h("Text", null, "palette"),
+      );
+      engine(on, { read: 80_000, write: 1_000 }, column);
+      await measure($);
+      const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
+      const outer: any = await ui.drawn();
+      expect(outer.props.key).toBe("band-stack");
+      expect(outer.children.map((c: any) => c.props?.key ?? c.children[0])).toEqual([
+        "band-top:codex",
+        "palette",
+        "band-bottom:continuity",
+      ]);
       await ui.unmount();
     });
   }
@@ -248,8 +274,9 @@ describe("band", () => {
     await step($);
     const ui = await $.ui.mount({ plugin: "continuity", surface: "mobile", ...BAND });
     const outer: any = await ui.drawn();
-    expect(outer.children.map((c: any) => c.type)).toEqual(["Text", "Text"]);
+    expect(outer.children.map((c: any) => c.type)).toEqual(["Text", "Box"]);
     expect(outer.children[0].children).toEqual(["Heads up"]);
+    expect(outer.children[1].children[0].type).toBe("Text");
     expect(
       await ui.find({ type: "Text", text: /^ctx [█░]+ 29% · session .* · cache until \d\d:\d\d$/ }),
     ).toBeDefined();

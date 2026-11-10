@@ -669,9 +669,14 @@ describe("session", () => {
       await spawn($, "map callers");
       ui = await mount();
       const drawn: any = await ui.drawn();
-      expect(drawn.props.flexDirection).toBe("column");
-      // a blank row above the fleet line, whatever is drawn above it
-      expect(drawn.children.at(-1).props.marginTop).toBe(1);
+      // in the band's shared column: one blank row above it, none between rows
+      expect(drawn.props).toMatchObject({
+        key: "band-stack",
+        flexDirection: "column",
+        marginTop: 1,
+      });
+      expect(drawn.children.at(-1).props.key).toBe("band:fleet");
+      expect(drawn.children.at(-1).props.marginTop).toBeUndefined();
       expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
       expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
       await ui.press({ key: "fleet-toggle" });

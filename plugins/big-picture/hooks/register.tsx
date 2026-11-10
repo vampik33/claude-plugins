@@ -35,6 +35,7 @@ import {
   textBlocks,
 } from "./core.ts";
 import { SHOW_ME } from "./show-me.ts";
+import { STACK, stackRows } from "./stack.ts";
 
 const status = atom(
   { plugin: "big-picture", key: "status" } as const,
@@ -556,43 +557,45 @@ export const register: Register = (on) => {
     if (!open && (s.kind === "none" || isJudgingOnly)) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
-    return (
-      <Box flexDirection="column">
-        {below}
-        <Box
-          flexDirection="row"
-          columnGap={2}
-          marginTop={1}
-          width={e.props.bodyColumns}
+    const row = (
+      <Box
+        key="band:big-picture"
+        flexDirection="row"
+        columnGap={2}
+        width={e.props.bodyColumns}
+      >
+        <Text dimColor>summary</Text>
+        {s.kind === "working" && <Text color="yellow">{`● ${s.step}…`}</Text>}
+        {s.kind === "ready" && (
+          <Text dimColor>{`updated ${fmtTime(s.at)}`}</Text>
+        )}
+        {s.kind === "failed" && (
+          <Text color="red" wrap="truncate-end">{`✗ ${s.reason}`}</Text>
+        )}
+        <Button
+          key="big-picture-toggle"
+          hotkey="s"
+          dimColor
+          onPress={async () => {
+            const said = await toggle($);
+            if (!said.isDone) $.ui.toast(`big-picture: ${said.text}`);
+          }}
         >
-          <Text dimColor>summary</Text>
-          {s.kind === "working" && <Text color="yellow">{`● ${s.step}…`}</Text>}
-          {s.kind === "ready" && (
-            <Text dimColor>{`updated ${fmtTime(s.at)}`}</Text>
-          )}
-          {s.kind === "failed" && (
-            <Text color="red" wrap="truncate-end">{`✗ ${s.reason}`}</Text>
-          )}
-          <Button
-            key="big-picture-toggle"
-            hotkey="s"
-            dimColor
-            onPress={async () => {
-              const said = await toggle($);
-              if (!said.isDone) $.ui.toast(`big-picture: ${said.text}`);
-            }}
-          >
-            {open ? "hide" : "show"}
-          </Button>
-          <Button
-            key="big-picture-update"
-            hotkey="u"
-            dimColor
-            onPress={() => void check($, "manual")}
-          >
-            update
-          </Button>
-        </Box>
+          {open ? "hide" : "show"}
+        </Button>
+        <Button
+          key="big-picture-update"
+          hotkey="u"
+          dimColor
+          onPress={() => void check($, "manual")}
+        >
+          update
+        </Button>
+      </Box>
+    );
+    return (
+      <Box key={STACK} flexDirection="column" marginTop={1}>
+        {stackRows(below, row)}
       </Box>
     );
   });

@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.2] - 2026-11-10
+
+### Changed
+- The band line joins the column every vampik band mod shares: whichever of them are installed, in any order, their lines stack with one blank row above them and none between, codex-review on top, continuity at the bottom, the rest in a fixed order
+
 ## [0.5.1] - 2026-10-26
 
 ### Fixed

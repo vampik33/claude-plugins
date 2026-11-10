@@ -12,6 +12,7 @@ import {
   type Hunk,
   type MemoryRoots,
 } from "./core.ts";
+import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "memory-watch";
 
@@ -180,21 +181,23 @@ export const register: Register = (on) => {
     const fresh = open ? 0 : await read($, unread);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
+    const row = (
+      <Box key="band:memory-watch" flexDirection="row" columnGap={2}>
+        <Text dimColor>memory</Text>
+        {fresh > 0 && <Text color="yellow">{`● ${fresh} new`}</Text>}
+        <Button
+          key="memory-watch-toggle"
+          hotkey="m"
+          dimColor
+          onPress={() => togglePane($)}
+        >
+          {open ? "hide" : "show"}
+        </Button>
+      </Box>
+    );
     return (
-      <Box flexDirection="column">
-        {below}
-        <Box flexDirection="row" columnGap={2} marginTop={1}>
-          <Text dimColor>memory</Text>
-          {fresh > 0 && <Text color="yellow">{`● ${fresh} new`}</Text>}
-          <Button
-            key="memory-watch-toggle"
-            hotkey="m"
-            dimColor
-            onPress={() => togglePane($)}
-          >
-            {open ? "hide" : "show"}
-          </Button>
-        </Box>
+      <Box key={STACK} flexDirection="column" marginTop={1}>
+        {stackRows(below, row)}
       </Box>
     );
   });

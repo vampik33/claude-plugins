@@ -13,6 +13,7 @@ import {
   staleMods,
   tailOf,
 } from "./core.ts";
+import { STACK, stackRows } from "./stack.ts";
 
 const status = atom(
   { plugin: "ship", key: "status" } as const,
@@ -197,25 +198,27 @@ export const register: Register = (on) => {
     if (e.props.hasSurvey || !s || (!hasNews(s) && !busy)) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
+    const row = (
+      <Box key="band:ship" flexDirection="row" columnGap={2}>
+        <Text dimColor>{bandLine(s)}</Text>
+        {busy ? (
+          <Text color="cyan">shipping…</Text>
+        ) : (
+          canShip(s) && (
+            <Button
+              key="ship-run"
+              dimColor
+              onPress={() => void $.command.run({ command: "ship", args: "" } as never)}
+            >
+              ship
+            </Button>
+          )
+        )}
+      </Box>
+    );
     return (
-      <Box flexDirection="column">
-        {below}
-        <Box flexDirection="row" columnGap={2} marginTop={1}>
-          <Text dimColor>{bandLine(s)}</Text>
-          {busy ? (
-            <Text color="cyan">shipping…</Text>
-          ) : (
-            canShip(s) && (
-              <Button
-                key="ship-run"
-                dimColor
-                onPress={() => void $.command.run({ command: "ship", args: "" } as never)}
-              >
-                ship
-              </Button>
-            )
-          )}
-        </Box>
+      <Box key={STACK} flexDirection="column" marginTop={1}>
+        {stackRows(below, row)}
       </Box>
     );
   });

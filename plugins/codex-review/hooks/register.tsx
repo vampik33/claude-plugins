@@ -585,7 +585,6 @@ export const register: Register = (on, options) => {
     }
     return (
       <Box flexDirection="column">
-        {below}
         <Box
           key="codex-line"
           flexDirection="row"
@@ -625,6 +624,7 @@ export const register: Register = (on, options) => {
             </Button>
           )}
         </Box>
+        {below}
       </Box>
     );
   });

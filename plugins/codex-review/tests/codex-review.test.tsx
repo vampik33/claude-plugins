@@ -521,10 +521,10 @@ describe("session", () => {
         viewport: { columns: 160, rows: 40, isFullscreen: true },
       });
       expect(await band.find({ key: "codex-band" })).toBeDefined();
-      // its own line under the other bands, never beside them, a blank row between
+      // its own line over the other bands, never beside them, a blank row above
       const drawn: any = await band.drawn();
       expect(drawn.props.flexDirection).toBe("column");
-      const row = drawn.children.at(-1);
+      const row = drawn.children[0];
       expect(row.props.key).toBe("codex-line");
       expect(row.props.marginTop).toBe(1);
       expect(row.children[0].type).toBe("Client");

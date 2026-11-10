@@ -506,11 +506,11 @@ export const register: Register = (on, options) => {
           redAt: t.cache.redAt,
         },
       };
-      // its own lines first, a row above the tip line; other bands below
+      // other bands first, its own lines last, right above the prompt
       return (
         <Box flexDirection="column" marginTop={1}>
-          <Client key="continuity-gauge" module="./gauge.tsx" props={props} />
           {below}
+          <Client key="continuity-gauge" module="./gauge.tsx" props={props} />
         </Box>
       );
     }
@@ -520,10 +520,10 @@ export const register: Register = (on, options) => {
     const until = d && ` · cache until ${new Date(d.expiresAt).toTimeString().slice(0, 5)}`;
     return (
       <Box flexDirection="column" marginTop={1}>
+        {below}
         <Text
           dimColor
         >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(now - g.startedAt)}${until ?? ""}`}</Text>
-        {below}
       </Box>
     );
   });

@@ -4,6 +4,11 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.5] - 2026-11-10
+
+### Changed
+- The gauge draws below the other bands above the prompt, so it is always the bottom line
+
 ## [0.3.4] - 2026-10-26
 
 ### Fixed

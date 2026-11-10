@@ -227,7 +227,7 @@ describe("band", () => {
   }
 
   for (const surface of ["terminal", "desktop"] as const) {
-    test(`its lines stack over other bands, a blank row above them (${surface})`, async ($, on) => {
+    test(`its lines stack under other bands, a blank row above them (${surface})`, async ($, on) => {
       engine(on, { read: 80_000, write: 1_000 }, h("Text", null, "Heads up"));
       await measure($);
       const ui = await $.ui.mount({ plugin: "continuity", surface, ...BAND });
@@ -237,7 +237,7 @@ describe("band", () => {
         flexDirection: "column",
         marginTop: 1,
       });
-      expect(outer.children.map((c: any) => c.type)).toEqual(["Client", "Text"]);
+      expect(outer.children.map((c: any) => c.type)).toEqual(["Text", "Client"]);
       await ui.unmount();
     });
   }
@@ -249,6 +249,7 @@ describe("band", () => {
     const ui = await $.ui.mount({ plugin: "continuity", surface: "mobile", ...BAND });
     const outer: any = await ui.drawn();
     expect(outer.children.map((c: any) => c.type)).toEqual(["Text", "Text"]);
+    expect(outer.children[0].children).toEqual(["Heads up"]);
     expect(
       await ui.find({ type: "Text", text: /^ctx [█░]+ 29% · session .* · cache until \d\d:\d\d$/ }),
     ).toBeDefined();

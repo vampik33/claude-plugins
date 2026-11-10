@@ -24,14 +24,14 @@ const MODS = [
 
 // the key each mod gives its row (only the prefix matters to the stack)
 const ROW_KEY: Record<(typeof MODS)[number], string> = {
-  "big-picture": "band:big-picture",
-  "codex-review": "band-top:codex",
+  "big-picture": "band:30-big-picture",
+  "codex-review": "band:60-codex",
   continuity: "band-bottom:continuity",
-  fleet: "band:fleet",
-  "memory-watch": "band:memory-watch",
-  palette: "band:palette",
-  ship: "band:ship",
-  watchdog: "band:watchdog",
+  fleet: "band:70-fleet",
+  "memory-watch": "band:20-memory-watch",
+  palette: "band:10-palette",
+  ship: "band:40-ship",
+  watchdog: "band:50-watchdog",
 };
 
 type El = { type: string; props: Record<string, unknown>; children: unknown[] };
@@ -123,7 +123,6 @@ describe("band stack", () => {
           // the same rows in the same order, whatever the nesting
           const has = (m: (typeof MODS)[number]) => order.includes(m);
           expect(keys).toEqual([
-            ...(has("codex-review") ? ["band-top:codex"] : []),
             ...(tip ? ["base"] : []),
             ...order
               .map((m) => ROW_KEY[m])
@@ -137,22 +136,44 @@ describe("band stack", () => {
     );
   });
 
+  test("all of them, any nesting: palette, memory, summary, ship, watchdog, codex, fleet, ctx", () => {
+    fc.assert(
+      fc.property(
+        fc.shuffledSubarray([...MODS], { minLength: MODS.length, maxLength: MODS.length }),
+        (order) => {
+          const out = fold(order, null) as El;
+          expect(out.children.map((c) => (c as El).children[0])).toEqual([
+            "palette",
+            "memory-watch",
+            "big-picture",
+            "ship",
+            "watchdog",
+            "codex-review",
+            "fleet",
+            "continuity",
+          ]);
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
   test("the middle rows sort by key between the pinned ones", () => {
     const out = fold(
       ["big-picture", "continuity", "fleet", "codex-review", "palette"],
       null,
     ) as El;
     expect(out.children.map((c) => (c as El).props.key)).toEqual([
-      "band-top:codex",
-      "band:big-picture",
-      "band:fleet",
-      "band:palette",
+      "band:10-palette",
+      "band:30-big-picture",
+      "band:60-codex",
+      "band:70-fleet",
       "band-bottom:continuity",
     ]);
   });
 
   test("what is not a column is kept whole, as one row; an empty Box is nothing", () => {
-    const row = el("Box", { key: "band:palette" });
+    const row = el("Box", { key: "band:10-palette" });
     expect(stackRows(null, row)).toEqual([row]);
     expect(stackRows(el("Box", {}), row)).toEqual([row]);
     const tip = el("Text", {}, "Heads up");

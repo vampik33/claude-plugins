@@ -521,8 +521,8 @@ describe("session", () => {
         viewport: { columns: 160, rows: 40, isFullscreen: true },
       });
       expect(await band.find({ key: "codex-band" })).toBeDefined();
-      // its own line over the other bands, never beside them, in the shared
-      // column that holds the band's one blank row above it
+      // its own line in the shared column, never beside the others; the
+      // column holds the band's one blank row above it
       const drawn: any = await band.drawn();
       expect(drawn.props).toMatchObject({
         key: "band-stack",
@@ -530,7 +530,7 @@ describe("session", () => {
         marginTop: 1,
       });
       const row = drawn.children[0];
-      expect(row.props.key).toBe("band-top:codex");
+      expect(row.props.key).toBe("band:60-codex");
       expect(row.props.marginTop).toBeUndefined();
       expect(row.children[0].type).toBe("Client");
       await band.unmount();

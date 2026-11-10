@@ -257,7 +257,7 @@ export const register: Register = (on, options) => {
     const below = await next(e);
     const { Box, Text } = $.ui.resolve(e);
     const row = (
-      <Box key="band:watchdog">
+      <Box key="band:50-watchdog">
         <Text dimColor>{["watchdog", ...items].join(" · ")}</Text>
       </Box>
     );

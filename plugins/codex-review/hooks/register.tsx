@@ -543,7 +543,7 @@ export const register: Register = (on, options) => {
     return r;
   });
 
-  // always its own line, above the other bands: the running review, else the last result
+  // always its own line in the band: the running review, else the last result
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
     if (e.viewport?.isFullscreen !== undefined)
@@ -585,7 +585,7 @@ export const register: Register = (on, options) => {
       );
     }
     const row = (
-      <Box key="band-top:codex" flexDirection="row" columnGap={2}>
+      <Box key="band:60-codex" flexDirection="row" columnGap={2}>
         {line}
         {!job && last && (
           <Button

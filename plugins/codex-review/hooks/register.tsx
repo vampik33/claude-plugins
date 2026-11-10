@@ -24,6 +24,7 @@ import {
   where,
 } from "./core.ts";
 import type { BandProps } from "./band.tsx";
+import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "codex-review";
 const TOOL = "mcp__codex-review__CodexReview";
@@ -542,7 +543,7 @@ export const register: Register = (on, options) => {
     return r;
   });
 
-  // always its own line under the other bands: the running review, else the last result
+  // always its own line, above the other bands: the running review, else the last result
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
     if (e.viewport?.isFullscreen !== undefined)
@@ -583,48 +584,45 @@ export const register: Register = (on, options) => {
         </Text>
       );
     }
+    const row = (
+      <Box key="band-top:codex" flexDirection="row" columnGap={2}>
+        {line}
+        {!job && last && (
+          <Button
+            key="codex-open"
+            hotkey="o"
+            dimColor
+            onPress={() => openLast($, t)}
+          >
+            open
+          </Button>
+        )}
+        {job ? (
+          <Button
+            key="codex-cancel"
+            hotkey="x"
+            dimColor
+            onPress={() => cancelJobs($)}
+          >
+            cancel
+          </Button>
+        ) : (
+          <Button
+            key="codex-review"
+            hotkey="x"
+            dimColor
+            onPress={async () =>
+              $.ui.toast(await startReview($, t, "adversarial", ""))
+            }
+          >
+            review
+          </Button>
+        )}
+      </Box>
+    );
     return (
-      <Box flexDirection="column">
-        <Box
-          key="codex-line"
-          flexDirection="row"
-          columnGap={2}
-          marginTop={1}
-        >
-          {line}
-          {!job && last && (
-            <Button
-              key="codex-open"
-              hotkey="o"
-              dimColor
-              onPress={() => openLast($, t)}
-            >
-              open
-            </Button>
-          )}
-          {job ? (
-            <Button
-              key="codex-cancel"
-              hotkey="x"
-              dimColor
-              onPress={() => cancelJobs($)}
-            >
-              cancel
-            </Button>
-          ) : (
-            <Button
-              key="codex-review"
-              hotkey="x"
-              dimColor
-              onPress={async () =>
-                $.ui.toast(await startReview($, t, "adversarial", ""))
-              }
-            >
-              review
-            </Button>
-          )}
-        </Box>
-        {below}
+      <Box key={STACK} flexDirection="column" marginTop={1}>
+        {stackRows(below, row)}
       </Box>
     );
   });

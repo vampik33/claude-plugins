@@ -31,6 +31,7 @@ import {
   trim,
 } from "./core.ts";
 import { drawFleet, type FleetView } from "./view.tsx";
+import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "fleet";
 const ENDED = new Set(["completed", "failed", "killed"]);
@@ -533,24 +534,26 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey || (empty && !open)) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
+    const row = (
+      <Box key="band:fleet" flexDirection="row" columnGap={2}>
+        <Text dimColor>
+          {[statusLine(f) ?? "fleet", ...shellNotes(f.shells, now)].join(
+            " · ",
+          )}
+        </Text>
+        <Button
+          key="fleet-toggle"
+          hotkey="f"
+          dimColor
+          onPress={() => togglePane($, t)}
+        >
+          {open ? "hide" : "show"}
+        </Button>
+      </Box>
+    );
     return (
-      <Box flexDirection="column">
-        {below}
-        <Box flexDirection="row" columnGap={2} marginTop={1}>
-          <Text dimColor>
-            {[statusLine(f) ?? "fleet", ...shellNotes(f.shells, now)].join(
-              " · ",
-            )}
-          </Text>
-          <Button
-            key="fleet-toggle"
-            hotkey="f"
-            dimColor
-            onPress={() => togglePane($, t)}
-          >
-            {open ? "hide" : "show"}
-          </Button>
-        </Box>
+      <Box key={STACK} flexDirection="column" marginTop={1}>
+        {stackRows(below, row)}
       </Box>
     );
   });

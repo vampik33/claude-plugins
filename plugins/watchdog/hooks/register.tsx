@@ -21,6 +21,7 @@ import {
   summary,
   trim,
 } from "./core.ts";
+import { STACK, stackRows } from "./stack.ts";
 
 const POLL_MS = 10_000;
 /** Bytes of a run's output read for its last line. */
@@ -255,10 +256,14 @@ export const register: Register = (on, options) => {
     if (items.length === 0) return next(e);
     const below = await next(e);
     const { Box, Text } = $.ui.resolve(e);
-    return (
-      <Box flexDirection="column">
-        {below}
+    const row = (
+      <Box key="band:watchdog">
         <Text dimColor>{["watchdog", ...items].join(" · ")}</Text>
+      </Box>
+    );
+    return (
+      <Box key={STACK} flexDirection="column" marginTop={1}>
+        {stackRows(below, row)}
       </Box>
     );
   });

@@ -12,6 +12,7 @@ import {
   projectPaths,
   recordUse,
 } from "./core.ts";
+import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "palette";
 const SEARCH = "palette-search";
@@ -269,20 +270,22 @@ export const register: Register = (on) => {
     const open = await read($, pane);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
+    const row = (
+      <Box key="band:palette" flexDirection="row" columnGap={2}>
+        <Text dimColor>palette</Text>
+        <Button
+          key="palette-toggle"
+          hotkey="p"
+          dimColor
+          onPress={() => togglePane($)}
+        >
+          {open ? "hide" : "show"}
+        </Button>
+      </Box>
+    );
     return (
-      <Box flexDirection="column">
-        {below}
-        <Box flexDirection="row" columnGap={2} marginTop={1}>
-          <Text dimColor>palette</Text>
-          <Button
-            key="palette-toggle"
-            hotkey="p"
-            dimColor
-            onPress={() => togglePane($)}
-          >
-            {open ? "hide" : "show"}
-          </Button>
-        </Box>
+      <Box key={STACK} flexDirection="column" marginTop={1}>
+        {stackRows(below, row)}
       </Box>
     );
   });

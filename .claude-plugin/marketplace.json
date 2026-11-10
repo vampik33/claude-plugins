@@ -60,14 +60,14 @@
     },
     {
       "name": "big-picture",
-      "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated in an Orca browser tab (a terminal pane outside Orca) while the work goes on",
-      "version": "0.3.6",
+      "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated while the work goes on; /big-picture opens it in the default browser",
+      "version": "0.4.0",
       "author": {
         "name": "vampik33"
       },
       "source": "./plugins/big-picture",
       "category": "Workflow",
-      "keywords": ["summary", "diagrams", "html", "orca", "mod"],
+      "keywords": ["summary", "diagrams", "html", "browser", "mod"],
       "homepage": "https://github.com/vampik33/claude-plugins"
     },
     {

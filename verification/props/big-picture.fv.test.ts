@@ -13,8 +13,8 @@ import {
   MERMAID_LOADER,
   placeholderHtml,
   securePage,
+  REFRESH_S,
   SUMMARY_CSP,
-  textBlocks,
 } from "../../plugins/big-picture/hooks/core.ts";
 
 const SEED = Number(process.env.FV_SEED ?? 20261026);
@@ -130,7 +130,7 @@ const page = fc
 
 describe("P1 securePage", () => {
   // P1 (Q5: "parsed by a real HTML5 parser: exactly 1 script, the Mermaid loader byte for byte;
-  //     only the mod's own 2 meta, the CSP one first and in head; 0 link and 0 base; the CSP
+  //     only the mod's own 3 meta, the CSP one first and in head, then its refresh; 0 link and 0 base; the CSP
   //     before any of the page's content")
   // mutant: core.ts:366 `/gi` -> `/g` on the script pattern   input: examples[0] "<SCRIPT>x()</SCRIPT>"
   // mutant: core.ts:363 `was !== body` -> `was === ""`   input: examples[2] split tag
@@ -146,13 +146,15 @@ describe("P1 securePage", () => {
         expect(attr(scripts[0]!, "type")).toBe("module");
         expect(attr(scripts[0]!, "src")).toBeUndefined();
         const metas = els.filter((e) => e.tagName === "meta");
-        expect(metas).toHaveLength(2);
+        expect(metas).toHaveLength(3);
         expect(attr(metas[0]!, "charset")).toBe("utf-8");
         expect(attr(metas[1]!, "http-equiv")?.toLowerCase()).toBe(
           "content-security-policy",
         );
         expect(attr(metas[1]!, "content")).toBe(SUMMARY_CSP);
         expect(metas[1]!.parentNode?.tagName).toBe("head");
+        expect(attr(metas[2]!, "http-equiv")).toBe("refresh");
+        expect(attr(metas[2]!, "content")).toBe(String(REFRESH_S));
         // nothing of the page comes before the CSP: html, head, then the charset meta
         expect(els.slice(0, 4).map((e) => e.tagName)).toEqual([
           "html",
@@ -189,6 +191,7 @@ describe("P2 placeholderHtml", () => {
         expect(els).toEqual([
           "html",
           "head",
+          "meta",
           "meta",
           "title",
           "style",
@@ -292,119 +295,6 @@ describe("P3 cleanText", () => {
           [[{ t: "a" }, { c: "\r" }, { c: "\n" }, { t: "b" }]],
         ],
       }),
-    );
-  });
-});
-
-describe("P4 textBlocks", () => {
-  const line = fc.oneof(
-    fc.constantFrom(
-      "# Title",
-      "## Next",
-      "```",
-      "```js",
-      "",
-      "   ",
-      "#",
-      "#nospace",
-      "┌─┐ │x│",
-      "\x1b[31mred",
-      "\x1b]0;t\x07",
-      "\t",
-      "\r",
-    ),
-    fc.string({ unit: "binary", maxLength: 40 }),
-  );
-  // P4 (Q5: "never throws, no empty blocks, every line comes from the cleaned text"); a prose
-  // block is its cleaned lines trimmed and joined by one space
-  // mutant: core.ts:405 `if (sketch.length)` -> `if (true)`   input: examples[0] "```\n```"
-  // mutant: core.ts:399 `if (prose.length)` -> `if (true)`   input: examples[1] "\n\nx"
-  test("never throws, keeps no empty block, and every line comes from the text", () => {
-    fc.assert(
-      fc.property(fc.array(line, { maxLength: 30 }), (ls) => {
-        const t = ls.join("\n");
-        const kept = cleanText(t).split("\n");
-        for (const b of textBlocks(t)) {
-          expect(b.lines.length).toBeGreaterThan(0);
-          if (b.kind === "sketch")
-            for (const l of b.lines) expect(kept).toContain(l);
-          else if (b.kind === "heading") {
-            expect(b.lines).toHaveLength(1);
-            expect(b.lines[0]!.trim()).not.toBe("");
-            expect(
-              kept.some(
-                (k) =>
-                  /^#+\s+/.test(k) && k.replace(/^#+\s+/, "") === b.lines[0],
-              ),
-            ).toBe(true);
-          } else {
-            expect(b.lines).toHaveLength(1);
-            expect(b.lines[0]!.trim()).not.toBe("");
-            for (const w of b.lines[0]!.split(" ").filter(Boolean))
-              expect(kept.some((k) => k.includes(w))).toBe(true);
-          }
-        }
-      }),
-      opts({
-        numRuns: RUNS * 3,
-        examples: [[["```", "```"]], [["", "", "x"]]],
-      }),
-    );
-  });
-});
-
-describe("P4 textBlocks, content", () => {
-  // P4b (user D1a, 2026-10-26: "content is kept"): text built from headings, paragraphs and
-  // sketches reads back as those blocks; the oracle is the structure the text was built from (H7).
-  // Docstring: "headings, paragraphs and sketches; an unclosed sketch runs to the end"
-  // mutant: core.ts:399 `prose.join(" ")` -> `prose.reverse().join(" ")`   input: random
-  // mutant: core.ts:399 `if (prose.length) blocks.push(...)` -> `` (dropped)   input: random
-  const textLine = fc
-    .oneof(
-      fc.string({ unit: "grapheme", minLength: 1, maxLength: 30 }),
-      // fence and heading marks inside a line are text
-      fc.constantFrom("a ``` b", "x```y", "x # y", "C#  and  F#", "1. ## not a heading", "`code`"),
-    )
-    .map((t) => t.replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029]/g, "").trim())
-    .filter((t) => t !== "" && !/^\s*```/.test(t) && !/^#+\s/.test(t) && !/^#+$/.test(t));
-  type B = { kind: "heading" | "prose" | "sketch"; lines: string[] };
-  const block: fc.Arbitrary<B> = fc.oneof(
-    textLine.map((t) => ({ kind: "heading" as const, lines: [t] })),
-    fc.array(textLine, { minLength: 1, maxLength: 4 }).map((ls) => ({ kind: "prose" as const, lines: ls })),
-    fc.array(fc.oneof(textLine, fc.constantFrom("", "  ┌─┐", "│ x │  ")), { minLength: 1, maxLength: 5 }).map((ls) => ({ kind: "sketch" as const, lines: ls })),
-  );
-  test("headings, paragraphs and sketches read back as built", () => {
-    fc.assert(
-      fc.property(fc.array(fc.tuple(block, fc.nat(5), fc.boolean()), { maxLength: 8 }), fc.boolean(), (bts, openEnd) => {
-        const bs = bts.map(([b]) => b);
-        const last = bs.length - 1;
-        // headings with 1-3 marks and spaces, prose lines indented, and a block right after a
-        // heading or a sketch with no blank line between (two paragraphs always get one)
-        const parts = bts.map(([b, k], i) =>
-          b.kind === "heading"
-            ? `${"#".repeat(1 + (k % 3))}${" ".repeat(1 + (k % 2))}${b.lines[0]}`
-            : b.kind === "prose"
-              ? b.lines.map((l, j) => ((k + j) % 2 ? `  ${l} ` : l)).join("\n")
-              : [k % 2 ? "```" : "```text", ...b.lines, ...(openEnd && i === last ? [] : ["```"])].join("\n"),
-        );
-        const text = parts
-          .map((t, i) => (i === 0 ? t : (bs[i - 1]!.kind === "prose" && bs[i]!.kind === "prose") || !bts[i]![2] ? `\n\n${t}` : `\n${t}`))
-          .join("");
-        const want = bs.map((b) => (b.kind === "prose" ? { kind: "prose", lines: [b.lines.join(" ")] } : b));
-        // a sketch's own blank lines are kept; the text is trimmed, so a last sketch loses
-        // trailing blank lines only when it is left open
-        const got = textBlocks(text);
-        if (openEnd && bs[last]?.kind === "sketch") {
-          const w = want[last]!;
-          const trimmed = [...w.lines];
-          while (trimmed.length && trimmed.at(-1)!.trim() === "") trimmed.pop();
-          want[last] = { ...w, lines: trimmed };
-          if (trimmed.length === 0) want.pop();
-          else want[last] = { ...w, lines: [...trimmed.slice(0, -1), trimmed.at(-1)!.trimEnd()] };
-        }
-        expect(got).toEqual(want.filter((b) => b.lines.length > 0));
-      }),
-      opts({ numRuns: RUNS * 3 }),
     );
   });
 });

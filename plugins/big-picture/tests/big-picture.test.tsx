@@ -7,7 +7,6 @@ import {
   emptyActivity,
   extractHtml,
   fmtTime,
-  hasTab,
   isCheckDue,
   isRewriteDue,
   MIN_GAP_MS,
@@ -17,16 +16,15 @@ import {
   liveShells,
   logTool,
   mayBeBig,
+  openArgv,
   parseJev,
-  parseTabId,
   placeholderHtml,
   PROGRESS_EVERY_MS,
+  REFRESH_S,
   securePage,
   SUMMARY_CSP,
   summaryPrompt,
   summarySystem,
-  textBlocks,
-  TEXT_WIDTH,
   toolLine,
   type Message,
 } from "../hooks/core.ts";
@@ -221,51 +219,16 @@ describe("core", () => {
   });
 
   test("the system prompt carries show-me and the page's contract", () => {
-    const s = summarySystem("SHOW-ME-TEXT", "html");
+    const s = summarySystem("SHOW-ME-TEXT");
     expect(s).toContain("<show-me>\nSHOW-ME-TEXT\n</show-me>");
     expect(s).toContain("write no <script> at all");
     expect(s).toContain("starting with <!doctype html>");
-    const t = summarySystem("SHOW-ME-TEXT", "text");
-    expect(t).toContain("<show-me>\nSHOW-ME-TEXT\n</show-me>");
-    expect(t).toContain(`no line of a diagram wider than ${TEXT_WIDTH} characters`);
-    expect(t).toContain("box-drawing characters");
-    expect(t).not.toContain("<!doctype");
   });
 
   test("cleanText drops escape sequences and control characters", () => {
     expect(cleanText("\x1b[31mred\x1b[0m\r\nok\x07\tx\x1b]0;title\x07!")).toBe(
       "red\nok  x!",
     );
-  });
-
-  test("textBlocks: headings, paragraphs joined, sketches kept as written", () => {
-    const summary = [
-      "# Rate limiter",
-      "",
-      "A token bucket per",
-      "client.",
-      "```",
-      "┌──────┐   ┌───────┐",
-      "│ take │──▶│ store │",
-      "",
-      "└──────┘   └───────┘",
-      "```",
-      "## Next",
-      "Wire it in.",
-      "```",
-      "unclosed",
-    ].join("\n");
-    expect(textBlocks(summary)).toEqual([
-      { kind: "heading", lines: ["Rate limiter"] },
-      { kind: "prose", lines: ["A token bucket per client."] },
-      {
-        kind: "sketch",
-        lines: ["┌──────┐   ┌───────┐", "│ take │──▶│ store │", "", "└──────┘   └───────┘"],
-      },
-      { kind: "heading", lines: ["Next"] },
-      { kind: "prose", lines: ["Wire it in."] },
-      { kind: "sketch", lines: ["unclosed"] },
-    ]);
   });
 
   test("the prompt: the session, and the previous page to update", () => {
@@ -300,9 +263,12 @@ describe("core", () => {
     expect(extractHtml("no page here")).toBeUndefined();
   });
 
-  test("placeholder escapes its text", () => {
+  test("placeholder escapes its text, and refreshes itself to show the summary once written", () => {
     expect(placeholderHtml("a <b> & c")).toContain(
       "<p>a &lt;b&gt; &amp; c</p>",
+    );
+    expect(placeholderHtml("x")).toContain(
+      `<meta http-equiv="refresh" content="${REFRESH_S}">`,
     );
   });
 
@@ -318,10 +284,10 @@ describe("core", () => {
     const page = securePage(evil);
     expect(page).not.toMatch(/evil\.example|alert/);
     expect(page.match(/<script/gi)?.length).toBe(1); // the loader alone
-    expect(page.match(/<meta/gi)?.length).toBe(2); // the charset and the CSP alone
+    expect(page.match(/<meta/gi)?.length).toBe(3); // the charset, the CSP and the mod's refresh alone
     expect(page).not.toMatch(/<link/i);
     expect(page.startsWith(
-      `<!doctype html>\n<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">\n<script type="module">import mermaid`,
+      `<!doctype html>\n<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">\n<meta http-equiv="refresh" content="${REFRESH_S}">\n<script type="module">import mermaid`,
     )).toBe(true);
     expect(page).toContain('<pre class="mermaid">graph TD; A-->B</pre>');
     expect(SUMMARY_CSP).toContain("default-src 'none'");
@@ -332,21 +298,15 @@ describe("core", () => {
     expect(scriptSrc).not.toMatch(/unsafe-inline|unsafe-eval/);
   });
 
-  test("orca's JSON: the new tab's id, and whether a tab is listed", () => {
-    const created = JSON.stringify({
-      ok: true,
-      result: { browserPageId: "p1" },
-    });
-    expect(parseTabId(created)).toBe("p1");
-    expect(parseTabId("{}")).toBeUndefined();
-    expect(parseTabId("not json")).toBeUndefined();
-    const list = (ids: string[]) =>
-      JSON.stringify({
-        result: { tabs: ids.map((browserPageId) => ({ browserPageId })) },
-      });
-    expect(hasTab(list(["p0", "p1"]), "p1")).toBe(true);
-    expect(hasTab(list([]), "p1")).toBe(false);
-    expect(hasTab("oops", "p1")).toBe(false);
+  test("the opener: xdg-open, else open, the URL an argument and never the script", () => {
+    const url = "file:///h/a b'$(x).html";
+    const argv = openArgv(url);
+    expect(argv.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(argv.slice(3)).toEqual(["sh", url]);
+    expect(argv[2]).not.toContain(url);
+    expect(argv[2]).toContain('exec xdg-open "$1"');
+    expect(argv[2]).toContain('exec open "$1"');
+    expect(argv[2]!.startsWith("exec </dev/null >/dev/null 2>&1;")).toBe(true);
   });
 
   test("time of day", () => {
@@ -362,19 +322,6 @@ const BAND = {
     maxRows: 10,
     bodyColumns: 120,
     scroll: { offset: 0, bodyRows: 10 },
-    view: {},
-  } as never,
-};
-
-const PANE = {
-  component: "Pane" as const,
-  requestId: "big-picture",
-  props: {
-    title: "Big picture",
-    isFocused: false,
-    bodyColumns: 60,
-    placement: "dock",
-    scroll: { offset: 0, bodyRows: 30 },
     view: {},
   } as never,
 };
@@ -416,19 +363,15 @@ function engine(
     /** While set, Haiku's reply waits for it. */
     gate: undefined as Promise<void> | undefined,
     files: new Map<string, string>(),
-    orca: [] as string[],
-    tabs: [] as string[],
+    /** The URLs handed to the browser opener, in order. */
+    opens: [] as string[],
+    /** The opener's exit code. */
+    openExit: 0,
     toasts: [] as string[],
-    /** While set, `orca tab list` waits for it. */
-    listGate: undefined as Promise<void> | undefined,
-    /** Whether the summary's pane is open, and how often it was opened. */
-    pane: false,
-    paneOpens: 0,
   };
   const clock = mock.clock(on, { now: new Date(2026, 9, 13, 9, 5).getTime() });
   mock.env(on, {
     HOME: "/h",
-    TERM_PROGRAM: "Orca",
     TYPESAFE_API_KEY: "k",
     ...over.env,
   });
@@ -451,13 +394,6 @@ function engine(
   on("turn.complete", (_$: unknown, e: { answer: string }) => ({
     text: e.answer,
   }));
-  on("ui.open", () => {
-    seen.pane = true;
-    seen.paneOpens++;
-    return { value: { isPlaced: true } };
-  });
-  on("ui.close", () => ((seen.pane = false), { value: undefined }));
-  on("ui.panes", () => ({ value: [] }));
   on("ui.toast", (_$: unknown, e: { text: string }) => {
     seen.toasts.push(e.text);
     return { value: undefined };
@@ -511,25 +447,9 @@ function engine(
       const out = seen.outputs.get(args.at(-1)!);
       if (out === undefined) exitCode = 1;
       else stdout = out;
-    } else if (cmd === "orca") {
-      seen.orca.push(args.join(" "));
-      const page = args[args.indexOf("--page") + 1] ?? "";
-      if (args[0] === "tab" && args[1] === "create") {
-        const id = `pg${seen.orca.length}`;
-        seen.tabs.push(id);
-        stdout = JSON.stringify({ ok: true, result: { browserPageId: id } });
-      } else if (args[0] === "tab" && args[1] === "list") {
-        await seen.listGate;
-        stdout = JSON.stringify({
-          result: {
-            tabs: seen.tabs.map((browserPageId) => ({ browserPageId })),
-          },
-        });
-      } else if (args[0] === "tab" && args[1] === "close") {
-        seen.tabs = seen.tabs.filter((t) => t !== page);
-      } else if (args[0] === "reload") {
-        exitCode = seen.tabs.includes(page) ? 0 : 1;
-      }
+    } else if (cmd === "sh") {
+      seen.opens.push(args.at(-1)!);
+      exitCode = seen.openExit;
     }
     return {
       value: {
@@ -568,9 +488,9 @@ const band = async ($: any) => {
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
     const texts = (await ui.findAll({ type: "Text" })).map((t: any) => t.text);
-    const toggle = (await ui.find({ key: "big-picture-toggle" }))?.text;
+    const show = (await ui.find({ key: "big-picture-show" }))?.text;
     await ui.unmount();
-    drawn.push({ texts, toggle });
+    drawn.push({ texts, show });
   }
   expect(drawn[1]).toEqual(drawn[0]);
   return drawn[0]!;
@@ -616,7 +536,7 @@ describe("session", () => {
     ]);
     expect(w.prompt).toBe(summaryPrompt("USER: add send later"));
     expect(seen.files.get(PAGE)).toBe(securePage(html(1)));
-    expect(seen.orca.filter((c) => c.startsWith("tab create"))).toEqual([]); // never opens itself
+    expect(seen.opens).toEqual([]); // never opens itself
     expect((await band($)).texts).toContain("updated 09:05");
   });
 
@@ -646,9 +566,6 @@ describe("session", () => {
     const { seen, clock } = engine(on);
     await turn($, clock, "big refactor", 10);
     expect([seen.asked, seen.writes.length]).toEqual([["big"], 1]);
-    await $.command.run({ command: "big-picture", args: "" } as never);
-    expect(seen.tabs).toEqual(["pg1"]);
-
     await turn($, clock, "now the tests", 1, "Write");
     expect(seen.asked).toEqual(["big", "update"]); // turn end after the page: nothing new
     expect(seen.bodies[1].state.workSinceTheSummary.filesChanged).toEqual([
@@ -659,7 +576,6 @@ describe("session", () => {
       summaryPrompt("USER: add send later", html(1)),
     );
     expect(seen.files.get(PAGE)).toBe(securePage(html(2)));
-    expect(seen.orca).toContain("reload --page pg1 --json");
 
     seen.p.update = 0.1; // Jev: nothing worth redrawing
     await turn($, clock, "fix a typo", 1);
@@ -793,61 +709,62 @@ describe("session", () => {
   });
 
   for (const surface of SURFACES)
-  test(`the band toggles the Orca tab, a placeholder before any summary (${surface})`, async ($, on) => {
+  test(`show opens the page in the browser, a placeholder before any summary (${surface})`, async ($, on) => {
     const { seen, clock } = engine(on);
-    const press = async () => {
-      const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
-      await ui.press({ key: "big-picture-toggle" });
-      await ui.unmount();
-    };
-    expect((await band($)).toggle).toBeUndefined(); // nothing to show yet
-    await $.command.run({ command: "big-picture", args: "" } as never);
+    expect((await band($)).show).toBeUndefined(); // nothing to show yet
+    const r = await $.command.run({ command: "big-picture", args: "" } as never);
+    expect((r as { text: string }).text).toBe("Summary opened in the browser.");
     expect(seen.files.get(PAGE)).toContain("No big work in this session yet.");
-    expect(seen.orca).toContain(`tab create --url file://${PAGE} --json`);
-    expect((await band($)).toggle).toBe("hide");
+    expect(seen.opens).toEqual([`file://${PAGE}`]);
+    expect((await band($)).show).toBeUndefined(); // opening is no state: still nothing to show
 
-    await press();
-    expect(seen.tabs).toEqual([]);
-    expect((await band($)).toggle).toBeUndefined(); // closed, and still nothing to show
-
-    // with a summary written: closed in Orca by hand, the button turns to show by itself
     await turn($, clock, "big refactor", 10);
-    expect((await band($)).toggle).toBe("show");
-    await press();
-    expect((await band($)).toggle).toBe("hide");
-    seen.tabs = [];
-    await clock.advance(2_000);
-    expect((await band($)).toggle).toBe("show");
-    await press();
-    expect(seen.tabs.length).toBe(1);
-    expect((await band($)).toggle).toBe("hide");
+    expect((await band($)).show).toBe("show");
+    const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
+    await ui.press({ key: "big-picture-show" });
+    await ui.unmount();
+    expect(seen.opens).toEqual([`file://${PAGE}`, `file://${PAGE}`]);
+    expect(seen.files.get(PAGE)).toBe(securePage(html(1))); // the summary, not a placeholder
+    expect(seen.toasts).toEqual([]);
   });
 
-  test("a /clear starts over: no summary, the old page's tab closed, Jev asks big again", async ($, on) => {
+  test("no browser opened: the command says so with the page's path, the band's press toasts it", async ($, on) => {
+    const { seen, clock } = engine(on);
+    seen.openExit = 127;
+    const r = await $.command.run({ command: "big-picture", args: "" } as never);
+    const said = `No browser opened the summary: ${PAGE}`;
+    expect((r as { text: string }).text).toBe(said);
+    await turn($, clock, "big refactor", 10);
+    const ui = await $.ui.mount({ plugin: "big-picture", surface: "terminal", ...BAND });
+    await ui.press({ key: "big-picture-show" });
+    await ui.unmount();
+    expect(seen.toasts).toEqual([`big-picture: ${said}`]);
+  });
+
+  test("a page path with a space is opened as one encoded URL", async ($, on) => {
+    const { seen } = engine(on, { env: { HOME: "/h/my home" } });
+    await $.command.run({ command: "big-picture", args: "" } as never);
+    expect(seen.opens).toEqual(["file:///h/my%20home/.claude/big-picture/s1.html"]);
+  });
+
+  test("a /clear starts over: no summary, the line hidden, Jev asks big again", async ($, on) => {
     const { seen, clock } = engine(on);
     await turn($, clock, "big refactor", 10);
-    await $.command.run({ command: "big-picture", args: "" } as never);
-    expect(seen.tabs).toEqual(["pg1"]);
-
     await $.session.end({ reason: "clear", sessionId: "s1", resume: {} } as never);
     await clock.advance(1);
-    expect(seen.orca).toContain("tab close --page pg1 --json");
-    expect(seen.tabs).toEqual([]);
-    expect(await band($)).toEqual({ texts: [], toggle: undefined });
+    expect(await band($)).toEqual({ texts: [], show: undefined });
 
     await turn($, clock, "next task", 10);
     expect(seen.asked).toEqual(["big", "big"]);
     expect(seen.writes[1]!.prompt).not.toContain("<previous-summary>");
   });
 
-  test("an exit keeps the summary and its tab", async ($, on) => {
-    const { seen, clock } = engine(on);
+  test("an exit keeps the summary", async ($, on) => {
+    const { clock } = engine(on);
     await turn($, clock, "big refactor", 10);
-    await $.command.run({ command: "big-picture", args: "" } as never);
     await $.session.end({ reason: "prompt_input_exit", sessionId: "s1", resume: {} } as never);
     await clock.advance(1);
-    expect(seen.tabs).toEqual(["pg1"]);
-    expect((await band($)).toggle).toBe("hide");
+    expect(await band($)).toEqual({ texts: ["summary", "updated 09:05"], show: "show" });
   });
 
   test("the band row is as wide as its box, so a long failure is cut", async ($, on) => {
@@ -868,94 +785,6 @@ describe("session", () => {
     await turn($, clock, "more work", 10);
     expect(seen.asked).toEqual(["update"]);
     expect(seen.writes[0]!.prompt).toContain(`<previous-summary>\n${html(7)}`);
-  });
-
-  test("outside Orca, a reload keeps the pane's text as the summary to update", async ($, on) => {
-    const { seen, clock } = engine(on, {
-      env: { TERM_PROGRAM: "ghostty" },
-      state: { status: { kind: "ready", at: 1 }, text: "# Rate limiter" },
-    });
-    seen.reply = { isAnswered: true, text: "# Newer" };
-    await $.session.start({ cwd: "/r" } as never);
-    await turn($, clock, "more work", 1);
-    expect(seen.asked).toEqual(["update"]);
-    expect(seen.writes[0]!.prompt).toContain("<previous-summary>\n# Rate limiter");
-  });
-
-  test("a reload keeps watching an open tab: closed in Orca, the button goes", async ($, on) => {
-    const { seen, clock } = engine(on, { state: { tab: "pg9" } });
-    seen.tabs = ["pg9"];
-    await $.session.start({ cwd: "/r" } as never);
-    expect((await band($)).toggle).toBe("hide");
-    seen.tabs = [];
-    await clock.advance(2_000);
-    expect((await band($)).toggle).toBeUndefined();
-  });
-
-  test("the tab is looked for one look at a time, however slow Orca answers", async ($, on) => {
-    const { seen, clock } = engine(on);
-    await $.command.run({ command: "big-picture", args: "" } as never);
-    let open!: () => void;
-    seen.listGate = new Promise<void>((r) => (open = r));
-    await clock.advance(6_000); // three ticks while the first look hangs
-    const lists = () => seen.orca.filter((c) => c.startsWith("tab list"));
-    expect(lists()).toEqual(["tab list --json"]);
-    seen.tabs = [];
-    open();
-    seen.listGate = undefined;
-    await clock.advance(2_000);
-    expect((await band($)).toggle).toBeUndefined(); // tab forgotten, nothing to show
-  });
-
-  test("presses while a show runs are dropped: one tab, not one per press", async ($, on) => {
-    const { seen } = engine(on);
-    const run = () => $.command.run({ command: "big-picture", args: "" } as never);
-    const said = await Promise.all([run(), run(), run()]);
-    expect(seen.orca.filter((c) => c.startsWith("tab create")).length).toBe(1);
-    expect(said.map((r: any) => r.text)).toEqual([
-      "Summary shown.",
-      "Still showing or hiding the summary.",
-      "Still showing or hiding the summary.",
-    ]);
-    expect((await band($)).toggle).toBe("hide");
-  });
-
-  for (const surface of SURFACES)
-  test(`outside Orca: a text summary in a pane, toggled by the band (${surface})`, async ($, on) => {
-    const { seen, clock } = engine(on, { env: { TERM_PROGRAM: "ghostty" } });
-    const paneTexts = async () => {
-      const ui = await $.ui.mount({ plugin: "big-picture", surface, ...PANE });
-      const texts = (await ui.findAll({ type: "Text" })).map((t: any) => t.text);
-      await ui.unmount();
-      return texts;
-    };
-    const run = () => $.command.run({ command: "big-picture", args: "" } as never);
-
-    expect((await run()).text).toBe("Summary shown.");
-    expect([seen.pane, (await band($)).toggle]).toEqual([true, "hide"]);
-    expect((await paneTexts())[0]).toContain("No big work in this session yet.");
-
-    seen.reply = {
-      isAnswered: true,
-      text: "# Rate limiter\n\nA bucket per client.\n```\n│ take │──▶│ store │\x1b[2J\n```",
-    };
-    await turn($, clock, "add a rate limiter", 1);
-    expect(seen.writes[0]!.systemBlocks[0].text).toContain("box-drawing characters");
-    expect(seen.files.size).toBe(0); // no page
-    expect(seen.orca).toEqual([]);
-    expect(await paneTexts()).toEqual([
-      "Rate limiter",
-      "A bucket per client.",
-      "│ take │──▶│ store │",
-    ]);
-    expect((await band($)).texts).toContain("updated 09:05");
-
-    // the update is handed the text it rewrites
-    await turn($, clock, "add metrics", 1);
-    expect(seen.writes[1]!.prompt).toContain("<previous-summary>\n# Rate limiter");
-
-    expect((await run()).text).toBe("Summary hidden.");
-    expect([seen.pane, (await band($)).toggle]).toEqual([false, "show"]);
   });
 
   test("every 30 minutes: running shells' new output asks Jev; a yes rewrites with it", async ($, on) => {
@@ -1032,7 +861,7 @@ describe("session", () => {
     await clock.advance(1);
     expect([seen.asked, seen.writes.length]).toEqual([[], 1]);
     expect(seen.files.get(PAGE)).toBe(securePage(html(1)));
-    expect(seen.orca.filter((c) => c.startsWith("tab create"))).toEqual([]);
+    expect(seen.opens).toEqual([]);
 
     const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
     expect((await ui.find({ key: "big-picture-update" }))?.text).toBe("update");
@@ -1053,12 +882,5 @@ describe("session", () => {
     // pressed: the work counts as big, so the next turn asks about an update
     await turn($, clock, "tests", 1, "Write");
     expect(seen.asked).toEqual(["update"]);
-  });
-
-  test("outside Orca: a reply with nothing in it is a failure", async ($, on) => {
-    const { seen, clock } = engine(on, { env: { TERM_PROGRAM: "ghostty" } });
-    seen.reply = { isAnswered: true, text: " \x1b[0m \n" };
-    await turn($, clock, "x", 1);
-    expect((await band($)).texts).toContain("✗ the reply held no summary");
   });
 });

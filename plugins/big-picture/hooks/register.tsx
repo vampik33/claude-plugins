@@ -8,8 +8,6 @@ import {
   emptyActivity,
   extractHtml,
   fmtTime,
-  type Format,
-  hasTab,
   isCheckDue,
   isRewriteDue,
   JEV_URL,
@@ -22,8 +20,8 @@ import {
   mayBeBig,
   mergeActivity,
   type Message,
+  openArgv,
   parseJev,
-  parseTabId,
   placeholderHtml,
   digest,
   PROGRESS_EVERY_MS,
@@ -32,7 +30,6 @@ import {
   summaryPrompt,
   summarySystem,
   TAIL_BYTES,
-  textBlocks,
 } from "./core.ts";
 import { SHOW_ME } from "./show-me.ts";
 import { STACK, stackRows } from "./stack.ts";
@@ -41,20 +38,8 @@ const status = atom(
   { plugin: "big-picture", key: "status" } as const,
   { kind: "none" } as SummaryStatus,
 );
-const tab = atom(
-  { plugin: "big-picture", key: "tab" } as const,
-  null as string | null,
-);
-const pane = atom({ plugin: "big-picture", key: "pane" } as const, false);
-const text = atom(
-  { plugin: "big-picture", key: "text" } as const,
-  null as string | null,
-);
 
-const ORCA_MS = 10_000;
-/** How often an open tab is looked for, so one closed in Orca flips the button to show. */
-const TAB_WATCH_MS = 2_000;
-const PANE = "big-picture";
+const OPEN_MS = 10_000;
 const SUMMARY_MODEL = "haiku";
 const SUMMARY_TOKENS = 16_000;
 const SUMMARY_MS = 180_000;
@@ -68,7 +53,7 @@ let activity = emptyActivity("");
 let since = emptyActivity("");
 /** Once Jev judged the work big, later checks ask whether to update instead. */
 let isBig = false;
-/** The summary last written (an HTML page or text), handed to Haiku to update. */
+/** The page last written, handed to Haiku to update. */
 let lastSummary: string | undefined;
 /** When the page was last written (ms since epoch). */
 let lastWrittenAt: number | undefined;
@@ -80,14 +65,8 @@ type Why = "tools" | "turn" | "progress" | "manual";
 /** Checks asked for while one ran: they run after it, each kind once. */
 let queued = new Set<Why>();
 let warned = false;
-/** A show or hide under way: presses meanwhile are dropped, not stacked into more tabs. */
-let toggling = false;
 /** Looks at the running shells every PROGRESS_EVERY_MS. */
 let progressWatch: { cancel: () => void } | undefined;
-/** Looks for the open tab every TAB_WATCH_MS. */
-let tabWatch: { cancel: () => void } | undefined;
-/** A look under way (Orca takes ~8 s to list no tabs): a tick meanwhile is skipped. */
-let watching = false;
 
 const setStatus = ($: EngineInterface, s: SummaryStatus) =>
   update($, status, () => s);
@@ -103,14 +82,6 @@ async function writePage($: EngineInterface, html: string): Promise<string> {
   await $.fs.write(path, html);
   return path;
 }
-
-const orca = ($: EngineInterface, args: string[]) =>
-  $.process
-    .run(["orca", ...args, "--json"], { timeoutMs: ORCA_MS })
-    .catch(() => undefined);
-
-const inOrca = async ($: EngineInterface) =>
-  (await $.env.get("TERM_PROGRAM").catch(() => undefined)) === "Orca";
 
 const messagesOf = async ($: EngineInterface): Promise<Message[]> => {
   const messages = await $.session.messages().catch(() => []);
@@ -200,17 +171,16 @@ async function summarize($: EngineInterface): Promise<void> {
 }
 
 /**
- * Haiku writes the summary from the transcript (and updates the last one),
- * then shows it: in Orca a page for the tab, elsewhere text for the pane.
+ * Haiku writes the summary page from the transcript (and updates the last
+ * one); an open page picks it up on its next refresh.
  */
 async function writeSummary($: EngineInterface): Promise<boolean> {
   await setStatus($, { kind: "working", step: "writing" });
-  const format: Format = (await inOrca($)) ? "html" : "text";
   const messages = await messagesOf($);
   const progress = await readProgress($, messages);
   const reply = await $.model.complete({
     model: SUMMARY_MODEL,
-    system: [{ text: summarySystem(SHOW_ME, format), cache: true }],
+    system: [{ text: summarySystem(SHOW_ME), cache: true }],
     prompt: summaryPrompt(digest(messages), lastSummary, progress),
     maxTokens: SUMMARY_TOKENS,
     timeoutMs: SUMMARY_MS,
@@ -219,25 +189,17 @@ async function writeSummary($: EngineInterface): Promise<boolean> {
     await setStatus($, { kind: "failed", reason: reply.reason });
     return false;
   }
-  const summary =
-    format === "html" ? extractHtml(reply.text) : cleanText(reply.text);
+  const summary = extractHtml(reply.text);
   if (!summary) {
-    await setStatus($, {
-      kind: "failed",
-      reason: `the reply held no ${format === "html" ? "HTML page" : "summary"}`,
-    });
+    await setStatus($, { kind: "failed", reason: "the reply held no HTML page" });
     return false;
   }
   // the transcript may carry injected text: the page runs no script of the model's
-  if (format === "html") await writePage($, securePage(summary));
-  else await update($, text, () => summary);
+  await writePage($, securePage(summary));
   lastSummary = summary;
   lastProgress = JSON.stringify(progress);
   lastWrittenAt = await $.clock.now();
   await setStatus($, { kind: "ready", at: lastWrittenAt });
-  const id = await read($, tab);
-  if (id && (await orca($, ["reload", "--page", id]))?.exitCode !== 0)
-    await forgetTab($); // closed in Orca
   return true;
 }
 
@@ -337,107 +299,29 @@ async function check($: EngineInterface, why: Why): Promise<void> {
   }
 }
 
-/** What a show or hide says, and whether it did what was asked. */
-type Said = { text: string; isDone: boolean };
-
-async function forgetTab($: EngineInterface): Promise<void> {
-  tabWatch?.cancel();
-  tabWatch = undefined;
-  await update($, tab, () => null);
-}
-
-/** Forgets the tab once Orca no longer lists it: closed there by hand. */
-async function watchTab($: EngineInterface): Promise<void> {
-  if (watching) return;
-  watching = true;
-  try {
-    const id = await read($, tab);
-    if (!id) return await forgetTab($);
-    const list = await orca($, ["tab", "list"]);
-    if (list?.exitCode === 0 && !hasTab(list.stdout, id)) await forgetTab($);
-  } finally {
-    watching = false;
-  }
-}
-
-function startTabWatch($: EngineInterface): void {
-  tabWatch?.cancel();
-  tabWatch = $.clock.every(TAB_WATCH_MS, () => void watchTab($));
-}
-
 /**
- * After a reload: a written summary keeps the work big and is the one Haiku
- * updates (the pane's text, else the page on disk), and an open tab is watched.
+ * After a reload: a written summary keeps the work big and is the page on
+ * disk Haiku updates.
  */
 async function restore($: EngineInterface): Promise<void> {
   const s = await read($, status);
-  if (s.kind === "ready") {
-    isBig = true;
-    lastWrittenAt = s.at;
-    lastSummary =
-      (await read($, text)) ??
-      (await $.fs.read(await pagePath($)).catch(() => undefined));
-  }
-  if (await read($, tab)) startTabWatch($);
+  if (s.kind !== "ready") return;
+  isBig = true;
+  lastWrittenAt = s.at;
+  lastSummary = await $.fs.read(await pagePath($)).catch(() => undefined);
 }
 
-async function showTab($: EngineInterface): Promise<Said> {
+/** Opens the page in the default browser, a placeholder before any summary; what it says, and whether it opened. */
+async function show($: EngineInterface): Promise<{ text: string; isOpened: boolean }> {
   const path = await pagePath($);
   if (!(await $.fs.exists(path).catch(() => false)))
     await writePage($, placeholderHtml(PLACEHOLDER));
-  const ran = await orca($, [
-    "tab",
-    "create",
-    "--url",
-    encodeURI(`file://${path}`),
-  ]);
-  const id = ran?.exitCode === 0 ? parseTabId(ran.stdout) : undefined;
-  if (!id) return { text: "Orca did not open a browser tab.", isDone: false };
-  await update($, tab, () => id);
-  startTabWatch($);
-  return { text: "Summary shown.", isDone: true };
-}
-
-async function hideTab($: EngineInterface, id: string): Promise<Said> {
-  await orca($, ["tab", "close", "--page", id]);
-  await forgetTab($);
-  return { text: "Summary hidden.", isDone: true };
-}
-
-/** Hides the tab if Orca still lists it, shows a new one if not. */
-async function toggleTab($: EngineInterface): Promise<Said> {
-  const id = await read($, tab);
-  if (id) {
-    const list = await orca($, ["tab", "list"]);
-    if (list?.exitCode === 0 && hasTab(list.stdout, id)) return hideTab($, id);
-  }
-  return showTab($);
-}
-
-/** Closes the pane if open, opens it if not. */
-async function togglePane($: EngineInterface): Promise<Said> {
-  if (await read($, pane)) {
-    await $.ui.close({ id: PANE });
-    await update($, pane, () => false);
-    return { text: "Summary hidden.", isDone: true };
-  }
-  const opened = await $.ui.open({ id: PANE, title: "Big picture" });
-  await update($, pane, () => opened.isPlaced);
-  return opened.isPlaced
-    ? { text: "Summary shown.", isDone: true }
-    : { text: "The summary pane is waiting for a wider terminal.", isDone: false };
-}
-
-/** In Orca the tab, elsewhere the pane; one at a time. */
-async function toggle($: EngineInterface): Promise<Said> {
-  if (toggling)
-    return { text: "Still showing or hiding the summary.", isDone: true };
-  toggling = true;
-  try {
-    return (await inOrca($)) ? await toggleTab($) : await togglePane($);
-  } finally {
-    toggling = false;
-  }
+  const ran = await $.process
+    .run(openArgv(encodeURI(`file://${path}`)), { timeoutMs: OPEN_MS })
+    .catch(() => undefined);
+  return ran?.exitCode === 0
+    ? { text: "Summary opened in the browser.", isOpened: true }
+    : { text: `No browser opened the summary: ${path}`, isOpened: false };
 }
 
 export const register: Register = (on) => {
@@ -446,7 +330,7 @@ export const register: Register = (on) => {
     await $.command.register({
       name: "big-picture",
       description:
-        "Show or hide the visual summary of this session's big work; update rewrites it now",
+        "Open the visual summary of this session's big work in the browser; update rewrites it now",
       argumentHint: "[update]",
     });
     progressWatch?.cancel();
@@ -455,14 +339,10 @@ export const register: Register = (on) => {
       () => void check($, "progress"),
     );
     await restore($);
-    // a reload keeps an open pane
-    const panes = await $.ui.panes().catch(() => []);
-    await update($, pane, () => panes.some((p) => p.id === PANE && p.isPlaced));
     return r;
   });
 
-  // a /clear: the new session starts with no work and no summary; the old page's tab
-  // is closed (Orca can be slow, so on a timer, outside session.end's short bound)
+  // a /clear: the new session starts with no work and no summary
   on("session.end", async ($, e, next) => {
     const r = await next(e);
     if (e.reason !== "clear") return r;
@@ -473,16 +353,11 @@ export const register: Register = (on) => {
     lastWrittenAt = undefined;
     lastProgress = undefined;
     await setStatus($, { kind: "none" });
-    await update($, text, () => null);
-    const id = await read($, tab);
-    await forgetTab($);
-    if (id)
-      $.clock.after(0, () => void orca($, ["tab", "close", "--page", id]));
     return r;
   });
 
   on("command.run", { command: "big-picture" }, async ($, e) => {
-    if (e.args.trim() !== "update") return { text: (await toggle($)).text };
+    if (e.args.trim() !== "update") return { text: (await show($)).text };
     $.clock.after(0, () => void check($, "manual"));
     return { text: "Updating the summary." };
   });
@@ -512,49 +387,14 @@ export const register: Register = (on) => {
     return r;
   });
 
-  on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e);
-    const summary = await read($, text);
-    if (summary === null)
-      return (
-        <Box width={e.props.bodyColumns}>
-          <Text dimColor>{PLACEHOLDER}</Text>
-        </Box>
-      );
-    return (
-      <Box flexDirection="column" width={e.props.bodyColumns}>
-        {textBlocks(summary).map((b, i) => (
-          <Box key={`block:${i}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
-            {b.kind === "heading" && <Text bold>{b.lines[0]}</Text>}
-            {b.kind === "prose" && <Text>{b.lines[0]}</Text>}
-            {b.kind === "sketch" &&
-              b.lines.map((line, j) => (
-                <Text key={`line:${j}`} wrap="truncate-end">
-                  {line === "" ? " " : line}
-                </Text>
-              ))}
-          </Box>
-        ))}
-      </Box>
-    );
-  });
-
-  on("ui.close", { id: PANE }, async ($, e, next) => {
-    const r = await next(e);
-    await update($, pane, () => false);
-    return r;
-  });
-
-  // its own line under the other bands: the summary's state and a show/hide toggle,
-  // once there is something to show (or the summary is open, so it can be hidden);
-  // Jev judging work that has no summary yet is not something to show
+  // its own line under the other bands: the summary's state and a show button,
+  // once there is something to show; Jev judging work that has no summary yet is not
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
     const s = await read($, status);
-    const open = (await read($, tab)) !== null || (await read($, pane));
     const isJudgingOnly =
       s.kind === "working" && s.step === "classifying" && lastSummary === undefined;
-    if (!open && (s.kind === "none" || isJudgingOnly)) return next(e);
+    if (s.kind === "none" || isJudgingOnly) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
     const row = (
@@ -573,15 +413,15 @@ export const register: Register = (on) => {
           <Text color="red" wrap="truncate-end">{`✗ ${s.reason}`}</Text>
         )}
         <Button
-          key="big-picture-toggle"
+          key="big-picture-show"
           hotkey="s"
           dimColor
           onPress={async () => {
-            const said = await toggle($);
-            if (!said.isDone) $.ui.toast(`big-picture: ${said.text}`);
+            const said = await show($);
+            if (!said.isOpened) $.ui.toast(`big-picture: ${said.text}`);
           }}
         >
-          {open ? "hide" : "show"}
+          show
         </Button>
         <Button
           key="big-picture-update"

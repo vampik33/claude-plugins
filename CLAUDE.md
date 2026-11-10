@@ -21,7 +21,7 @@ claude-plugins/
 ├── plans/                            # Implementation plans from Claude sessions
 ├── verification/                     # lean/ models+proofs; props/*.prop|fv|diff tests (bun); run.sh
 └── plugins/
-    ├── big-picture/                  # Mod: Jev-gated live HTML summary of big work, in an Orca tab
+    ├── big-picture/                  # Mod: Jev-gated live HTML summary of big work, opened in the browser
     ├── claudemd-gen/                 # CLAUDE.md generator and auditor
     ├── codex-review/                 # Mod: background Codex reviews, findings pane, CodexReview tool
     ├── continuity/                   # Mod: context gauge + cache timer, handover + compact + continue

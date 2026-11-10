@@ -10,21 +10,18 @@ import {
   cleanText,
   emptyActivity,
   extractHtml,
-  hasTab,
   isCheckDue,
   liveShells,
   logTool,
   mayBeBig,
   mergeActivity,
   parseJev,
-  parseTabId,
   placeholderHtml,
   digest,
   MERMAID_LOADER,
   MERMAID_LOADER_SHA256,
   securePage,
   summaryPrompt,
-  textBlocks,
   type Message,
 } from "../../plugins/big-picture/hooks/core.ts";
 
@@ -93,15 +90,6 @@ describe("parsers never throw", () => {
     );
   });
 
-  test("parseTabId and hasTab", () => {
-    fc.assert(
-      fc.property(fc.oneof(fc.string(), fc.json()), fc.string(), (s, id) => {
-        const got = parseTabId(s);
-        if (got !== undefined) expect(got.length).toBeGreaterThan(0);
-        expect(typeof hasTab(s, id)).toBe("boolean");
-      }),
-    );
-  });
 });
 
 describe("extractHtml", () => {
@@ -177,19 +165,14 @@ describe("securePage", () => {
       fc.property(fc.array(fc.oneof(piece, fc.string()), { maxLength: 20 }), (ps) => {
         const page = securePage(ps.join(""));
         expect(page.match(/<script\b/gi)?.length).toBe(1);
-        expect(page.match(/<meta\b/gi)?.length).toBe(2);
+        expect(page.match(/<meta\b/gi)?.length).toBe(3);
         expect(page).not.toMatch(/<link\b/i);
       }),
     );
   });
 });
 
-describe("text summary", () => {
-  const line = fc.oneof(
-    fc.constantFrom("# Title", "## Next", "```", "", "┌─┐ │x│", "\x1b[31mred", "\x1b]0;t\x07"),
-    fc.string(),
-  );
-
+describe("cleanText", () => {
   test("cleanText leaves no control character but newlines", () => {
     fc.assert(
       fc.property(fc.string(), (s) => {
@@ -198,19 +181,6 @@ describe("text summary", () => {
     );
   });
 
-  test("textBlocks never throws, keeps no empty block, and every sketch line comes from the text", () => {
-    fc.assert(
-      fc.property(fc.array(line, { maxLength: 30 }), (ls) => {
-        const text = ls.join("\n");
-        const kept = cleanText(text).split("\n");
-        for (const b of textBlocks(text)) {
-          expect(b.lines.length).toBeGreaterThan(0);
-          if (b.kind === "sketch") for (const l of b.lines) expect(kept).toContain(l);
-          else expect(b.lines[0]!.trim()).not.toBe("");
-        }
-      }),
-    );
-  });
 });
 
 describe("liveShells", () => {

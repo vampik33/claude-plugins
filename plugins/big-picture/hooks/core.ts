@@ -266,40 +266,24 @@ export function liveShells(messages: readonly Message[]): LiveShell[] {
 /** A running command and the end of its output, as a summary shows its progress. */
 export type Progress = { command: string; tail: string };
 
-/** Where the summary is shown: an HTML page in an Orca tab, or text in a terminal pane. */
-export type Format = "html" | "text";
-
-/** The text summary's widest line, so the pane need not wrap a diagram. */
-export const TEXT_WIDTH = 60;
-
 const HTML_CONTRACT = `The summary is one self-contained HTML page:
 - Text sketches (pseudocode, call trees, file trees, diffs) go in <pre> blocks; color diff lines.
 - Mermaid diagrams go in <pre class="mermaid"> blocks; the page gets its Mermaid script added, so write no <script> at all.
-- No external scripts, styles, fonts or images. Inline CSS, light and dark via prefers-color-scheme, readable in a narrow side panel.
+- No external scripts, styles, fonts or images. Inline CSS, light and dark via prefers-color-scheme, readable in a browser tab of any width.
 - Open with a title and one short paragraph; real file names, functions and labels from the session. Claim nothing the session does not show.
 - It is a diagram summary: at least one Mermaid diagram of how the pieces connect or flow, and a text sketch (a file tree or call tree) of what changed. Prose only labels the visuals.
 
 Reply with the HTML document alone, starting with <!doctype html>: no prose, no code fence.`;
 
-const TEXT_CONTRACT = `The summary is plain text for a terminal side pane, no line of a diagram wider than ${TEXT_WIDTH} characters:
-- A line starting with "# " is a section heading; the first line is "# " and the title.
-- Diagrams and sketches (file trees, call trees, pseudocode, diffs, and flows drawn with box-drawing characters like ┌─┐│└┘├▶→ where show-me would use Mermaid) go between two lines of three backticks alone, shown as written.
-- Prose is short paragraphs, a blank line between them; it wraps to the pane.
-- Nothing else: no Markdown emphasis, links or tables, no HTML, no escape codes.
-- Real file names, functions and labels from the session. Claim nothing the session does not show.
-- It is a diagram summary: at least one diagram of how the pieces connect or flow, and a file tree or call tree of what changed. Prose only labels the visuals.
-
-Reply with the summary alone: no preamble, no fence around all of it.`;
-
-/** The system prompt: show-me's guidance, then the format's contract. Fixed, so cached. */
-export function summarySystem(showMe: string, format: Format): string {
+/** The system prompt: show-me's guidance, then the page's contract. Fixed, so cached. */
+export function summarySystem(showMe: string): string {
   return `You write a visual summary of a person's coding session with Claude: what was done and why, how the pieces fit, what is still in progress or next. Follow this guidance for choosing the views:
 
 <show-me>
 ${showMe}
 </show-me>
 
-${format === "html" ? HTML_CONTRACT : TEXT_CONTRACT}`;
+${HTML_CONTRACT}`;
 }
 
 const runningSection = (running: readonly Progress[]) =>
@@ -351,12 +335,16 @@ export const SUMMARY_CSP = [
   "frame-src 'none'",
 ].join("; ");
 
+/** How often the open page reloads itself, so a rewrite shows without the mod reaching the browser. */
+export const REFRESH_S = 60;
+const REFRESH_META = `<meta http-equiv="refresh" content="${REFRESH_S}">`;
+
 /**
  * A model-written page made safe to open: its scripts, every <meta> (an
  * http-equiv may be entity-encoded past any filter) and every <link> (a
  * dns-prefetch or preconnect reaches out past the CSP) dropped, and, before it, the
- * charset, the CSP and the Mermaid loader. The CSP comes first, so it
- * holds for all of the page; a later policy can only narrow it.
+ * charset, the CSP, the mod's own refresh and the Mermaid loader. The CSP comes
+ * first, so it holds for all of the page; a later policy can only narrow it.
  */
 export function securePage(html: string): string {
   // until nothing changes: a cut may join `<scr` and `ipt>` into a new tag
@@ -370,16 +358,10 @@ export function securePage(html: string): string {
   return `<!doctype html>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">
+${REFRESH_META}
 ${MERMAID_LOADER}
 ${body}`;
 }
-
-/** One piece of the text summary as the pane draws it. */
-export type TextBlock = {
-  kind: "heading" | "prose" | "sketch";
-  /** A sketch's lines, as written; a heading's or a paragraph's one line. */
-  lines: string[];
-};
 
 /** The model's text with escape sequences and other control characters gone. */
 export function cleanText(text: string): string {
@@ -391,36 +373,6 @@ export function cleanText(text: string): string {
     .trim();
 }
 
-/** The text summary in headings, paragraphs and sketches; an unclosed sketch runs to the end. */
-export function textBlocks(text: string): TextBlock[] {
-  const blocks: TextBlock[] = [];
-  let prose: string[] = [];
-  let sketch: string[] | undefined;
-  const flush = () => {
-    if (prose.length) blocks.push({ kind: "prose", lines: [prose.join(" ")] });
-    prose = [];
-  };
-  for (const line of cleanText(text).split("\n")) {
-    if (/^\s*```/.test(line)) {
-      if (sketch) {
-        if (sketch.length) blocks.push({ kind: "sketch", lines: sketch });
-        sketch = undefined;
-      } else {
-        flush();
-        sketch = [];
-      }
-    } else if (sketch) sketch.push(line);
-    else if (/^#+\s+\S/.test(line)) {
-      flush();
-      blocks.push({ kind: "heading", lines: [line.replace(/^#+\s+/, "")] });
-    } else if (line.trim() === "") flush();
-    else prose.push(line.trim());
-  }
-  flush();
-  if (sketch?.length) blocks.push({ kind: "sketch", lines: sketch });
-  return blocks;
-}
-
 const escape = (s: string) =>
   s.replace(
     /[&<>"]/g,
@@ -430,34 +382,23 @@ const escape = (s: string) =>
 /** The page shown before a summary exists. */
 export function placeholderHtml(text: string): string {
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>Big picture</title>
+<html><head><meta charset="utf-8">${REFRESH_META}<title>Big picture</title>
 <style>:root{color-scheme:light dark}body{font:15px/1.5 system-ui,sans-serif;margin:2rem;opacity:.7}</style>
 </head><body><p>${escape(text)}</p></body></html>`;
 }
 
-/** `browserPageId` from `orca tab create --json`. */
-export function parseTabId(stdout: string): string | undefined {
-  try {
-    const id = (JSON.parse(stdout) as { result?: { browserPageId?: unknown } })
-      .result?.browserPageId;
-    return typeof id === "string" && id !== "" ? id : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Whether `orca tab list --json` still lists the page. */
-export function hasTab(stdout: string, id: string): boolean {
-  try {
-    const tabs = (
-      JSON.parse(stdout) as {
-        result?: { tabs?: { browserPageId?: unknown }[] };
-      }
-    ).result?.tabs;
-    return Array.isArray(tabs) && tabs.some((t) => t.browserPageId === id);
-  } catch {
-    return false;
-  }
+/**
+ * Opens `url` in the default browser: xdg-open, else macOS's open. Its output
+ * goes to /dev/null, so a browser it starts holds no pipe of the mod's open.
+ */
+export function openArgv(url: string): string[] {
+  return [
+    "sh",
+    "-c",
+    'exec </dev/null >/dev/null 2>&1; if command -v xdg-open >/dev/null; then exec xdg-open "$1"; fi; exec open "$1"',
+    "sh",
+    url,
+  ];
 }
 
 /** `09:05`, local time. */

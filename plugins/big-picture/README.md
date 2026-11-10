@@ -1,10 +1,10 @@
 # big-picture
 
-When a piece of work in the session turns out big, a visual HTML summary of it (diagrams, file and call trees, in the style of HumanLayer's [show-me](https://github.com/humanlayer/skills/tree/main/plugins/show-me) skill) appears in an Orca browser tab beside the terminal (outside Orca, as text in a terminal pane), and keeps up while the work goes on.
+When a piece of work in the session turns out big, a visual HTML summary of it (diagrams, file and call trees, in the style of HumanLayer's [show-me](https://github.com/humanlayer/skills/tree/main/plugins/show-me) skill) is written to a page you open in your browser, and keeps up while the work goes on.
 
 ```
 summary  ● writing…  show  update          a check is running
-summary  updated 09:05  hide  update       the page is current; its tab is open
+summary  updated 09:05  show  update       the page is current
 summary  ✗ Jev answered HTTP 401  show  update
 ```
 
@@ -22,11 +22,9 @@ Set a TypeSafe key for Jev, in `~/.claude/settings.json`:
 
 ## Behaviour
 
-- `/big-picture` shows or hides the summary's Orca browser tab; so does the `summary  show` line above the prompt (hotkey `s`). The line appears once there is something to show: a summary being written, written, or failing; while Jev only judges work that has no summary yet, it stays hidden. Before there is a summary, `/big-picture` opens a placeholder that fills in later, and the line shows while it is open so it can be hidden. The tab never opens by itself. A press while a show or hide is under way is dropped.
+- `/big-picture` opens the summary in the default browser (`xdg-open`, else `open` on macOS); so does `show` on the `summary` line above the prompt (hotkey `s`). The line appears once there is something to show: a summary being written, written, or failing; while Jev only judges work that has no summary yet, it stays hidden. Before there is a summary, `/big-picture` opens a placeholder that fills in later. The page never opens by itself, and is closed in the browser. When no browser opens it, the mod says so with the page's path.
 - `/big-picture update`, or `update` on the `summary` line (hotkey `u`), rewrites the summary now: no Jev question, even before the work was judged big (which it counts as from then on). A press while a check runs is run once after it; several presses meanwhile, once.
-- A tab closed in Orca by hand turns the button back to `show` within about 10 seconds (the mod looks for its tab in `orca tab list` every 2 seconds while one is open; Orca takes about 8 seconds to answer when no browser tab is left).
-- The page is `~/.claude/big-picture/<session-id>.html`. Each rewrite reloads the open tab.
-- Outside Orca (`TERM_PROGRAM` is not `Orca`) there is no browser: Haiku writes the summary as text instead (headings, short paragraphs, and diagrams and trees drawn in text, no line of a diagram over 60 characters), and `/big-picture` or the `summary` line opens and closes it in a terminal pane. Nothing is written to disk.
+- The page is `~/.claude/big-picture/<session-id>.html`. An open page reloads itself every 60 seconds, so a rewrite shows within a minute.
 
 ## How It Works
 
@@ -35,7 +33,7 @@ Every tool call that goes through (subagents' too) is logged: files written or e
 1. **Is it big?** Until the session's work is judged big, Jev (TypeSafe's classifier, `POST api.typesafe.ai/v1/systemone`) gets one yes/no question over the turn's prompt and log. At p ≥ 0.5 the work is big and the first page is written.
 2. **Does it need an update?** From then on Jev is asked whether the work since the last page changed the picture; at p ≥ 0.5 the page is rewritten. Work it turns down still counts toward the next question. During a turn, rewrites are at least 5 minutes apart (a check inside the gap asks nothing and keeps the work for later); a turn's end may always rewrite.
 3. **Is there progress?** Every 30 minutes, once a summary exists, the background shells still running are found in the transcript (a Bash call whose record names the background task it became, with no task notification for it since) and the last 2 KB of each one's `tasks/<id>.output` file is read. When that output moved since the last look, Jev is asked, over the commands alone, whether their progress is worth a rewrite; at p ≥ 0.5 Haiku rewrites the page with the output. The output never goes to Jev (TypeSafe), only to Haiku. A no is not asked again on the same output; a failed ask or write is. A long *foreground* command's output cannot be read until it ends.
-4. **Writing** is Haiku (`$.model.complete`, 16k tokens at most): show-me's guidance and the page's contract as a cached system prompt, the transcript as a digest (what was typed, said and run: the newest 60k characters), and the previous summary to update, and the commands still running with the end of their output. Mermaid comes from jsDelivr, pinned. The page runs no script of Haiku's: its scripts, `<meta>` and `<link>` tags are stripped, and a Content-Security-Policy lets only the mod's Mermaid loader and Mermaid's own files run. The text summary has its escape sequences and control characters stripped.
+4. **Writing** is Haiku (`$.model.complete`, 16k tokens at most): show-me's guidance and the page's contract as a cached system prompt, the transcript as a digest (what was typed, said and run: the newest 60k characters), and the previous summary to update, and the commands still running with the end of their output. Mermaid comes from jsDelivr, pinned. The page runs no script of Haiku's: its scripts, `<meta>` and `<link>` tags are stripped, and a Content-Security-Policy lets only the mod's Mermaid loader and Mermaid's own files run. The page's only `<meta>` refresh is the mod's own.
 
 Each check costs a Jev call; only a yes costs a Haiku call. Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
 

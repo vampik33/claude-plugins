@@ -4,6 +4,16 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-11-10
+
+### Changed
+- The summary no longer uses Orca: `/big-picture` and the `summary` line's `show` (hotkey `s`) open the page in the default browser (`xdg-open`, else `open`), a placeholder before any summary. The page reloads itself every 60 seconds, so a rewrite shows without the mod reaching the browser
+- Haiku always writes the HTML page; there is no text summary any more
+
+### Removed
+- The Orca browser tab and everything that drove it: opening, reloading, closing and watching it through the `orca` CLI, and `hide` on the band line (a browser tab is closed in the browser)
+- The text summary in a terminal pane that stood in for the tab outside Orca
+
 ## [0.3.6] - 2026-11-10
 
 ### Changed

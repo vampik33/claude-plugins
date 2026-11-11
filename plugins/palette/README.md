@@ -34,8 +34,7 @@ claude plugin install palette@vampik-plugins
 
 ## Behaviour
 
-- `/palette` shows or hides the pane, with the keyboard on the search field so you can type right away. It docks beside the transcript in the fullscreen layout (110+ columns), inline above the prompt otherwise.
-- A `palette  show` line always sits above the prompt: `show` / `hide` toggles the pane (hotkey `p` once the band has the keys, ctrl+x tab or a click).
+- `/palette` shows or hides the pane (it draws no line above the prompt), with the keyboard on the search field so you can type right away. It docks beside the transcript in the fullscreen layout (110+ columns), inline above the prompt otherwise.
 - A command or skill goes to the start of the prompt as `/<name> ` (a slash command only runs from there), replacing a leading command and keeping the rest of your draft.
 - An agent goes in at the cursor as `@agent-<name> `.
 - Nothing is sent: you finish the prompt and press Enter.

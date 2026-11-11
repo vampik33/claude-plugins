@@ -74,7 +74,7 @@ big-picture, codex-review, continuity, fix-findings, fleet, memory-watch, palett
 - Type files in `<mod>/.claude-plugin/types/` are from whichever build last loaded the mod (its header says which); a fresh `tsc -p` can pass on old types, so also check against the current build's `claude-code.d.ts`, which the plugin-authoring skill writes when it loads
 - Installed mods run from the GitHub copy: after pushing, `claude plugin marketplace update vampik-plugins`, then `claude plugin update <mod>@vampik-plugins`, then restart
 - A function that takes `$` must be top-level (the validator refuses closures)
-- A mod that draws in the AbovePrompt band copies `hooks/stack.ts` and returns `<Box key={STACK} flexDirection="column" marginTop={1}>{stackRows(below, row)}</Box>` with its row keyed `band:<NN>-<mod>`, `NN` its slot top to bottom (palette 10, memory-watch 20, big-picture 30, ship 40, watchdog 50, codex-review 60, fleet 70; `band-top:`/`band-bottom:` pin a row, continuity is `band-bottom:`); add it to `MODS` in `verification/props/band-stack.prop.test.ts`
+- A mod that draws in the AbovePrompt band copies `hooks/stack.ts` and returns `<Box key={STACK} flexDirection="column" marginTop={1}>{stackRows(below, row)}</Box>` with its row keyed `band:<NN>-<mod>`, `NN` its slot top to bottom (memory-watch 20, big-picture 30, ship 40, watchdog 50, codex-review 60, fleet 70; `band-top:`/`band-bottom:` pin a row, continuity is `band-bottom:`); add it to `MODS` in `verification/props/band-stack.prop.test.ts`
 - Helpers are copied per mod, not shared: each mod installs alone
 - New mod: add it to the hardcoded `for mod in …` loop in `verification/run.sh`, and add `verification/props/<mod>.prop.test.ts` for pure functions in its `core.ts`
 

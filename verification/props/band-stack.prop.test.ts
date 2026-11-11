@@ -9,7 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import fc from "fast-check";
 
-import { STACK, stackRows } from "../../plugins/palette/hooks/stack.ts";
+import { STACK, stackRows } from "../../plugins/memory-watch/hooks/stack.ts";
 
 const MODS = [
   "big-picture",
@@ -17,7 +17,6 @@ const MODS = [
   "continuity",
   "fleet",
   "memory-watch",
-  "palette",
   "ship",
   "watchdog",
 ] as const;
@@ -29,7 +28,6 @@ const ROW_KEY: Record<(typeof MODS)[number], string> = {
   continuity: "band-bottom:continuity",
   fleet: "band:70-fleet",
   "memory-watch": "band:20-memory-watch",
-  palette: "band:10-palette",
   ship: "band:40-ship",
   watchdog: "band:50-watchdog",
 };
@@ -92,8 +90,8 @@ describe("band stack", () => {
         new URL(`../../plugins/${m}/hooks/stack.ts`, import.meta.url),
         "utf8",
       );
-    const palette = read("palette");
-    for (const m of MODS) expect(read(m)).toBe(palette);
+    const memory = read("memory-watch");
+    for (const m of MODS) expect(read(m)).toBe(memory);
   });
 
   test("any subset in any order: one column, one blank row, top first, bottom last", () => {
@@ -136,14 +134,13 @@ describe("band stack", () => {
     );
   });
 
-  test("all of them, any nesting: palette, memory, summary, ship, watchdog, codex, fleet, ctx", () => {
+  test("all of them, any nesting: memory, summary, ship, watchdog, codex, fleet, ctx", () => {
     fc.assert(
       fc.property(
         fc.shuffledSubarray([...MODS], { minLength: MODS.length, maxLength: MODS.length }),
         (order) => {
           const out = fold(order, null) as El;
           expect(out.children.map((c) => (c as El).children[0])).toEqual([
-            "palette",
             "memory-watch",
             "big-picture",
             "ship",
@@ -160,11 +157,11 @@ describe("band stack", () => {
 
   test("the middle rows sort by key between the pinned ones", () => {
     const out = fold(
-      ["big-picture", "continuity", "fleet", "codex-review", "palette"],
+      ["big-picture", "continuity", "fleet", "codex-review", "memory-watch"],
       null,
     ) as El;
     expect(out.children.map((c) => (c as El).props.key)).toEqual([
-      "band:10-palette",
+      "band:20-memory-watch",
       "band:30-big-picture",
       "band:60-codex",
       "band:70-fleet",
@@ -173,7 +170,7 @@ describe("band stack", () => {
   });
 
   test("what is not a column is kept whole, as one row; an empty Box is nothing", () => {
-    const row = el("Box", { key: "band:10-palette" });
+    const row = el("Box", { key: "band:20-memory-watch" });
     expect(stackRows(null, row)).toEqual([row]);
     expect(stackRows(el("Box", {}), row)).toEqual([row]);
     const tip = el("Text", {}, "Heads up");

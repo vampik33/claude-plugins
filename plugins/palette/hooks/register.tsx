@@ -12,7 +12,6 @@ import {
   projectPaths,
   recordUse,
 } from "./core.ts";
-import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "palette";
 const SEARCH = "palette-search";
@@ -260,32 +259,6 @@ export const register: Register = (on) => {
               })}
           </Box>
         ))}
-      </Box>
-    );
-  });
-
-  // its own line under the other bands: a show/hide toggle
-  on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e);
-    const open = await read($, pane);
-    const below = await next(e);
-    const { Box, Button, Text } = $.ui.resolve(e);
-    const row = (
-      <Box key="band:10-palette" flexDirection="row" columnGap={2}>
-        <Text dimColor>palette</Text>
-        <Button
-          key="palette-toggle"
-          hotkey="p"
-          dimColor
-          onPress={() => togglePane($)}
-        >
-          {open ? "hide" : "show"}
-        </Button>
-      </Box>
-    );
-    return (
-      <Box key={STACK} flexDirection="column" marginTop={1}>
-        {stackRows(below, row)}
       </Box>
     );
   });

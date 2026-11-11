@@ -4,6 +4,11 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-11-11
+
+### Removed
+- The `palette  show` line above the prompt: it took a row in every session. `/palette` shows and hides the pane
+
 ## [0.4.4] - 2026-11-10
 
 ### Changed

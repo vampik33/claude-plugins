@@ -530,25 +530,11 @@ describe("pane", () => {
       await ui.unmount();
     });
 
-    test(`${surface}: the band line shows and hides the pane`, async ($, on) => {
-      const { seen } = engine(on);
-      const mount = () =>
-        $.ui.mount({ plugin: "palette", surface, ...BAND });
-
-      let ui = await mount();
-      expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
-      await ui.press({ key: "palette-toggle" });
-      expect(seen.opened).toBe(1);
-      await ui.unmount();
-
-      ui = await mount();
-      expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("hide");
-      await ui.press({ key: "palette-toggle" });
-      expect(seen.closed).toBe(1);
-      await ui.unmount();
-
-      ui = await mount();
-      expect((await ui.find({ key: "palette-toggle" }))?.text).toBe("show");
+    test(`${surface}: draws nothing in the band; /palette is the way in`, async ($, on) => {
+      engine(on);
+      const ui = await $.ui.mount({ plugin: "palette", surface, ...BAND });
+      expect(await ui.find({ key: "palette-toggle" })).toBeUndefined();
+      expect(await ui.find({ text: "palette" })).toBeUndefined();
       await ui.unmount();
     });
   }

@@ -314,8 +314,13 @@ async function restore($: EngineInterface): Promise<void> {
 /** Opens the page in the default browser, a placeholder before any summary; what it says, and whether it opened. */
 async function show($: EngineInterface): Promise<{ text: string; isOpened: boolean }> {
   const path = await pagePath($);
-  if (!(await $.fs.exists(path).catch(() => false)))
-    await writePage($, placeholderHtml(PLACEHOLDER));
+  try {
+    if (!(await $.fs.exists(path).catch(() => false)))
+      await writePage($, placeholderHtml(PLACEHOLDER));
+  } catch (err) {
+    // a failed write is said, not thrown: the command and the band's press both show it
+    return { text: `Could not write the summary page ${path}: ${String(err)}`, isOpened: false };
+  }
   const ran = await $.process
     .run(openArgv(encodeURI(`file://${path}`)), { timeoutMs: OPEN_MS })
     .catch(() => undefined);

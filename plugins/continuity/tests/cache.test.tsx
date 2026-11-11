@@ -251,7 +251,7 @@ describe("band", () => {
       const column = h(
         "Box",
         { key: "band-stack", flexDirection: "column", marginTop: 1 },
-        h("Box", { key: "band:60-codex" }, h("Text", null, "codex")),
+        h("Box", { key: "band:50-codex" }, h("Text", null, "codex")),
         h("Text", null, "palette"),
       );
       engine(on, { read: 80_000, write: 1_000 }, column);
@@ -260,7 +260,7 @@ describe("band", () => {
       const outer: any = await ui.drawn();
       expect(outer.props.key).toBe("band-stack");
       expect(outer.children.map((c: any) => c.props?.key ?? c.children[0])).toEqual([
-        "band:60-codex",
+        "band:50-codex",
         "palette",
         "band-bottom:continuity",
       ]);

@@ -530,7 +530,7 @@ describe("session", () => {
         marginTop: 1,
       });
       const row = drawn.children[0];
-      expect(row.props.key).toBe("band:60-codex");
+      expect(row.props.key).toBe("band:50-codex");
       expect(row.props.marginTop).toBeUndefined();
       expect(row.children[0].type).toBe("Client");
       await band.unmount();

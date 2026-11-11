@@ -182,7 +182,7 @@ export const register: Register = (on) => {
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
     const row = (
-      <Box key="band:20-memory-watch" flexDirection="row" columnGap={2}>
+      <Box key="band:10-memory-watch" flexDirection="row" columnGap={2}>
         <Text dimColor>memory</Text>
         {fresh > 0 && <Text color="yellow">{`● ${fresh} new`}</Text>}
         <Button

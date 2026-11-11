@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.4] - 2026-11-11
+
+### Changed
+- The band line's slot key is renumbered now that palette's slot 10 is gone; the band order is unchanged
+
 ## [0.5.3] - 2026-11-10
 
 ### Changed

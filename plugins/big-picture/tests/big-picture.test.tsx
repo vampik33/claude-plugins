@@ -367,6 +367,8 @@ function engine(
     opens: [] as string[],
     /** The opener's exit code. */
     openExit: 0,
+    /** While set, every page write fails. */
+    writeFails: false,
     toasts: [] as string[],
   };
   const clock = mock.clock(on, { now: new Date(2026, 9, 13, 9, 5).getTime() });
@@ -428,6 +430,7 @@ function engine(
     return { value: { usage: {}, ...reply } };
   });
   on("fs.write", (_$: unknown, e: { path: string; text: string }) => {
+    if (seen.writeFails) throw new Error("EROFS: read-only file system");
     seen.files.set(e.path, e.text);
     return { value: undefined };
   });
@@ -739,6 +742,22 @@ describe("session", () => {
     await ui.press({ key: "big-picture-show" });
     await ui.unmount();
     expect(seen.toasts).toEqual([`big-picture: ${said}`]);
+  });
+
+  test("a page that cannot be written: the command says so, the band's press toasts it, no browser opens", async ($, on) => {
+    const { seen, clock } = engine(on);
+    seen.writeFails = true;
+    const r = await $.command.run({ command: "big-picture", args: "" } as never);
+    const said = `Could not write the summary page ${PAGE}: `;
+    expect((r as { text: string }).text).toStartWith(said);
+    await turn($, clock, "big refactor", 10); // the summary's write fails too: the line shows it, with show
+    expect((await band($)).show).toBe("show");
+    const ui = await $.ui.mount({ plugin: "big-picture", surface: "terminal", ...BAND });
+    await ui.press({ key: "big-picture-show" });
+    await ui.unmount();
+    expect(seen.toasts).toHaveLength(1);
+    expect(seen.toasts[0]).toStartWith(`big-picture: ${said}`);
+    expect(seen.opens).toEqual([]);
   });
 
   test("a page path with a space is opened as one encoded URL", async ($, on) => {

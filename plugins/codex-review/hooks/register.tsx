@@ -585,7 +585,7 @@ export const register: Register = (on, options) => {
       );
     }
     const row = (
-      <Box key="band:60-codex" flexDirection="row" columnGap={2}>
+      <Box key="band:50-codex" flexDirection="row" columnGap={2}>
         {line}
         {!job && last && (
           <Button

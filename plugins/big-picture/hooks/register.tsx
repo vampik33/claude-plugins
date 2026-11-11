@@ -399,7 +399,7 @@ export const register: Register = (on) => {
     const { Box, Button, Text } = $.ui.resolve(e);
     const row = (
       <Box
-        key="band:30-big-picture"
+        key="band:20-big-picture"
         flexDirection="row"
         columnGap={2}
         width={e.props.bodyColumns}

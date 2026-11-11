@@ -61,7 +61,7 @@
     {
       "name": "big-picture",
       "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated while the work goes on; /big-picture opens it in the default browser",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "author": {
         "name": "vampik33"
       },
@@ -97,7 +97,7 @@
     {
       "name": "fleet",
       "description": "A side pane with the session's subagents, background shells and worktrees, with alerts when they finish or fail",
-      "version": "0.5.3",
+      "version": "0.5.4",
       "author": {
         "name": "vampik33"
       },
@@ -109,7 +109,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "author": {
         "name": "vampik33"
       },
@@ -133,7 +133,7 @@
     {
       "name": "memory-watch",
       "description": "A side pane summarizing each auto-memory file the session creates or updates",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "author": {
         "name": "vampik33"
       },
@@ -157,7 +157,7 @@
     {
       "name": "ship",
       "description": "A line above the prompt with unpushed commits and installed mods behind the repo, and /ship to push, refresh the marketplace and update those mods",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "author": {
         "name": "vampik33"
       },
@@ -169,7 +169,7 @@
     {
       "name": "watchdog",
       "description": "Watches every Bash command, foreground and background: stops one with no output, no CPU and no I/O for 10 minutes (servers and watchers excepted) and tells the model, which decides whether to re-run it",
-      "version": "0.3.5",
+      "version": "0.3.6",
       "author": {
         "name": "vampik33"
       },

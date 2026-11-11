@@ -535,7 +535,7 @@ export const register: Register = (on, options) => {
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
     const row = (
-      <Box key="band:70-fleet" flexDirection="row" columnGap={2}>
+      <Box key="band:60-fleet" flexDirection="row" columnGap={2}>
         <Text dimColor>
           {[statusLine(f) ?? "fleet", ...shellNotes(f.shells, now)].join(
             " · ",

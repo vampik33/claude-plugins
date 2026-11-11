@@ -23,13 +23,13 @@ const MODS = [
 
 // the key each mod gives its row (only the prefix matters to the stack)
 const ROW_KEY: Record<(typeof MODS)[number], string> = {
-  "big-picture": "band:30-big-picture",
-  "codex-review": "band:60-codex",
+  "big-picture": "band:20-big-picture",
+  "codex-review": "band:50-codex",
   continuity: "band-bottom:continuity",
-  fleet: "band:70-fleet",
-  "memory-watch": "band:20-memory-watch",
-  ship: "band:40-ship",
-  watchdog: "band:50-watchdog",
+  fleet: "band:60-fleet",
+  "memory-watch": "band:10-memory-watch",
+  ship: "band:30-ship",
+  watchdog: "band:40-watchdog",
 };
 
 type El = { type: string; props: Record<string, unknown>; children: unknown[] };
@@ -161,16 +161,16 @@ describe("band stack", () => {
       null,
     ) as El;
     expect(out.children.map((c) => (c as El).props.key)).toEqual([
-      "band:20-memory-watch",
-      "band:30-big-picture",
-      "band:60-codex",
-      "band:70-fleet",
+      "band:10-memory-watch",
+      "band:20-big-picture",
+      "band:50-codex",
+      "band:60-fleet",
       "band-bottom:continuity",
     ]);
   });
 
   test("what is not a column is kept whole, as one row; an empty Box is nothing", () => {
-    const row = el("Box", { key: "band:20-memory-watch" });
+    const row = el("Box", { key: "band:10-memory-watch" });
     expect(stackRows(null, row)).toEqual([row]);
     expect(stackRows(el("Box", {}), row)).toEqual([row]);
     const tip = el("Text", {}, "Heads up");

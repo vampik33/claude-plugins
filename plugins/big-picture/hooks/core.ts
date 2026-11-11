@@ -387,15 +387,36 @@ export function placeholderHtml(text: string): string {
 </head><body><p>${escape(text)}</p></body></html>`;
 }
 
+/** Seconds the opener waits for xdg-open to fail before taking the page as opened; under OPEN_MS. */
+export const OPEN_WAIT_S = 5;
+
+/** How long the mod lets the opener run. */
+export const OPEN_MS = 10_000;
+
 /**
  * Opens `url` in the default browser: xdg-open, else macOS's open. Its output
  * goes to /dev/null, so a browser it starts holds no pipe of the mod's open.
+ * Outside GNOME and KDE, xdg-open runs the browser in the foreground until it
+ * exits, so it runs in its own session in the background: an exit within
+ * OPEN_WAIT_S gives its code, one still running then is a browser that opened.
  */
-export function openArgv(url: string): string[] {
+export function openArgv(url: string, waitS = OPEN_WAIT_S): string[] {
   return [
     "sh",
     "-c",
-    'exec </dev/null >/dev/null 2>&1; if command -v xdg-open >/dev/null; then exec xdg-open "$1"; fi; exec open "$1"',
+    `exec </dev/null >/dev/null 2>&1
+if command -v xdg-open >/dev/null; then
+  if command -v setsid >/dev/null; then setsid xdg-open "$1" & else xdg-open "$1" & fi
+  pid=$!
+  i=0
+  while [ "$i" -lt ${waitS * 5} ]; do
+    sleep 0.2
+    kill -0 "$pid" 2>/dev/null || { wait "$pid"; exit; }
+    i=$((i + 1))
+  done
+  exit 0
+fi
+exec open "$1"`,
     "sh",
     url,
   ];

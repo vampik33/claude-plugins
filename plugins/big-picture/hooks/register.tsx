@@ -20,6 +20,7 @@ import {
   mayBeBig,
   mergeActivity,
   type Message,
+  OPEN_MS,
   openArgv,
   parseJev,
   placeholderHtml,
@@ -39,7 +40,6 @@ const status = atom(
   { kind: "none" } as SummaryStatus,
 );
 
-const OPEN_MS = 10_000;
 const SUMMARY_MODEL = "haiku";
 const SUMMARY_TOKENS = 16_000;
 const SUMMARY_MS = 180_000;

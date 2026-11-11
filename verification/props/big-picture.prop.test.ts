@@ -22,6 +22,7 @@ import {
   digest,
   MERMAID_LOADER,
   MERMAID_LOADER_SHA256,
+  OPEN_MS,
   OPEN_WAIT_S,
   openArgv,
   securePage,
@@ -264,7 +265,7 @@ describe("summaryPrompt", () => {
 describe("openArgv", () => {
   const URL = "file:///h/my home/it's $HOME `x`.html";
 
-  function run(fake: string, opener = "xdg-open") {
+  function run(fake: string, opener = "xdg-open", waitS?: number) {
     const dir = mkdtempSync(`${tmpdir()}/bp-open-`);
     for (const tool of ["sh", "setsid", "sleep"])
       symlinkSync(Bun.which(tool)!, `${dir}/${tool}`);
@@ -274,7 +275,7 @@ describe("openArgv", () => {
     );
     chmodSync(`${dir}/${opener}`, 0o755);
     const at = performance.now();
-    const p = Bun.spawnSync(openArgv(URL), { env: { PATH: dir } });
+    const p = Bun.spawnSync(openArgv(URL, waitS), { env: { PATH: dir } });
     const ms = performance.now() - at;
     const [pid, url] = readFileSync(`${dir}/opened`, "utf8").split("\n");
     rmSync(dir, { recursive: true });
@@ -303,24 +304,24 @@ describe("openArgv", () => {
     expect(r.ms).toBeLessThan(2_000);
   });
 
-  test(
-    "a browser xdg-open runs in the foreground is opened after OPEN_WAIT_S, inside OPEN_MS, and keeps running in its own session",
-    () => {
-      const r = run("exec sleep 30");
-      try {
-        expect(r.exitCode).toBe(0);
-        expect(r.ms).toBeGreaterThanOrEqual(OPEN_WAIT_S * 1000);
-        expect(r.ms).toBeLessThan(10_000); // register.tsx's OPEN_MS
-        expect(isAlive(r.pid)).toBe(true);
-        const sid = Number(readFileSync(`/proc/${r.pid}/stat`, "utf8").split(") ")[1].split(" ")[3]);
-        expect(sid).toBe(r.pid); // setsid: its own session, out of the mod's process group
-        expect(r.url).toBe(URL);
-      } finally {
-        if (isAlive(r.pid)) process.kill(r.pid);
-      }
-    },
-    15_000,
-  );
+  test("the opener gives up waiting before the mod gives up on it", () => {
+    expect(OPEN_WAIT_S * 1000).toBeLessThan(OPEN_MS);
+  });
+
+  test("a browser xdg-open runs in the foreground is opened after the wait, and keeps running in its own session", () => {
+    const r = run("exec sleep 30", "xdg-open", 1);
+    try {
+      expect(r.exitCode).toBe(0);
+      expect(r.ms).toBeGreaterThanOrEqual(1_000);
+      expect(r.ms).toBeLessThan(3_000);
+      expect(isAlive(r.pid)).toBe(true);
+      const sid = Bun.spawnSync(["ps", "-o", "sid=", "-p", String(r.pid)]).stdout.toString().trim();
+      expect(Number(sid)).toBe(r.pid); // setsid: its own session, out of the mod's process group
+      expect(r.url).toBe(URL);
+    } finally {
+      if (isAlive(r.pid)) process.kill(r.pid);
+    }
+  });
 
   test("with no xdg-open, macOS's open gets the URL and its exit code is the answer", () => {
     const r = run("exit 1", "open");

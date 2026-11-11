@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-11-11
+
+### Fixed
+- `/big-picture` and the band's `show` no longer fail silently when the placeholder page cannot be written (read-only `~/.claude`, full disk): the command says so with the page's path, and the band's press shows it in a toast
+
 ## [0.4.1] - 2026-11-11
 
 ### Changed

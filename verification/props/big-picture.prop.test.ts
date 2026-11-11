@@ -3,6 +3,8 @@
  */
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import fc from "fast-check";
 
 import {
@@ -20,6 +22,9 @@ import {
   digest,
   MERMAID_LOADER,
   MERMAID_LOADER_SHA256,
+  OPEN_MS,
+  OPEN_WAIT_S,
+  openArgv,
   securePage,
   summaryPrompt,
   type Message,
@@ -250,5 +255,77 @@ describe("summaryPrompt", () => {
         },
       ),
     );
+  });
+});
+
+/**
+ * openArgv's script, run for real by sh on a PATH that holds only the tools it
+ * needs and a fake opener: `xdg-open`, or `open` when `opener` says so.
+ */
+describe("openArgv", () => {
+  const URL = "file:///h/my home/it's $HOME `x`.html";
+
+  function run(fake: string, opener = "xdg-open", waitS?: number) {
+    const dir = mkdtempSync(`${tmpdir()}/bp-open-`);
+    for (const tool of ["sh", "setsid", "sleep"])
+      symlinkSync(Bun.which(tool)!, `${dir}/${tool}`);
+    writeFileSync(
+      `${dir}/${opener}`,
+      `#!/bin/sh\nprintf '%s\\n%s' "$$" "$1" > ${dir}/opened\n${fake}\n`,
+    );
+    chmodSync(`${dir}/${opener}`, 0o755);
+    const at = performance.now();
+    const p = Bun.spawnSync(openArgv(URL, waitS), { env: { PATH: dir } });
+    const ms = performance.now() - at;
+    const [pid, url] = readFileSync(`${dir}/opened`, "utf8").split("\n");
+    rmSync(dir, { recursive: true });
+    return { exitCode: p.exitCode, ms, pid: Number(pid), url };
+  }
+
+  const isAlive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  test("xdg-open's failure is its exit code, as soon as it exits", () => {
+    const r = run("exit 3");
+    expect(r.exitCode).toBe(3);
+    expect(r.ms).toBeLessThan(2_000);
+    expect(r.url).toBe(URL);
+  });
+
+  test("xdg-open handing off and exiting is opened, as soon as it exits", () => {
+    const r = run("exit 0");
+    expect(r.exitCode).toBe(0);
+    expect(r.ms).toBeLessThan(2_000);
+  });
+
+  test("the opener gives up waiting before the mod gives up on it", () => {
+    expect(OPEN_WAIT_S * 1000).toBeLessThan(OPEN_MS);
+  });
+
+  test("a browser xdg-open runs in the foreground is opened after the wait, and keeps running in its own session", () => {
+    const r = run("exec sleep 30", "xdg-open", 1);
+    try {
+      expect(r.exitCode).toBe(0);
+      expect(r.ms).toBeGreaterThanOrEqual(1_000);
+      expect(r.ms).toBeLessThan(3_000);
+      expect(isAlive(r.pid)).toBe(true);
+      const sid = Bun.spawnSync(["ps", "-o", "sid=", "-p", String(r.pid)]).stdout.toString().trim();
+      expect(Number(sid)).toBe(r.pid); // setsid: its own session, out of the mod's process group
+      expect(r.url).toBe(URL);
+    } finally {
+      if (isAlive(r.pid)) process.kill(r.pid);
+    }
+  });
+
+  test("with no xdg-open, macOS's open gets the URL and its exit code is the answer", () => {
+    const r = run("exit 1", "open");
+    expect(r.exitCode).toBe(1);
+    expect(r.url).toBe(URL);
   });
 });

@@ -298,15 +298,15 @@ describe("core", () => {
     expect(scriptSrc).not.toMatch(/unsafe-inline|unsafe-eval/);
   });
 
-  test("the opener: xdg-open, else open, the URL an argument and never the script", () => {
+  test("the opener: xdg-open detached, else open, the URL an argument and never the script", () => {
     const url = "file:///h/a b'$(x).html";
     const argv = openArgv(url);
     expect(argv.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(argv.slice(3)).toEqual(["sh", url]);
     expect(argv[2]).not.toContain(url);
-    expect(argv[2]).toContain('exec xdg-open "$1"');
+    expect(argv[2]).toContain('setsid xdg-open "$1" &');
     expect(argv[2]).toContain('exec open "$1"');
-    expect(argv[2]!.startsWith("exec </dev/null >/dev/null 2>&1;")).toBe(true);
+    expect(argv[2]!.startsWith("exec </dev/null >/dev/null 2>&1\n")).toBe(true);
   });
 
   test("time of day", () => {

@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.3] - 2026-11-11
+
+### Fixed
+- Outside GNOME and KDE (i3, sway, a bare X session), `/big-picture` and `show` no longer say "No browser opened the summary" when the page did open: `xdg-open` there runs a browser that was not running in the foreground until it exits, which outlasted the 10-second wait. It now runs detached in its own session; an exit within 5 seconds still reports a failure, and one still running after them is taken as opened
+
 ## [0.4.2] - 2026-11-11
 
 ### Fixed

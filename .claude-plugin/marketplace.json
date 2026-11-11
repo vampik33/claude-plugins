@@ -61,7 +61,7 @@
     {
       "name": "big-picture",
       "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated while the work goes on; /big-picture opens it in the default browser",
-      "version": "0.4.2",
+      "version": "0.4.3",
       "author": {
         "name": "vampik33"
       },

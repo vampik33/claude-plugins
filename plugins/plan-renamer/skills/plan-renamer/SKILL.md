@@ -1,6 +1,6 @@
 ---
 name: plan-renamer
-description: Rename randomly-named plan files (like scalable-moseying-papert.md) to meaningful slugified titles extracted from file content. Use this skill when the user asks to "rename plans", "fix plan names", "rename plan files", "clean up plan names", "organize plans", "give plans better names", "my plans folder is a mess", "I can't find my plans", or wants better names for Claude Code's auto-generated plan files. Also trigger when the user mentions random-looking plan filenames or wants to batch-organize their plans directory.
+description: Rename Claude Code's randomly-named plan files (three-word names like scalable-moseying-papert.md) to slugified titles taken from their content. Use when the user wants plan files renamed, tidied or made easier to find, or mentions random-looking plan file names.
 ---
 
 # Plan Renamer Skill

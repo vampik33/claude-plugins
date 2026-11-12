@@ -11,7 +11,7 @@ Generate effective CLAUDE.md files that encode project-specific knowledge for Cl
 
 1. **WHAT/WHY/HOW framework** — Every section should answer: What does the project do? Why are things done this way? How to build/test/deploy?
 2. **80% rule** — If Claude would get something right 80%+ of the time without instruction, don't include it
-3. **Imperative, not descriptive** — Write instructions ("Use pnpm"), not descriptions ("This project uses pnpm")
+3. **Rules as imperatives, with the reason** — "Use pnpm: the lockfile is pnpm's" beats both a bare "Use pnpm" and a description that leaves the rule implied; state facts Claude can't infer plainly
 4. **Reference, don't copy** — Point to existing docs ("See docs/api.md for endpoints"), don't duplicate them
 5. **Keep it concise** — Target under 200 lines for most projects (monorepo roots may reach 300). If longer, split into .claude/rules/ with path patterns
 
@@ -25,7 +25,7 @@ Generate effective CLAUDE.md files that encode project-specific knowledge for Cl
 | 4 | `CLAUDE.local.md` | Personal, gitignored | Individual preferences |
 | 5 | `~/.claude/CLAUDE.md` | All projects for this user | Global personal preferences |
 | 5b | `~/.claude/rules/*.md` | All projects for this user | Global personal rules (lower priority than project rules) |
-| 6 | Auto-memory | Claude-managed per-project | Learned patterns across sessions (not user-editable) |
+| 6 | Auto-memory | Claude-written per-project markdown (editable) | Learned patterns across sessions |
 
 **Tip:** CLAUDE.md supports `@path` imports (e.g., `@docs/architecture.md`) to pull in external files inline. Useful for sharing rules across tools or keeping CLAUDE.md lean. See `references/memory-system.md` for details.
 

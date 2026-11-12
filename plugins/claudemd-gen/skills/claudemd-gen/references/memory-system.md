@@ -77,9 +77,9 @@ Applies to **all projects** for this user. Use for:
 
 User-level rules that apply across all projects. Same `paths` frontmatter format as project rules, but with lower priority than project-level `.claude/rules/`.
 
-### 6. Auto-Memory (`~/.claude/projects/<project-hash>/memory/`)
+### 6. Auto-Memory (`~/.claude/projects/<slug>/memory/`)
 
-Claude manages this automatically per-project. Contains:
+The directory moves with `CLAUDE_CONFIG_DIR` (`$CLAUDE_CONFIG_DIR/projects/<slug>/memory/`) or the `autoMemoryDirectory` setting. Claude writes these plain markdown files per project; they can be read and edited like any other file. Contains:
 - `MEMORY.md` index file (first 200 lines loaded at session start)
 - Learned patterns from past sessions
 - User preferences discovered through interaction

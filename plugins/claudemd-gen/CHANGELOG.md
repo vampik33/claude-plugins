@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-11-12
+
+### Changed
+
+- "Imperative, not descriptive" principle (SKILL.md, `references/best-practices.md`, `commands/generate.md`) now asks for rules as imperatives with their reason and plain statements of facts Claude can't infer; it no longer contradicts the WHAT/WHY framework and anti-pattern #10
+- Auto-memory described as plain, editable markdown at `~/.claude/projects/<slug>/memory/` (or under `CLAUDE_CONFIG_DIR` / `autoMemoryDirectory`) instead of a fixed `<project-hash>` path that is "not user-editable"
+
 ## [1.1.1] - 2026-03-10
 
 ### Changed

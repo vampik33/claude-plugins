@@ -56,13 +56,12 @@ Run `make lint` before committing.
 Name test files `*.test.ts` (not `*.spec.ts`).
 ```
 
-### Don't: Write descriptions
+### Don't: Leave the rule implied
 
 ```markdown
-<!-- BAD: This tells Claude what exists, not what to do -->
-This project uses pnpm for package management.
-The linter is configured with ESLint.
-Test files use the .test.ts extension.
+<!-- BAD: facts without the rule they imply, or rules without their reason -->
+This project uses pnpm for package management.   <!-- add: "Use pnpm, never npm: the lockfile is pnpm's" -->
+Always use .test.ts.                             <!-- add why: "the Vitest include glob only matches .test.ts" -->
 ```
 
 ### Do: Be specific and actionable

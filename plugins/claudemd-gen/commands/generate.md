@@ -68,7 +68,7 @@ Fill the template with real values from the project:
 Read the appropriate example file from `examples/` for the detected tech stack.
 
 Consult `references/best-practices.md` to ensure the draft follows all guidelines:
-- Imperative style, not descriptive
+- Rules as imperatives with their reason; facts Claude can't infer stated plainly
 - Only 80%-rule content (skip obvious things)
 - Reference existing docs, don't copy
 - Specific and actionable, not vague
@@ -112,7 +112,7 @@ Read `references/anti-patterns.md` and check the existing file against each anti
 Read `references/best-practices.md` and verify:
 - Uses WHAT/WHY/HOW framework
 - Follows 80% rule
-- Imperative style
+- Rules in imperative style, with their reason
 - References external docs
 - Appropriate size for project
 

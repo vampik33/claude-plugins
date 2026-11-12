@@ -27,7 +27,3 @@ After renaming, a summary table is displayed:
 | scalable-moseying-papert.md | implement-auth-system.md | Implement Auth System |
 | brave-curious-turing.md | fix-login-timeout.md | Fix Login Timeout |
 ```
-
-## Troubleshooting
-
-Set `PLAN_RENAMER_DEBUG=1` environment variable to see detailed logs in stderr, including plans directory detection, candidate file selection, and rename operations.

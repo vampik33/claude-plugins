@@ -4,6 +4,11 @@ All notable changes to the plan-renamer plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.3] - 2026-11-12
+
+### Removed
+- `PLAN_RENAMER_DEBUG=1` troubleshooting note from the skill and README: nothing has read the variable since the hook script was removed
+
 ## [1.2.2] - 2026-03-10
 
 ### Fixed

@@ -38,6 +38,15 @@ test("a ledger written any other way counts: only the file matters", async ($: a
   expect((await $.classic.Stop(stop())).block).toContain("F1");
 });
 
+test("a pre-existing finding does not hold the loop open", async ($: any, on: any) => {
+  engine(on, () =>
+    running({ findings: [{ id: "F1", state: "pre-existing", rounds: [2] }] }),
+  );
+  const block = (await $.classic.Stop(stop())).block;
+  expect(block).toContain("no finding is open");
+  expect(block).not.toContain("F1");
+});
+
 test("a ledger naming another session holds nothing back", async ($: any, on: any) => {
   engine(on, () => running({ sessionId: OTHER }));
   expect((await $.classic.Stop(stop())).block).toBeUndefined();

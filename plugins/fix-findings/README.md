@@ -19,9 +19,11 @@ For an open PR with no findings yet, run a code review first, or use `converge`,
 
 ## Converge mode
 
-Each round verifies the open findings with a separate agent, writes a regression test that fails first, makes the smallest fix, and commits locally. Once none are open, it runs the full tests and an adversarial review of everything since the base commit. What that review raises starts the next round. **It never pushes.**
+Each round verifies the open findings with a separate agent, writes a regression test that fails first, makes the smallest fix covering every instance of the defect, and commits locally. Once none are open, it runs the full tests and an adversarial review: of everything since the base commit for the first two reviews, then only of what changed since the last one. What that review raises starts the next round. **It never pushes.**
 
-The loop ends when a review raises nothing material. It stops early when a finding has come back twice, after five rounds, when a product decision is needed, or when a gate cannot run.
+The loop ends when a review raises nothing material. It stops early when a finding has come back twice, after three rounds (then it names the defects that kept coming and asks whether to rethink the approach), when a product decision is needed, or when a gate cannot run.
+
+A real defect the change did not introduce is marked `pre-existing`: reported, not fixed, and it does not keep the loop going. A settled finding raised again stays settled unless its code changed or the review brings new evidence.
 
 - Progress lives in `.fix-findings/ledger.json`, which the skill adds to `.git/info/exclude`. A loop with `status: running` resumes after a crash.
 - The `CodexReview` tool comes from the `codex-review` plugin. Without it the skill uses the project's own adversarial review. If none can run, the loop stops rather than substituting Claude's own review.

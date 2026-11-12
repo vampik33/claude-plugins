@@ -1,5 +1,5 @@
 export const LEDGER_SUFFIX = "/.fix-findings/ledger.json";
-export const MAX_ROUNDS = 5;
+export const MAX_ROUNDS = 3;
 /** A finding raised this many times has come back twice: the first raising plus two returns. */
 export const MAX_RAISINGS = 3;
 

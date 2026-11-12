@@ -16,89 +16,11 @@ One target: `claude plugin test plugins/<mod>`; `(cd verification && bun test pr
 
 ## Repository Structure
 
-```
-claude-plugins/
-├── .claude-plugin/marketplace.json   # Marketplace manifest (all plugins)
-├── .claude/                          # Local Claude state (gitignored)
-├── plans/                            # Implementation plans from Claude sessions
-├── verification/                     # lean/ models+proofs; props/*.prop|fv|diff tests (bun); run.sh
-└── plugins/
-    ├── big-picture/                  # Mod: Jev-gated live HTML summary of big work, opened in the browser
-    ├── claudemd-gen/                 # CLAUDE.md generator and auditor
-    ├── codex-review/                 # Mod: background Codex reviews, findings pane, CodexReview tool
-    ├── continuity/                   # Mod: context gauge + cache timer, handover + compact + continue
-    ├── explain-changes/              # Git diff explainer with educational insights
-    ├── fix-findings/                 # Mod + skill: prove review findings, fix the valid ones; converge loop with a Stop hook
-    ├── fleet/                        # Mod: agents / shells / worktrees pane with alerts
-    ├── gtr/                          # Git worktree management (wraps git-worktree-runner)
-    ├── memory-watch/                 # Mod: pane summarizing auto-memory writes
-    ├── palette/                      # Mod: clickable agents / skills / commands pane
-    ├── plan-renamer/                 # Rename plan files to meaningful titles
-    ├── prompt-clock/                 # Mod: send times on prompts and turn lines
-    ├── ship/                         # Mod: unshipped commits + stale installed mods; /ship pushes and updates
-    ├── telegram-notifier/            # Telegram session notifications (has hooks)
-    └── watchdog/                     # Mod: stops stuck Bash commands (no output, no CPU), tells the model
-```
+`plans/` = implementation plans from Claude sessions; `verification/` = Lean models and proofs, property tests, `run.sh`.
 
-## Plugin Architecture
-
-Each plugin in `plugins/<name>/` follows this structure:
-
-```
-<plugin>/
-├── .claude-plugin/plugin.json        # Plugin manifest (name, version, description)
-├── agents/                           # Autonomous subagents — optional
-├── commands/                         # Slash commands (markdown + YAML frontmatter)
-├── hooks/                            # Event hooks (hooks.json + scripts/) — optional
-│   └── scripts/lib/                  # Shared shell libraries
-├── skills/<skill-name>/              # Skills with progressive disclosure
-│   ├── SKILL.md                      # Always loaded (concise)
-│   ├── references/                   # Loaded on demand (detailed guidance)
-│   └── examples/                     # Loaded for specific scenarios
-├── CHANGELOG.md
-└── README.md
-```
-
-## Mods (function-hook plugins)
-
-big-picture, codex-review, continuity, fix-findings, fleet, memory-watch, palette, prompt-clock, ship and watchdog are TypeScript mods, not shell hooks:
-
-```
-<mod>/
-├── .claude-plugin/plugin.json        # + "types" (and "userConfig" if configurable)
-├── hooks/hooks.json                  # { "modules": ["./register.tsx"] }
-├── hooks/register.tsx                # register(on, options); pure logic in core.ts
-├── types/index.d.ts                  # $.state contract (PluginState)
-└── tests/*.test.tsx                  # claude plugin test <dir>
-```
-
-- Check: `claude plugin validate <dir>` and `claude plugin test <dir>`; `tsc -p <dir>` once the engine has loaded the mod (it lays `.claude-plugin/types/`, gitignored)
-- Type files in `<mod>/.claude-plugin/types/` are from whichever build last loaded the mod (its header says which); a fresh `tsc -p` can pass on old types, so also check against the current build's `claude-code.d.ts`, which the plugin-authoring skill writes when it loads
-- Installed mods run from the GitHub copy: after pushing, `claude plugin marketplace update vampik-plugins`, then `claude plugin update <mod>@vampik-plugins`, then restart
-- A function that takes `$` must be top-level (the validator refuses closures)
-- A mod that draws in the AbovePrompt band copies `hooks/stack.ts` and returns `<Box key={STACK} flexDirection="column" marginTop={1}>{stackRows(below, row)}</Box>` with its row keyed `band:<NN>-<mod>`, `NN` its slot top to bottom (memory-watch 10, big-picture 20, ship 30, watchdog 40, codex-review 50, fleet 60; `band-top:`/`band-bottom:` pin a row, continuity is `band-bottom:`); add it to `MODS` in `verification/props/band-stack.prop.test.ts`
-- Helpers are copied per mod, not shared: each mod installs alone
-- New mod: add it to the hardcoded `for mod in …` loop in `verification/run.sh`, and add `verification/props/<mod>.prop.test.ts` for pure functions in its `core.ts`
-
-Mod gotchas:
-- Module variables reset on every hot reload; anything that must survive goes in `$.state` and is restored in `session.start` (timers re-armed there too)
-- `/clear` fires `session.end` with `reason: 'clear'` and no `session.start` after it; reset session-scoped state there
-- Render hooks can't write `$.state`: keep values like `e.viewport.isFullscreen` in a module variable; open a pane unasked only when it is `true`
-- `$.session.compact` is refused inside a `command.run` hook; defer it with `$.clock.after(0, …)`
-- `classic.*`, `session.compact` and `skill.prompt` hooks don't run where an organization manages Claude Code; say so in the mod's README
-- Tests: loop UI mounts over `['terminal','desktop'] as const`; use `$.clock.now()` (not `Date.now()`) so the mocked clock applies; fire `session.start` again on the same state to simulate a reload
-- Mod `.tsx` files aren't prettier-clean, so the format-on-save hook reflows unrelated lines; revert that churn to keep diffs surgical
-- Some `core.ts`/`ttl.ts` functions (fleet `trim`/`applyStatuses`/`endShell`, codex-review `trimJobs`, continuity `decideTtl`/`observeTtl`, prompt-clock `turnEnd`/`cap`) have Lean models in `verification/lean/Plugins/`: change the behaviour and update the model and proofs too. `diff.lean.test.ts` fails when they drift, and `run.sh` rejects `sorry`.
-- A `core.ts` function that returns a shell script (big-picture `openArgv`, watchdog's scan scripts) is tested twice: its text in `tests/*.test.tsx`, its behaviour run for real in `verification/props/<mod>.prop.test.ts` with `Bun.spawnSync(argv, { env: { PATH: dir } })`, `dir` a temp dir holding symlinked tools and fake commands. Change the script, update both. For POSIX `sh` portability, rerun it under `debian:stable-slim` (`dash`) and `busybox:stable` in docker.
+Mods (TypeScript function-hook plugins) and shell-hook conventions: see `plugins/CLAUDE.md`.
 
 ## Conventions
-
-### Shell Scripts (hooks)
-
-- Start with `set -euo pipefail`
-- Debug mode via `<PLUGIN>_DEBUG=1` environment variable
-- Extract shared logic into `hooks/scripts/lib/`
-- Read hook input via `HOOK_INPUT=$(cat)` before sourcing libraries
 
 ### Plugin Configuration
 
@@ -115,33 +37,7 @@ Use markdown files with YAML frontmatter for user-facing config:
 
 ## Adding a New Plugin
 
-1. Create `plugins/<name>/.claude-plugin/plugin.json`:
-   ```json
-   {
-     "name": "<name>",
-     "version": "1.0.0",
-     "description": "What the plugin does",
-     "author": { "name": "vampik33" }
-   }
-   ```
-
-2. Register in `.claude-plugin/marketplace.json` under `plugins` array:
-   ```json
-   {
-     "name": "<name>",
-     "description": "What the plugin does",
-     "version": "1.0.0",
-     "author": { "name": "vampik33" },
-     "source": "./plugins/<name>",
-     "category": "Category Name",
-     "keywords": ["relevant", "tags"],
-     "homepage": "https://github.com/vampik33/claude-plugins"
-   }
-   ```
-
-3. Add commands in `commands/<command>.md` with YAML frontmatter
-4. Add `skills/<skill-name>/SKILL.md` with trigger description
-5. Create `CHANGELOG.md` with initial entry
+Add `plugins/<name>/.claude-plugin/plugin.json` plus a `.claude-plugin/marketplace.json` entry (versions must match), plus `CHANGELOG.md`.
 
 ## Gotchas
 

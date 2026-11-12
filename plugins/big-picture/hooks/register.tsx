@@ -28,6 +28,7 @@ import {
   PROGRESS_EVERY_MS,
   type Progress,
   securePage,
+  sessionStats,
   summaryPrompt,
   summarySystem,
   TAIL_BYTES,
@@ -41,8 +42,9 @@ const status = atom(
 );
 
 const SUMMARY_MODEL = "haiku";
-const SUMMARY_TOKENS = 16_000;
-const SUMMARY_MS = 180_000;
+const SUMMARY_TOKENS = 32_000;
+// the engine fits 64k tokens in its ten minutes: half the cap, half the time
+const SUMMARY_MS = 300_000;
 const PLACEHOLDER =
   "No big work in this session yet. This page fills in once Jev judges the work big, and keeps up while it goes on.";
 
@@ -181,7 +183,12 @@ async function writeSummary($: EngineInterface): Promise<boolean> {
   const reply = await $.model.complete({
     model: SUMMARY_MODEL,
     system: [{ text: summarySystem(SHOW_ME), cache: true }],
-    prompt: summaryPrompt(digest(messages), lastSummary, progress),
+    prompt: summaryPrompt(
+      digest(messages),
+      sessionStats(messages),
+      lastSummary,
+      progress,
+    ),
     maxTokens: SUMMARY_TOKENS,
     timeoutMs: SUMMARY_MS,
   });

@@ -4,6 +4,19 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-11-12
+
+### Added
+- Every section of work on the page ends in an "In simple words" box: a big emoji picture (or a small drawing) and two to four plain sentences with an everyday comparison, no jargon or file names
+- The page opens with "In short" (what was done and why in plain words) and "At a glance": number tiles and a bar chart of the most edited files, from counts the mod takes from the transcript (prompts, tool calls by kind, edits per file, commands, subagents), so no number is the model's guess. It ends with a "Still open / next" table with a status on each row
+- A fixed stylesheet, light and dark, for the page's parts (summary box, tiles, bars, tables, plain-words boxes, status badges, two-column grid): every rewrite looks the same, and the model spends no reply on CSS
+
+### Changed
+- The page is written for a full browser window rather than a narrow tab beside the terminal: as many views as the work needs (Mermaid flowcharts, sequence, state, class and ER diagrams, timelines, mind maps, pies; tables; text sketches; diffs), not the smallest one
+- A page written before this version is brought to the new layout on its next rewrite, its old styles dropped
+- A Mermaid diagram with a syntax error shows its source text instead of an error picture
+- The summary writer's reply may run to 32,000 tokens (was 16,000), and the call to 5 minutes (was 3): a reply cut off at the cap holds no whole page and is thrown away. Two test pages from real sessions took 53 to 74 seconds and up to 16,360 output tokens
+
 ## [0.4.3] - 2026-11-11
 
 ### Fixed

@@ -8,6 +8,7 @@ import fc from "fast-check";
 import { parse } from "parse5";
 
 import {
+  BASE_CSS,
   cleanText,
   extractHtml,
   MERMAID_LOADER,
@@ -172,6 +173,26 @@ describe("P1 securePage", () => {
           ["<scr<script></script>ipt>alert(1)</script>"],
         ],
       }),
+    );
+  });
+});
+
+describe("P1b securePage stylesheet", () => {
+  // the mod's stylesheet is in head, once, byte for byte, whatever the page holds; a page
+  // read back from disk and secured again (a rewrite after a reload) still holds it once
+  // mutant: the strip of the mod's own stylesheet removed   input: any page, secured twice
+  test("one mod stylesheet in head, after the loader, also when secured twice", () => {
+    fc.assert(
+      fc.property(page, fc.boolean(), (p, twice) => {
+        const secured = twice ? securePage(securePage(p)) : securePage(p);
+        const els = elements(parse(secured) as unknown as Node);
+        const mine = els.filter((e) => e.tagName === "style" && attr(e, "data-big-picture") !== undefined);
+        expect(mine).toHaveLength(1);
+        expect(text(mine[0]!)).toBe(BASE_CSS);
+        expect(mine[0]!.parentNode?.tagName).toBe("head");
+        expect(els.indexOf(mine[0]!)).toBe(els.findIndex((e) => e.tagName === "script") + 1);
+      }),
+      opts({ examples: [["<p>x</p>", true]] }),
     );
   });
 });

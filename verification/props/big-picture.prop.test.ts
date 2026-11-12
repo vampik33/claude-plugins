@@ -26,8 +26,10 @@ import {
   OPEN_WAIT_S,
   openArgv,
   securePage,
+  sessionStats,
   summaryPrompt,
   type Message,
+  type Stats,
 } from "../../plugins/big-picture/hooks/core.ts";
 
 const call = fc.record({
@@ -233,6 +235,56 @@ describe("liveShells", () => {
   });
 });
 
+const STATS: Stats = sessionStats([]);
+
+describe("sessionStats", () => {
+  const use = fc.record({
+    tool: fc.constantFrom("Edit", "Write", "NotebookEdit", "Bash", "Agent", "Read", "Grep", "T1", "T2", "T3", "T4", "T5", "T6"),
+    input: fc.record({ file_path: fc.constantFrom(...Array.from({ length: 20 }, (_, i) => `/f${i}`)) }),
+    text: fc.option(fc.constant("ok"), { nil: undefined }),
+    isError: fc.option(fc.constant(true as const), { nil: undefined }),
+  });
+  const row = fc.oneof(
+    fc.record({ role: fc.constant("assistant" as const), text: fc.string(), toolUses: fc.array(use, { maxLength: 8 }) }),
+    fc.record({
+      role: fc.constant("user" as const),
+      text: fc.oneof(fc.string(), fc.constant("<system-reminder>x</system-reminder>")),
+      toolUses: fc.constant([]),
+      toolResults: fc.option(fc.constant([{}]), { nil: undefined }),
+    }),
+  );
+
+  test("counts agree with the transcript; the top lists are bounded, sorted and exact", () => {
+    fc.assert(
+      fc.property(fc.array(row, { maxLength: 30 }), (ms) => {
+        const s = sessionStats(ms);
+        const uses = ms.flatMap((m) => (m.role === "assistant" ? m.toolUses : []));
+        // only writes answered without an error changed a file
+        const edits = uses.filter(
+          (u) => ["Edit", "Write", "NotebookEdit"].includes(u.tool) && u.text !== undefined && !u.isError,
+        );
+        expect(s.toolCalls).toBe(uses.length);
+        expect(s.commandsRun).toBe(uses.filter((u) => u.tool === "Bash").length);
+        expect(s.subagents).toBe(uses.filter((u) => u.tool === "Agent").length);
+        expect(s.filesEdited).toBe(new Set(edits.map((u) => u.input.file_path)).size);
+        // a typed prompt is what the digest shows as USER
+        expect(s.prompts).toBe(
+          digest(ms, Number.MAX_SAFE_INTEGER).split("\n").filter((l) => l.startsWith("USER: ")).length,
+        );
+        expect(s.topFiles.length).toBe(Math.min(15, s.filesEdited));
+        expect(s.topTools.length).toBe(Math.min(10, new Set(uses.map((u) => u.tool)).size));
+        for (const list of [s.topFiles.map((f) => f.edits), s.topTools.map((t) => t.calls)])
+          for (let i = 1; i < list.length; i++) expect(list[i - 1]!).toBeGreaterThanOrEqual(list[i]!);
+        for (const f of s.topFiles)
+          expect(f.edits).toBe(edits.filter((u) => u.input.file_path === f.file).length);
+        for (const t of s.topTools) expect(t.calls).toBe(uses.filter((u) => u.tool === t.tool).length);
+        if (s.topTools.length === new Set(uses.map((u) => u.tool)).size)
+          expect(s.topTools.reduce((a, t) => a + t.calls, 0)).toBe(s.toolCalls);
+      }),
+    );
+  });
+});
+
 describe("summaryPrompt", () => {
   test("no running commands leaves the prompt as it was; any carry each command", () => {
     fc.assert(
@@ -244,11 +296,11 @@ describe("summaryPrompt", () => {
         }),
         (session, previous, running) => {
           if (running.length === 0)
-            expect(summaryPrompt(session, previous, running)).toBe(
-              summaryPrompt(session, previous),
+            expect(summaryPrompt(session, STATS, previous, running)).toBe(
+              summaryPrompt(session, STATS, previous),
             );
           else {
-            const p = summaryPrompt(session, previous, running);
+            const p = summaryPrompt(session, STATS, previous, running);
             expect(p).toContain("<running-commands>");
             for (const r of running) expect(p).toContain(`$ ${r.command}\n${r.tail}`);
           }

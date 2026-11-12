@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "claude-code/testing";
 
 import {
+  BASE_CSS,
   CHECK_EVERY,
   cleanText,
   digest,
@@ -22,6 +23,8 @@ import {
   PROGRESS_EVERY_MS,
   REFRESH_S,
   securePage,
+  sessionStats,
+  type Stats,
   SUMMARY_CSP,
   summaryPrompt,
   summarySystem,
@@ -188,7 +191,7 @@ describe("core", () => {
       role: "assistant",
       text: "I'll start with the composer.",
       toolUses: [
-        { tool: "Edit", input: { file_path: "/r/composer.tsx" } },
+        { tool: "Edit", input: { file_path: "/r/composer.tsx" }, text: "ok" },
         { tool: "Bash", input: { command: "pnpm test\n--watch" } },
         { tool: "TodoWrite", input: { todos: [] } },
       ],
@@ -223,6 +226,14 @@ describe("core", () => {
     expect(s).toContain("<show-me>\nSHOW-ME-TEXT\n</show-me>");
     expect(s).toContain("write no <script> at all");
     expect(s).toContain("starting with <!doctype html>");
+    // every section of work ends in a plain-words box; the numbers are the mod's
+    expect(s).toContain('<aside class="eli5">');
+    expect(s).toContain("<h3>In simple words</h3>");
+    expect(s).toContain("never estimate one");
+    expect(s).toContain("No <details>");
+    // the classes it names are the stylesheet's
+    for (const c of ["tldr", "stats", "stat", "bars", "bar", "eli5", "status", "grid", "diff"])
+      expect(BASE_CSS).toContain(`.${c}`);
   });
 
   test("cleanText drops escape sequences and control characters", () => {
@@ -231,24 +242,97 @@ describe("core", () => {
     );
   });
 
-  test("the prompt: the session, and the previous page to update", () => {
-    expect(summaryPrompt("USER: x")).toBe(
-      "<session>\nUSER: x\n</session>\n\nWrite the summary of this session's work.",
+  test("sessionStats: typed prompts, tool calls by kind, edits per file; most first, ties in first-seen order", () => {
+    const use = (tool: string, input: Record<string, unknown> = {}) => ({ tool, input, text: "ok" });
+    const stats = sessionStats([
+      ...msgs,
+      { role: "user", text: "now the tests", toolUses: [] },
+      {
+        role: "assistant",
+        text: "",
+        toolUses: [
+          use("Write", { file_path: "/r/composer.test.tsx" }),
+          use("Edit", { file_path: "/r/composer.tsx" }),
+          use("NotebookEdit", { notebook_path: "/r/n.ipynb" }),
+          // a failed edit, then one still running: calls, but no file changed
+          { ...use("Edit", { file_path: "/r/unchanged.ts" }), isError: true },
+          { tool: "Edit", input: { file_path: "/r/pending.ts" } },
+          use("Read", { file_path: "/r/other.ts" }),
+          use("Agent", { description: "review" }),
+          use("Bash", { command: "pnpm test" }),
+        ],
+      },
+    ]);
+    expect(stats).toEqual({
+      prompts: 2,
+      toolCalls: 11,
+      commandsRun: 2,
+      subagents: 1,
+      filesEdited: 3,
+      topFiles: [
+        { file: "/r/composer.tsx", edits: 2 },
+        { file: "/r/composer.test.tsx", edits: 1 },
+        { file: "/r/n.ipynb", edits: 1 },
+      ],
+      topTools: [
+        { tool: "Edit", calls: 4 },
+        { tool: "Bash", calls: 2 },
+        { tool: "TodoWrite", calls: 1 },
+        { tool: "Write", calls: 1 },
+        { tool: "NotebookEdit", calls: 1 },
+        { tool: "Read", calls: 1 },
+        { tool: "Agent", calls: 1 },
+      ],
+    });
+  });
+
+  test("sessionStats keeps the 15 most edited files and 10 most used tools", () => {
+    const calls = (tool: (i: number) => string) =>
+      sessionStats([
+        {
+          role: "assistant",
+          text: "",
+          toolUses: Array.from({ length: 20 }, (_, i) => ({
+            tool: tool(i),
+            input: { file_path: `/f${i}` },
+            text: "ok",
+          })),
+        },
+      ]);
+    const files = calls(() => "Write");
+    expect([files.filesEdited, files.topFiles.length]).toEqual([20, 15]);
+    expect(files.topFiles[0]!.file).toBe("/f0"); // ties keep the order first edited
+    const tools = calls((i) => (i % 2 ? "Edit" : `T${i}`));
+    expect(tools.topTools.length).toBe(10);
+    expect(tools.topTools[0]).toEqual({ tool: "Edit", calls: 10 });
+  });
+
+  const STATS: Stats = sessionStats(msgs);
+  const STATS_BLOCK = `<stats>\nCounted over the main conversation; subagents' own tool calls are not in it.\n${JSON.stringify(STATS)}\n</stats>`;
+
+  test("the prompt: the session and its numbers, and the previous page to update", () => {
+    expect(summaryPrompt("USER: x", STATS)).toBe(
+      `<session>\nUSER: x\n</session>\n\n${STATS_BLOCK}\n\nWrite the summary of this session's work.`,
     );
-    const upd = summaryPrompt("USER: x", "<html>old</html>");
+    const upd = summaryPrompt("USER: x", STATS, "<html>old</html>");
     expect(upd).toContain(
-      "<previous-summary>\n<html>old</html>\n</previous-summary>",
+      `</session>\n\n${STATS_BLOCK}\n\n<previous-summary>\n<html>old</html>\n</previous-summary>`,
     );
     expect(upd).toContain("Update the previous summary");
+    // a page written under an older contract is brought to this one, its own style dropped
+    expect(upd).toContain("bring it to the page contract");
+    expect(
+      summaryPrompt("S", STATS, "<html><style>.bar{color:red}</STYLE ><p>x</p></html>"),
+    ).toContain("<previous-summary>\n<html><p>x</p></html>\n</previous-summary>");
   });
 
   test("the prompt carries the running commands only when there are some", () => {
-    expect(summaryPrompt("S", "P", [])).toBe(summaryPrompt("S", "P"));
-    const p = summaryPrompt("S", undefined, [
+    expect(summaryPrompt("S", STATS, "P", [])).toBe(summaryPrompt("S", STATS, "P"));
+    const p = summaryPrompt("S", STATS, undefined, [
       { command: "cargo test", tail: "12/40 passed" },
     ]);
     expect(p).toContain(
-      "</session>\n\n<running-commands>\nThese commands are still running; show where they stand.\n$ cargo test\n12/40 passed\n</running-commands>",
+      "</stats>\n\n<running-commands>\nThese commands are still running; show where they stand.\n$ cargo test\n12/40 passed\n</running-commands>",
     );
     expect(p).toContain("Write the summary");
   });
@@ -261,6 +345,13 @@ describe("core", () => {
     );
     expect(extractHtml("<!doctype html><html><body>cut")).toBeUndefined();
     expect(extractHtml("no page here")).toBeUndefined();
+  });
+
+  test("securePage: a page read back from disk keeps one stylesheet when rewritten; the model's own style stays", () => {
+    // one stylesheet for any page secured twice: P1b in verification/props/big-picture.fv.test.ts
+    const twice = securePage(securePage("<html><body><p>x</p></body></html>"));
+    expect(twice.match(/<style data-big-picture>/g)?.length).toBe(1);
+    expect(securePage("<style>p{color:red}</style>")).toContain("<style>p{color:red}</style>");
   });
 
   test("placeholder escapes its text, and refreshes itself to show the summary once written", () => {
@@ -289,10 +380,12 @@ describe("core", () => {
     expect(page.startsWith(
       `<!doctype html>\n<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="${SUMMARY_CSP}">\n<meta http-equiv="refresh" content="${REFRESH_S}">\n<script type="module">import mermaid`,
     )).toBe(true);
+    expect(page).toContain("suppressErrorRendering: true"); // a broken diagram shows its text, not an error bomb
+    expect(page).toContain(`</script>\n<style data-big-picture>${BASE_CSS}</style>\n<html>`);
     expect(page).toContain('<pre class="mermaid">graph TD; A-->B</pre>');
     expect(SUMMARY_CSP).toContain("default-src 'none'");
     expect(SUMMARY_CSP).toContain(
-      "script-src 'sha256-Olg3I0JmxL6iPaXBstF8PxlFzHJ/YejN9UP70TigNEw=' https://cdn.jsdelivr.net/npm/mermaid@11.4.1/;",
+      "script-src 'sha256-DTPBEJKVzw3cY3urPFbmMtctTmCtnopRL7fHkxEQQGs=' https://cdn.jsdelivr.net/npm/mermaid@11.4.1/;",
     );
     const scriptSrc = SUMMARY_CSP.split("; ").find((d) => d.startsWith("script-src"))!;
     expect(scriptSrc).not.toMatch(/unsafe-inline|unsafe-eval/);
@@ -358,6 +451,7 @@ function engine(
       systemBlocks: any;
       prompt: string;
       maxTokens?: number;
+      timeoutMs?: number;
     }[],
     reply: undefined as any,
     /** While set, Haiku's reply waits for it. */
@@ -533,11 +627,14 @@ describe("session", () => {
     expect(seen.writes.length).toBe(1);
     const w = seen.writes[0]!;
     expect(w.model).toBe("haiku");
-    expect(w.maxTokens).toBe(16_000);
+    expect(w.maxTokens).toBe(32_000);
+    expect(w.timeoutMs).toBe(300_000);
     expect(w.systemBlocks).toEqual([
       { text: expect.stringContaining("<show-me>"), cache: true },
     ]);
-    expect(w.prompt).toBe(summaryPrompt("USER: add send later"));
+    expect(w.prompt).toBe(
+      summaryPrompt("USER: add send later", sessionStats(seen.messages)),
+    );
     expect(seen.files.get(PAGE)).toBe(securePage(html(1)));
     expect(seen.opens).toEqual([]); // never opens itself
     expect((await band($)).texts).toContain("updated 09:05");
@@ -576,7 +673,7 @@ describe("session", () => {
     ]);
     expect(seen.writes.length).toBe(2);
     expect(seen.writes[1]!.prompt).toBe(
-      summaryPrompt("USER: add send later", html(1)),
+      summaryPrompt("USER: add send later", sessionStats(seen.messages), html(1)),
     );
     expect(seen.files.get(PAGE)).toBe(securePage(html(2)));
 

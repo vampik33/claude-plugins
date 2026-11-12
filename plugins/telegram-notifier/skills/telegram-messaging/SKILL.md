@@ -35,7 +35,7 @@ session_threshold_minutes: 10
 Your custom notification message here
 ```
 
-See `examples/telegram-notifier.local.md.example` for a working config template.
+See `examples/telegram.local.md.example` for a working config template.
 
 ## Plugin Behavior
 

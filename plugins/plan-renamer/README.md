@@ -33,7 +33,3 @@ claude plugin add vampik33/claude-plugins/plan-renamer
 ## Configuration
 
 No configuration required. The plugin detects the plans directory automatically.
-
-### Debug Mode
-
-Set `PLAN_RENAMER_DEBUG=1` to see detailed logs in stderr.

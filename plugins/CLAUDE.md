@@ -2,13 +2,13 @@
 
 ## Mods (function-hook plugins)
 
-big-picture, codex-review, continuity, fix-findings, fleet, memory-watch, palette, prompt-clock, ship and watchdog are TypeScript mods, not shell hooks.
+big-picture, codex-review, continuity, effort-pilot, fix-findings, fleet, memory-watch, palette, prompt-clock, ship and watchdog are TypeScript mods, not shell hooks.
 
 - Check: `claude plugin validate <dir>` and `claude plugin test <dir>`; `tsc -p <dir>` once the engine has loaded the mod (it lays `.claude-plugin/types/`, gitignored)
 - Type files in `<mod>/.claude-plugin/types/` are from whichever build last loaded the mod (its header says which); a fresh `tsc -p` can pass on old types, so also check against the current build's `claude-code.d.ts`, which the plugin-authoring skill writes when it loads
 - Installed mods run from the GitHub copy: after pushing, `claude plugin marketplace update vampik-plugins`, then `claude plugin update <mod>@vampik-plugins`, then restart
 - A function that takes `$` must be top-level (the validator refuses closures)
-- A mod that draws in the AbovePrompt band returns `<Box flexDirection="column">{below}{row}</Box>`, `below` being `await next(e)` and its row keyed `band:<mod>`, with no `marginTop`. The engine hands `next(e)` back as an opaque `{ type: "engine" }` node, never another mod's tree, and stacks each mod's tree as a separate part in hook order. So a mod cannot reorder the band or merge rows across mods, and a `marginTop` puts a blank row between mods' lines. In tests, a mod's part is the drawn child whose `part.plugin` is the mod
+- A mod that draws in the AbovePrompt band returns `<Box flexDirection="column">{below}{row}</Box>`, `below` being `await next(e)` and its row keyed `band:<mod>`, with no `marginTop`. The engine hands `next(e)` back as an opaque `{ type: "engine" }` node, never another mod's tree, and stacks each mod's tree as a separate part in hook order. So a mod cannot merge rows across mods, and a `marginTop` puts a blank row between mods' lines. To reorder, hook `ui.render` on `AbovePromptList` and pass `next` its `e.props.rows` reordered (effort-pilot moves its row last); in tests the kit stacks that list itself, so assert the order on `ui.drawn()`'s children, not in a test `ui.render` hook. In tests, a mod's part is the drawn child whose `part.plugin` is the mod
 - Helpers are copied per mod, not shared: each mod installs alone
 - New mod: add it to the hardcoded `for mod in …` loop in `verification/run.sh`, and add `verification/props/<mod>.prop.test.ts` for pure functions in its `core.ts`
 

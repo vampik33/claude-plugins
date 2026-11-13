@@ -1,0 +1,4 @@
+{
+  "description": "effort-pilot: prompt.submit asks Jev (TypeSafe) for the prompt's effort level; turn.step sends each main-loop request at it where the model keeps its cache on a change; turn.complete adds the model and effort under the answer; AbovePrompt draws them and AbovePromptList keeps that row last",
+  "modules": ["./register.tsx"]
+}

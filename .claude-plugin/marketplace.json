@@ -189,6 +189,18 @@
       "category": "Code Review",
       "keywords": ["review", "findings", "regression-test", "convergence", "mod"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "effort-pilot",
+      "description": "Jev picks the effort level for each prompt and the mod applies it on models where a change keeps the prompt cache; each answer ends with its model and effort, and the last band line shows them",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/effort-pilot",
+      "category": "Productivity",
+      "keywords": ["effort", "jev", "model", "band", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

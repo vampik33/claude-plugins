@@ -201,6 +201,18 @@
       "category": "Productivity",
       "keywords": ["effort", "jev", "model", "band", "mod"],
       "homepage": "https://github.com/vampik33/claude-plugins"
+    },
+    {
+      "name": "tool-lens",
+      "description": "Adds an icon, the duration and an estimated token count under every tool call, and a button that expands the diff of an Edit, Write or file-changing Bash call.",
+      "version": "0.1.0",
+      "author": {
+        "name": "vampik33"
+      },
+      "source": "./plugins/tool-lens",
+      "category": "Productivity",
+      "keywords": ["tools", "duration", "tokens", "diff", "mod"],
+      "homepage": "https://github.com/vampik33/claude-plugins"
     }
   ]
 }

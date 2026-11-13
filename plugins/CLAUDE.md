@@ -2,7 +2,7 @@
 
 ## Mods (function-hook plugins)
 
-big-picture, chat-view, codex-review, continuity, effort-pilot, fix-findings, fleet, memory-watch, palette, ship and watchdog are TypeScript mods, not shell hooks.
+big-picture, chat-view, codex-review, continuity, effort-pilot, fix-findings, fleet, memory-watch, palette, ship, tool-lens and watchdog are TypeScript mods, not shell hooks.
 
 - Check: `claude plugin validate <dir>` and `claude plugin test <dir>`; `tsc -p <dir>` once the engine has loaded the mod (it lays `.claude-plugin/types/`, gitignored)
 - Type files in `<mod>/.claude-plugin/types/` are from whichever build last loaded the mod (its header says which); a fresh `tsc -p` can pass on old types, so also check against the current build's `claude-code.d.ts`, which the plugin-authoring skill writes when it loads

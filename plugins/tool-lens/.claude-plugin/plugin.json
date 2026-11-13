@@ -1,0 +1,7 @@
+{
+  "name": "tool-lens",
+  "version": "0.1.0",
+  "description": "Adds an icon, the duration and an estimated token count under every tool call, and a button that expands the diff of an Edit, Write or file-changing Bash call.",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts"
+}

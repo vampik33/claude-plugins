@@ -24,7 +24,6 @@ import {
   where,
 } from "./core.ts";
 import type { BandProps } from "./band.tsx";
-import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "codex-review";
 const TOOL = "mcp__codex-review__CodexReview";
@@ -588,7 +587,7 @@ export const register: Register = (on, options) => {
     const desk = e.surface === "desktop";
     const row = (
       <Box
-        key="band:50-codex"
+        key="band:codex-review"
         flexDirection="row"
         columnGap={2}
         justifyContent={desk ? "space-between" : undefined}
@@ -630,8 +629,9 @@ export const register: Register = (on, options) => {
       </Box>
     );
     return (
-      <Box key={STACK} flexDirection="column" marginTop={1}>
-        {stackRows(below, row)}
+      <Box flexDirection="column">
+        {below}
+        {row}
       </Box>
     );
   });

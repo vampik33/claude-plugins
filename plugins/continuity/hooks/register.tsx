@@ -20,7 +20,6 @@ import {
   userPrompts,
 } from "./core.ts";
 import type { GaugeProps } from "./gauge.tsx";
-import { STACK, stackRows } from "./stack.ts";
 import {
   accountOf,
   decideTtl,
@@ -270,7 +269,7 @@ async function desktopGauge(
   const pct = props.percent;
   const note = gaugeNote(props, await $.clock.now());
   return (
-    <Box key="band-bottom:continuity" flexDirection="column">
+    <Box key="band:continuity" flexDirection="column">
       <Box flexDirection="row" columnGap={1} alignItems="center">
         <Text dimColor>ctx</Text>
         <Svg
@@ -549,18 +548,18 @@ export const register: Register = (on, options) => {
         },
         part: "full",
       };
-      // other bands first, its own lines last, right above the prompt
       const row =
         e.surface === "desktop" ? (
           await desktopGauge($, e, props)
         ) : (
-          <Box key="band-bottom:continuity">
+          <Box key="band:continuity">
             <Client key="continuity-gauge" module="./gauge.tsx" props={props} />
           </Box>
         );
       return (
-        <Box key={STACK} flexDirection="column" marginTop={1}>
-          {stackRows(below, row)}
+        <Box flexDirection="column">
+          {below}
+          {row}
         </Box>
       );
     }
@@ -569,15 +568,16 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now();
     const until = d && ` · cache until ${new Date(d.expiresAt).toTimeString().slice(0, 5)}`;
     const row = (
-      <Box key="band-bottom:continuity">
+      <Box key="band:continuity">
         <Text
           dimColor
         >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(now - g.startedAt)}${until ?? ""}`}</Text>
       </Box>
     );
     return (
-      <Box key={STACK} flexDirection="column" marginTop={1}>
-        {stackRows(below, row)}
+      <Box flexDirection="column">
+        {below}
+        {row}
       </Box>
     );
   });

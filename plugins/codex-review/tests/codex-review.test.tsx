@@ -521,16 +521,15 @@ describe("session", () => {
         viewport: { columns: 160, rows: 40, isFullscreen: true },
       });
       expect(await band.find({ key: "codex-band" })).toBeDefined();
-      // its own line in the shared column, never beside the others; the
-      // column holds the band's one blank row above it
+      // its own part of the band, one line with no blank row above it
       const drawn: any = await band.drawn();
-      expect(drawn.props).toMatchObject({
-        key: "band-stack",
-        flexDirection: "column",
-        marginTop: 1,
-      });
-      const row = drawn.children[0];
-      expect(row.props.key).toBe("band:50-codex");
+      const own =
+        drawn.part?.plugin === "codex-review"
+          ? drawn
+          : drawn.children.find((c: any) => c.part?.plugin === "codex-review");
+      expect(own.props).toEqual({ flexDirection: "column" });
+      const row = own.children.at(-1);
+      expect(row.props.key).toBe("band:codex-review");
       expect(row.props.marginTop).toBeUndefined();
       expect(row.children[0].type).toBe("Client");
       await band.unmount();
@@ -578,7 +577,7 @@ describe("session", () => {
       expect((await ui.find({ key: "codex-review" }))?.props.hotkey).toBe(
         surface === "terminal" ? "x" : undefined,
       );
-      expect((await ui.find({ key: "band:50-codex" }))?.props.justifyContent).toBe(
+      expect((await ui.find({ key: "band:codex-review" }))?.props.justifyContent).toBe(
         surface === "terminal" ? undefined : "space-between",
       );
       await ui.press({ key: "codex-review" });

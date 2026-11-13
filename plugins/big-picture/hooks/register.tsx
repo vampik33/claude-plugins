@@ -34,7 +34,6 @@ import {
   TAIL_BYTES,
 } from "./core.ts";
 import { SHOW_ME } from "./show-me.ts";
-import { STACK, stackRows } from "./stack.ts";
 
 const status = atom(
   { plugin: "big-picture", key: "status" } as const,
@@ -399,7 +398,7 @@ export const register: Register = (on) => {
     return r;
   });
 
-  // its own line under the other bands: the summary's state and a show button,
+  // its own line in the band: the summary's state and a show button,
   // once there is something to show; Jev judging work that has no summary yet is not
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
@@ -413,7 +412,7 @@ export const register: Register = (on) => {
     const desk = e.surface === "desktop";
     const row = (
       <Box
-        key="band:20-big-picture"
+        key="band:big-picture"
         flexDirection="row"
         columnGap={2}
         width={e.props.bodyColumns}
@@ -453,8 +452,9 @@ export const register: Register = (on) => {
       </Box>
     );
     return (
-      <Box key={STACK} flexDirection="column" marginTop={1}>
-        {stackRows(below, row)}
+      <Box flexDirection="column">
+        {below}
+        {row}
       </Box>
     );
   });

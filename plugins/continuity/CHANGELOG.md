@@ -4,6 +4,13 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-11-13
+
+### Added
+- The session's prompt-cache hit rate before the cache countdown, which stays last (`hit 94%`): the share of the main loop's prompt tokens read from the cache since the session began or the last `/clear`. Green from 90%, yellow from 70%, red below; set with `cacheHitGreenAt` and `cacheHitYellowAt`
+- The cache countdown reads `cache 42:17` instead of `⏱ 42:17`: some terminal fonts draw the `⏱` icon as a dot
+- The token count drops from 70 columns instead of 60, so the longer line still fits
+
 ## [0.3.9] - 2026-11-13
 
 ### Fixed

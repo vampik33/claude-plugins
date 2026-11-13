@@ -3,7 +3,7 @@
 Keep working through a compaction, and keep the prompt cache warm.
 
 ```
-ctx ██████████░░░░░░ 61% 610k/1M   session 2h13m   ⏱ 42:17
+ctx ██████████░░░░░░ 61% 610k/1M   session 2h13m   hit 94%   cache 42:17
 over 60%: handover + compact after this turn
 ```
 
@@ -28,14 +28,24 @@ claude plugin install continuity@vampik-plugins
 A real-time countdown to the prompt cache's expiry, on the gauge's line (formerly the cache-timer mod):
 
 ```
-⏱ 42:17        green while more than 25% of the cache lifetime is left
-⏱ 9:58         yellow from 25%
-⏱ 4:31         red from 10%, with one toast: send a message to keep it warm
+cache 42:17    green while more than 25% of the cache lifetime is left
+cache 9:58     yellow from 25%
+cache 4:31     red from 10%, with one toast: send a message to keep it warm
 ● cache cold   once it has expired
 ```
 
 - `turn.step` records each main-loop request's cache read/write; the countdown starts from that request's start.
 - The lifetime follows Claude Code's order: `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL`, `promptCacheTtl` in settings, `ENABLE_PROMPT_CACHING_1H`, then 1h on a subscription and 5m otherwise. A cache hit after more than 5 minutes proves 1h; a miss proves 5m.
+
+### Cache hit rate
+
+Before the countdown, `hit 94%`: the share of the main loop's prompt tokens this session that the API read from the cache, rather than wrote to it or billed afresh. It counts from the session's start, survives a reload, and starts over on `/clear`; subagents' requests are left out.
+
+```
+hit 94%   green from 90%
+hit 78%   yellow from 70%: the cache lapsed or was rewritten now and then
+hit 41%   red below
+```
 
 The note holds: your first and latest prompts, cwd, branch and worktree, uncommitted files, last commit, open to-dos (TodoWrite or the Task tools), and the last test/lint/build run with its last 15 lines.
 
@@ -53,6 +63,8 @@ The note holds: your first and latest prompts, cwd, branch and worktree, uncommi
 | `cacheTtl` | `auto` | `auto`, `5m` or `1h` |
 | `cacheYellowAt` | `0.25` | share of the cache lifetime left when the timer turns yellow |
 | `cacheRedAt` | `0.1` | share left when it turns red |
+| `cacheHitGreenAt` | `90` | cache hit rate (%) from which it is green |
+| `cacheHitYellowAt` | `70` | from which it is yellow; red below |
 | `cacheToast` | `true` | one toast when it turns red |
 
 Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).

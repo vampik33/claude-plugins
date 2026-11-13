@@ -1,7 +1,7 @@
 {
   "name": "continuity",
-  "version": "0.3.9",
-  "description": "A live context gauge, session length and prompt-cache countdown above the prompt; past a threshold it writes a handover note, compacts at the end of the turn and continues from the note, and it resumes after a 5-hour limit resets.",
+  "version": "0.4.0",
+  "description": "A live context gauge, session length, prompt-cache countdown and cache hit rate above the prompt; past a threshold it writes a handover note, compacts at the end of the turn and continues from the note, and it resumes after a 5-hour limit resets.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -35,6 +35,18 @@
       "title": "Cache timer red at (share left)",
       "description": "The cache timer turns red, and one toast shows, when this share of the cache lifetime is left (0.1 = 6:00 of a 1h cache)",
       "default": 0.1
+    },
+    "cacheHitGreenAt": {
+      "type": "number",
+      "title": "Cache hit rate green at (%)",
+      "description": "The session's cache hit rate (share of main-loop prompt tokens read from the cache) is green from this percentage",
+      "default": 90
+    },
+    "cacheHitYellowAt": {
+      "type": "number",
+      "title": "Cache hit rate yellow at (%)",
+      "description": "The cache hit rate is yellow from this percentage up to the green one, red below it",
+      "default": 70
     },
     "cacheToast": {
       "type": "boolean",

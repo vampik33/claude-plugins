@@ -1,7 +1,12 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register, SessionMessage } from "claude-code";
 
-import type { CacheDeadline, ContinuityGauge, ContinuityMode } from "../types";
+import type {
+  CacheDeadline,
+  CacheHits,
+  ContinuityGauge,
+  ContinuityMode,
+} from "../types";
 import {
   bandOrder,
   bar,
@@ -23,8 +28,10 @@ import {
 import type { GaugeProps } from "./gauge.tsx";
 import {
   accountOf,
+  addHits,
   decideTtl,
   expiryOf,
+  hitPercent,
   observeTtl,
   ttlMs,
   type CacheEnv,
@@ -53,6 +60,10 @@ const cache = atom(
   { plugin: "continuity", key: "cache" } as const,
   null as CacheDeadline | null,
 );
+const hits = atom(
+  { plugin: "continuity", key: "hits" } as const,
+  null as CacheHits | null,
+);
 
 /** What the module keeps outside `$.state`; a reload starts it over. */
 type Tracker = {
@@ -69,6 +80,8 @@ type CacheTracker = {
   option: unknown;
   yellowAt: number;
   redAt: number;
+  hitGreenAt: number;
+  hitYellowAt: number;
   toast: boolean;
   env: CacheEnv;
   setting: unknown;
@@ -119,6 +132,9 @@ async function currentTtl($: EngineInterface, c: CacheTracker): Promise<Ttl> {
 
 const share = (v: unknown, fallback: number) =>
   typeof v === "number" && v > 0 && v < 1 ? v : fallback;
+
+const percentOption = (v: unknown, fallback: number) =>
+  typeof v === "number" && v >= 0 && v <= 100 ? v : fallback;
 
 async function git(
   $: EngineInterface,
@@ -313,6 +329,7 @@ async function desktopGauge(
 
 export const register: Register = (on, options) => {
   const yellowAt = share(options.cacheYellowAt, 0.25);
+  const hitGreenAt = percentOption(options.cacheHitGreenAt, 90);
   const t: Tracker = {
     threshold:
       typeof options.threshold === "number" &&
@@ -328,6 +345,11 @@ export const register: Register = (on, options) => {
       option: options.cacheTtl,
       yellowAt,
       redAt: Math.min(share(options.cacheRedAt, 0.1), yellowAt),
+      hitGreenAt,
+      hitYellowAt: Math.min(
+        percentOption(options.cacheHitYellowAt, 70),
+        hitGreenAt,
+      ),
       toast: options.cacheToast !== false,
       env: {},
       setting: undefined,
@@ -376,6 +398,7 @@ export const register: Register = (on, options) => {
       t.cache.toastTimer?.cancel();
       t.cache.toastTimer = undefined;
       await update($, cache, () => null);
+      await update($, hits, () => null);
     }
     return next(e);
   });
@@ -403,6 +426,7 @@ export const register: Register = (on, options) => {
     };
     if (!pinnedTtl) c.observed = observeTtl(c.prev, cur, c.observed);
     c.prev = cur;
+    await update($, hits, (h) => addHits(h, cur));
 
     const ttl = await currentTtl($, c);
     const expiresAt = expiryOf(cur, ttl);
@@ -552,8 +576,12 @@ export const register: Register = (on, options) => {
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const g = await read($, gauge);
     if (e.props.hasSurvey || !g) return next(e);
-    const m = await read($, mode);
-    const d = await read($, cache);
+    const [m, d, totals] = await Promise.all([
+      read($, mode),
+      read($, cache),
+      read($, hits),
+    ]);
+    const hitPct = hitPercent(totals);
     const below = await next(e);
     if (e.surface === "terminal" || e.surface === "desktop") {
       const { Box, Client } = $.ui.resolve(e);
@@ -572,6 +600,14 @@ export const register: Register = (on, options) => {
           yellowAt: t.cache.yellowAt,
           redAt: t.cache.redAt,
         },
+        hits:
+          hitPct === undefined
+            ? null
+            : {
+                percent: hitPct,
+                greenAt: t.cache.hitGreenAt,
+                yellowAt: t.cache.hitYellowAt,
+              },
         part: "full",
       };
       const row =
@@ -598,7 +634,7 @@ export const register: Register = (on, options) => {
       <Box key="band:continuity">
         <Text
           dimColor
-        >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(now - g.startedAt)}${until ?? ""}`}</Text>
+        >{`ctx ${pct === undefined ? "--" : `${bar(pct, 10)} ${pct}%`} · session ${fmtLength(now - g.startedAt)}${hitPct === undefined ? "" : ` · hit ${hitPct}%`}${until ?? ""}`}</Text>
       </Box>
     );
     return (

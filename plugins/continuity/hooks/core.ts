@@ -9,8 +9,8 @@ import type { SessionMessage, SessionRateLimit } from "claude-code";
 export const MIN_TURNS_BETWEEN = 3;
 /** The yellow band below the threshold, in points. */
 export const WARN_POINTS = 15;
-/** About the gauge line's full width: ctx, a 16-cell bar, fill, tokens, session and the cache clock. */
-export const NARROW = 60;
+/** About the gauge line's full width: ctx, a 16-cell bar, fill, tokens, session, the cache clock and hit rate. */
+export const NARROW = 70;
 
 /** 8m05s under an hour, 2h13m after. */
 export function fmtLength(ms: number): string {

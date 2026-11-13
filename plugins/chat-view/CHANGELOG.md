@@ -4,6 +4,11 @@ All notable changes to the chat-view plugin (formerly prompt-clock) will be docu
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.2] - 2026-11-13
+
+### Fixed
+- A resumed or forked long session shows earlier prompts' and replies' times again: the transcript is read by its last 4 MB with `tail`, since a mod cannot read a file over 4 MiB whole and a long session's transcript passes that. A very long session's oldest rows still get no time
+
 ## [0.2.1] - 2026-11-13
 
 ### Fixed

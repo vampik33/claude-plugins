@@ -19,7 +19,7 @@ Mod gotchas:
 - Render hooks can't write `$.state`: keep values like `e.viewport.isFullscreen` in a module variable; open a pane unasked only when it is `true`
 - The fullscreen terminal folds runs of tool calls (Edit too) into one `ToolGroup` line; `ToolUse` rows draw only under ctrl+o or `--verbose`. A mod that decorates each call hooks `ToolGroup` too (one line per `e.props.calls` entry) and passes through when `isExpanded`
 - A Bash result's `bashEditDiff` (and the `changedFiles` a classic PostToolUse Bash hook receives) is filled on Opus and was absent on Haiku, interactive or `-p`: treat it as optional, and honour its `moreFiles` (files changed with no hunks given)
-- `$.fs.read` rejects files over 4 MiB, and long session logs exceed that: read a log's tail with `$.process.run(["sh","-c",'… tail -c N "$f"'])` (tool-lens `logTailArgv`). chat-view's resume backfill still uses `$.fs.read`, so it silently gets nothing on a long session
+- `$.fs.read` rejects files over 4 MiB, and long session logs exceed that: read a log's tail with `$.process.run(["sh","-c",'… tail -c N "$f"'])` (tool-lens `logTailArgv`), or a known path with no shell (chat-view `transcriptTailArgv`)
 - `$.session.compact` is refused inside a `command.run` hook; defer it with `$.clock.after(0, …)`
 - `classic.*`, `session.compact` and `skill.prompt` hooks don't run where an organization manages Claude Code; say so in the mod's README
 - Tests: loop UI mounts over `['terminal','desktop'] as const`; use `$.clock.now()` (not `Date.now()`) so the mocked clock applies; fire `session.start` again on the same state to simulate a reload

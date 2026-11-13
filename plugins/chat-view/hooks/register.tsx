@@ -20,6 +20,7 @@ import {
   textBlocks,
   timeOf,
   turnEnd,
+  transcriptTailArgv,
   turnRange,
 } from "./core.ts";
 
@@ -39,10 +40,12 @@ const pending: number[] = [];
 async function loadTranscript($: EngineInterface, path: string): Promise<void> {
   let jsonl: string;
   try {
-    jsonl = await $.fs.read(path);
+    // tail, not $.fs.read: a long session's transcript is over its 4 MiB cap
+    ({ stdout: jsonl } = await $.process.run(transcriptTailArgv(path)));
   } catch {
-    return; // a new session has no file yet
+    return; // no tail on this host
   }
+  if (!jsonl) return; // a new session has no file yet
   const fromFile = parseTranscript(jsonl);
   await update($, times, (t) => mergeTimes(fromFile, t));
 }

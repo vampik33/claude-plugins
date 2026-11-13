@@ -215,6 +215,18 @@ const ECHO_TAG = /\s*<(command-(?:message|name|args))>/y;
 /** The line under a slash command's echo: when it was sent. */
 export const sentLine = (time: string) => `sent ${time}`;
 
+/** Most bytes of a transcript read on resume: its tail, the latest rows. */
+export const TRANSCRIPT_TAIL_BYTES = 4_000_000;
+
+/**
+ * Prints the transcript's last `TRANSCRIPT_TAIL_BYTES` bytes. `$.fs.read`
+ * refuses files over 4 MiB, which a long session's transcript passes; the
+ * tail's first line may be cut, and `parseTranscript` skips it.
+ */
+export function transcriptTailArgv(path: string): string[] {
+  return ["tail", "-c", String(TRANSCRIPT_TAIL_BYTES), "--", path];
+}
+
 /**
  * Times from a transcript file (JSONL): each typed prompt's row by uuid and
  * text, each reply row's by uuid and text, and each turn's end by its

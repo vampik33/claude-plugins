@@ -534,8 +534,15 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey || (empty && !open)) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
+    // the desktop: its native button, no hotkey badge, at the row's far end
+    const desk = e.surface === "desktop";
     const row = (
-      <Box key="band:60-fleet" flexDirection="row" columnGap={2}>
+      <Box
+        key="band:60-fleet"
+        flexDirection="row"
+        columnGap={2}
+        justifyContent={desk ? "space-between" : undefined}
+      >
         <Text dimColor>
           {[statusLine(f) ?? "fleet", ...shellNotes(f.shells, now)].join(
             " · ",
@@ -543,7 +550,7 @@ export const register: Register = (on, options) => {
         </Text>
         <Button
           key="fleet-toggle"
-          hotkey="f"
+          hotkey={desk ? undefined : "f"}
           dimColor
           onPress={() => togglePane($, t)}
         >

@@ -9,6 +9,8 @@ import type { SessionMessage, SessionRateLimit } from "claude-code";
 export const MIN_TURNS_BETWEEN = 3;
 /** The yellow band below the threshold, in points. */
 export const WARN_POINTS = 15;
+/** About the gauge line's full width: ctx, a 16-cell bar, fill, tokens, session and the cache clock. */
+export const NARROW = 60;
 
 /** 8m05s under an hour, 2h13m after. */
 export function fmtLength(ms: number): string {
@@ -38,10 +40,20 @@ export function fmtTokens(n: number): string {
   return String(n);
 }
 
-export function bar(percent: number, width: number): string {
+/** How many of `width` cells (or pixels) `percent` fills; not a number fills none. */
+function filled(percent: number, width: number): number {
   const p = Number.isFinite(percent) ? percent : 0;
-  const full = Math.max(0, Math.min(width, Math.round((p / 100) * width)));
+  return Math.max(0, Math.min(width, Math.round((p / 100) * width)));
+}
+
+export function bar(percent: number, width: number): string {
+  const full = filled(percent, width);
   return "█".repeat(full) + "░".repeat(width - full);
+}
+
+/** The gauge bar's length in cells: shorter on a narrow band. */
+export function gaugeCells(columns: number): number {
+  return columns < NARROW ? 8 : 16;
 }
 
 export function gaugeColor(
@@ -50,6 +62,75 @@ export function gaugeColor(
 ): "green" | "yellow" | "red" {
   if (percent >= threshold) return "red";
   return percent >= threshold - WARN_POINTS ? "yellow" : "green";
+}
+
+/** The gauge colors as hex, readable on the desktop's light and dark themes. */
+const SVG_COLOR = {
+  green: "#3fb950",
+  yellow: "#d29922",
+  red: "#f85149",
+} as const;
+
+/** The context bar as SVG for the desktop: a rounded track, filled to `percent` (none when null). */
+export function barSvg(
+  percent: number | null,
+  threshold: number,
+  width: number,
+  height: number,
+): string {
+  const fill = percent === null ? 0 : filled(percent, width);
+  const r = height / 2;
+  const track = `<rect width="${width}" height="${height}" rx="${r}" fill="#8b949e" fill-opacity="0.3"/>`;
+  const done =
+    percent === null || fill === 0
+      ? ""
+      : `<rect width="${fill}" height="${height}" rx="${r}" fill="${SVG_COLOR[gaugeColor(percent, threshold)]}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${track}${done}</svg>`;
+}
+
+export type GaugeNote = {
+  text: string;
+  color?: "yellow" | "cyan";
+  dim?: boolean;
+};
+
+/** The gauge's second line, if any: a usage-limit wait, a handover underway or close, or a pause. */
+export function gaugeNote(
+  s: {
+    percent: number | null;
+    threshold: number;
+    phase: "idle" | "pending" | "compacting" | "blocked";
+    paused: boolean;
+    resumeAt: number | null;
+  },
+  now: number,
+): GaugeNote | undefined {
+  const pct = s.percent;
+  if (s.phase === "blocked" && s.resumeAt)
+    return {
+      text: `⏸ usage limit · continues in ${fmtCountdown(s.resumeAt - now)} · /continuity off cancels`,
+      color: "yellow",
+    };
+  if (s.phase === "pending")
+    return {
+      text: "⟳ handover + compact in a few seconds · send a prompt to cancel",
+      color: "cyan",
+    };
+  if (s.phase === "compacting")
+    return { text: "⟳ handover written · compacting", color: "cyan" };
+  if (s.paused)
+    return { text: "continuity paused · /continuity on", dim: true };
+  if (pct !== null && pct >= s.threshold)
+    return {
+      text: `over ${s.threshold}%: handover + compact after this turn`,
+      color: "yellow",
+    };
+  if (pct !== null && pct >= s.threshold - WARN_POINTS)
+    return {
+      text: `handover at ${s.threshold}% · ${s.threshold - pct} points to go`,
+      dim: true,
+    };
+  return undefined;
 }
 
 export type TurnFacts = {

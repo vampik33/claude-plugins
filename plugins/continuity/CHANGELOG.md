@@ -4,6 +4,11 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.7] - 2026-11-13
+
+### Changed
+- In the desktop app, the context bar is a rounded SVG bar in the gauge's colour instead of `█░` block characters, which a proportional font draws as a hatched strip, and the figures beside it are spaced by layout rather than runs of spaces; the terminal is unchanged
+
 ## [0.3.6] - 2026-11-10
 
 ### Changed

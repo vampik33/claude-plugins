@@ -699,6 +699,13 @@ describe("session", () => {
       const press = async (label: string) => {
         const ui = await mount();
         expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe(label);
+        // the desktop: no hotkey badge, the button at the row's far end
+        expect((await ui.find({ key: "fleet-toggle" }))?.props.hotkey).toBe(
+          surface === "terminal" ? "f" : undefined,
+        );
+        expect((await ui.find({ key: "band:60-fleet" }))?.props.justifyContent).toBe(
+          surface === "terminal" ? undefined : "space-between",
+        );
         await ui.press({ key: "fleet-toggle" });
         await ui.unmount();
       };

@@ -181,13 +181,22 @@ export const register: Register = (on) => {
     const fresh = open ? 0 : await read($, unread);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
+    // the desktop: its native button, no hotkey badge, at the row's far end
+    const desk = e.surface === "desktop";
     const row = (
-      <Box key="band:10-memory-watch" flexDirection="row" columnGap={2}>
-        <Text dimColor>memory</Text>
-        {fresh > 0 && <Text color="yellow">{`● ${fresh} new`}</Text>}
+      <Box
+        key="band:10-memory-watch"
+        flexDirection="row"
+        columnGap={2}
+        justifyContent={desk ? "space-between" : undefined}
+      >
+        <Box flexDirection="row" columnGap={2}>
+          <Text dimColor>memory</Text>
+          {fresh > 0 && <Text color="yellow">{`● ${fresh} new`}</Text>}
+        </Box>
         <Button
           key="memory-watch-toggle"
-          hotkey="m"
+          hotkey={desk ? undefined : "m"}
           dimColor
           onPress={() => togglePane($)}
         >

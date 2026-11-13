@@ -574,6 +574,13 @@ describe("session", () => {
       expect(await clientProps(ui)).toEqual({ kind: "idle", last: null });
       expect(await ui.find({ key: "codex-open" })).toBeUndefined();
       expect(await ui.find({ key: "codex-cancel" })).toBeUndefined();
+      // the desktop: no hotkey badge, the buttons at the row's far end
+      expect((await ui.find({ key: "codex-review" }))?.props.hotkey).toBe(
+        surface === "terminal" ? "x" : undefined,
+      );
+      expect((await ui.find({ key: "band:50-codex" }))?.props.justifyContent).toBe(
+        surface === "terminal" ? undefined : "space-between",
+      );
       await ui.press({ key: "codex-review" });
       expect(seen.started).toBe(1);
       expect(seen.toasts.at(-1)).toContain(
@@ -585,7 +592,9 @@ describe("session", () => {
       expect((await clientProps(ui)).kind).toBe("running");
       expect(await ui.find({ key: "codex-review" })).toBeUndefined();
       expect(await ui.find({ key: "codex-open" })).toBeUndefined();
-      expect(await ui.find({ key: "codex-cancel" })).toBeDefined();
+      expect((await ui.find({ key: "codex-cancel" }))?.props.hotkey).toBe(
+        surface === "terminal" ? "x" : undefined,
+      );
       await ui.unmount();
 
       seen.alive = false;
@@ -596,6 +605,9 @@ describe("session", () => {
       expect(idle.kind).toBe("idle");
       expect(idle.last.text).toBe("needs-attention · 2 findings (1 high)");
       expect(await ui.find({ key: "codex-review" })).toBeDefined();
+      expect((await ui.find({ key: "codex-open" }))?.props.hotkey).toBe(
+        surface === "terminal" ? "o" : undefined,
+      );
       await ui.press({ key: "codex-open" });
       expect(seen.opened).toBe(opened + 1);
       await ui.unmount();

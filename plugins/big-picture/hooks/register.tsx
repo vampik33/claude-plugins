@@ -409,40 +409,47 @@ export const register: Register = (on) => {
     if (s.kind === "none" || isJudgingOnly) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
+    // the desktop: native buttons, no hotkey badges, at the row's far end
+    const desk = e.surface === "desktop";
     const row = (
       <Box
         key="band:20-big-picture"
         flexDirection="row"
         columnGap={2}
         width={e.props.bodyColumns}
+        justifyContent={desk ? "space-between" : undefined}
       >
-        <Text dimColor>summary</Text>
-        {s.kind === "working" && <Text color="yellow">{`● ${s.step}…`}</Text>}
-        {s.kind === "ready" && (
-          <Text dimColor>{`updated ${fmtTime(s.at)}`}</Text>
-        )}
-        {s.kind === "failed" && (
-          <Text color="red" wrap="truncate-end">{`✗ ${s.reason}`}</Text>
-        )}
-        <Button
-          key="big-picture-show"
-          hotkey="s"
-          dimColor
-          onPress={async () => {
-            const said = await show($);
-            if (!said.isOpened) $.ui.toast(`big-picture: ${said.text}`);
-          }}
-        >
-          show
-        </Button>
-        <Button
-          key="big-picture-update"
-          hotkey="u"
-          dimColor
-          onPress={() => void check($, "manual")}
-        >
-          update
-        </Button>
+        <Box flexDirection="row" columnGap={2}>
+          <Text dimColor>summary</Text>
+          {s.kind === "working" && <Text color="yellow">{`● ${s.step}…`}</Text>}
+          {s.kind === "ready" && (
+            <Text dimColor>{`updated ${fmtTime(s.at)}`}</Text>
+          )}
+          {s.kind === "failed" && (
+            <Text color="red" wrap="truncate-end">{`✗ ${s.reason}`}</Text>
+          )}
+        </Box>
+        <Box flexDirection="row" columnGap={2}>
+          <Button
+            key="big-picture-show"
+            hotkey={desk ? undefined : "s"}
+            dimColor
+            onPress={async () => {
+              const said = await show($);
+              if (!said.isOpened) $.ui.toast(`big-picture: ${said.text}`);
+            }}
+          >
+            show
+          </Button>
+          <Button
+            key="big-picture-update"
+            hotkey={desk ? undefined : "u"}
+            dimColor
+            onPress={() => void check($, "manual")}
+          >
+            update
+          </Button>
+        </Box>
       </Box>
     );
     return (

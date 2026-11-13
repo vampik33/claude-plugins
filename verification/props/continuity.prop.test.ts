@@ -6,6 +6,7 @@ import fc from "fast-check";
 
 import {
   bar,
+  barSvg,
   blockingLimit,
   buildNote,
   compactInstructions,
@@ -212,6 +213,49 @@ describe("bar", () => {
         },
       ),
       { numRuns: 1000 },
+    );
+  });
+});
+
+describe("barSvg", () => {
+  const fillOf = (svg: string) => {
+    const rects = [...svg.matchAll(/<rect width="(\d+)"/g)].map((m) => Number(m[1]));
+    return rects.length === 2 ? rects[1]! : 0;
+  };
+
+  test("fills as many pixels as the text bar fills cells, never past the track", () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: -500, max: 500, noNaN: false }),
+        fc.integer({ min: 1, max: 200 }),
+        percent,
+        (p, w, t) => {
+          const svg = barSvg(p, t, w, 6);
+          expect(svg).toMatch(/^<svg [^>]*>(<rect [^>]*\/>){1,2}<\/svg>$/);
+          expect(svg).toContain(`<rect width="${w}" height="6"`);
+          expect(fillOf(svg)).toBe([...bar(p, w)].filter((c) => c === "█").length);
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+
+  test("the fill never shrinks as the percentage grows", () => {
+    fc.assert(
+      fc.property(percent, percent, fc.integer({ min: 1, max: 200 }), (a, b, w) => {
+        const [lo, hi] = a <= b ? [a, b] : [b, a];
+        expect(fillOf(barSvg(lo, 60, w, 6))).toBeLessThanOrEqual(fillOf(barSvg(hi, 60, w, 6)));
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  test("unmeasured draws the track alone", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 200 }), percent, (w, t) => {
+        expect(fillOf(barSvg(null, t, w, 6))).toBe(0);
+      }),
+      { numRuns: 200 },
     );
   });
 });

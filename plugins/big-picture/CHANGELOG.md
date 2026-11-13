@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.1] - 2026-11-13
+
+### Changed
+- In the desktop app, the band's `show` and `update` buttons sit at the row's far end with no hotkey badges; the terminal keeps `s` and `u`
+
 ## [0.5.0] - 2026-11-12
 
 ### Added

@@ -3,6 +3,7 @@ import type { SessionMessage } from "claude-code";
 
 import {
   bar,
+  barSvg,
   blockingLimit,
   continuePrompt,
   buildNote,
@@ -10,6 +11,7 @@ import {
   fmtLength,
   fmtTokens,
   gaugeColor,
+  gaugeNote,
   lastCheck,
   openTodos,
   shouldHandover,
@@ -51,6 +53,41 @@ describe("words", () => {
     expect(gaugeColor(40, 75)).toBe("green");
     expect(gaugeColor(60, 75)).toBe("yellow");
     expect(gaugeColor(75, 75)).toBe("red");
+  });
+
+  test("the desktop's Svg bar: a track, a fill in the gauge's colour, none when unmeasured", () => {
+    const half = barSvg(50, 60, 96, 6);
+    expect(half).toStartWith('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="6"');
+    expect(half).toContain('<rect width="48" height="6" rx="3" fill="#d29922"/>');
+    expect(barSvg(10, 60, 96, 6)).toContain('width="10" height="6" rx="3" fill="#3fb950"');
+    expect(barSvg(100, 60, 96, 6)).toContain('width="96" height="6" rx="3" fill="#f85149"');
+    expect(barSvg(150, 60, 96, 6)).toContain('<rect width="96" height="6" rx="3" fill="#f85149"/>');
+    // only the track: unmeasured, empty, or not a number
+    for (const p of [null, 0, NaN, -5])
+      expect(barSvg(p, 60, 96, 6).match(/<rect/g)).toHaveLength(1);
+  });
+
+  test("the gauge's note, in the order the phases outrank each other", () => {
+    const s = { percent: 10, threshold: 60, phase: "idle", paused: false, resumeAt: null } as const;
+    expect(gaugeNote(s, 0)).toBeUndefined();
+    expect(gaugeNote({ ...s, percent: null }, 0)).toBeUndefined();
+    expect(gaugeNote({ ...s, percent: 50 }, 0)).toEqual({
+      text: "handover at 60% · 10 points to go",
+      dim: true,
+    });
+    expect(gaugeNote({ ...s, percent: 60 }, 0)?.color).toBe("yellow");
+    expect(gaugeNote({ ...s, percent: 60, paused: true }, 0)?.text).toBe(
+      "continuity paused · /continuity on",
+    );
+    expect(gaugeNote({ ...s, phase: "compacting", paused: true }, 0)?.text).toBe(
+      "⟳ handover written · compacting",
+    );
+    expect(gaugeNote({ ...s, phase: "pending" }, 0)?.color).toBe("cyan");
+    expect(gaugeNote({ ...s, phase: "blocked", resumeAt: 65_000 }, 5_000)?.text).toBe(
+      "⏸ usage limit · continues in 0:01:00 · /continuity off cancels",
+    );
+    // blocked with no reset known falls through to the fill's note
+    expect(gaugeNote({ ...s, phase: "blocked" }, 0)).toBeUndefined();
   });
 });
 
@@ -497,9 +534,18 @@ describe("session", () => {
             view: {},
           } as never,
         });
-        expect(
-          await ui.find({ in: "continuity-gauge", type: "Text", text: bar(50, cells) }),
-        ).toBeDefined();
+        if (surface === "terminal")
+          expect(
+            await ui.find({ in: "continuity-gauge", type: "Text", text: bar(50, cells) }),
+          ).toBeDefined();
+        else {
+          // the desktop's proportional font: an Svg bar, no block characters
+          const svg = await ui.find({ type: "Svg" });
+          expect(svg?.props.width).toBe(cells * 6);
+          expect(svg?.props.alt).toBe("context 50% full");
+          expect(svg?.props.source).toBe(barSvg(50, 60, cells * 6, 6));
+          expect(await ui.find({ type: "Text", text: /[█░]/ })).toBeUndefined();
+        }
         expect(
           (await ui.find({ in: "continuity-gauge", type: "Text", text: " 500k/1M" })) !==
             undefined,
@@ -532,17 +578,82 @@ describe("session", () => {
       });
       expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
       expect(
-        await ui.find({ in: "continuity-gauge", type: "Text", text: " 50%" }),
+        await ui.find({
+          in: "continuity-gauge",
+          type: "Text",
+          text: surface === "terminal" ? " 50%" : "50%",
+        }),
       ).toBeDefined();
       expect(
         await ui.find({
-          in: "continuity-gauge",
+          // the desktop draws a note that does not tick as plain text
+          ...(surface === "terminal" ? { in: "continuity-gauge" } : {}),
           type: "Text",
           text: "handover at 60% · 10 points to go",
         }),
       ).toBeDefined();
       await ui.unmount();
     }
+  });
+
+  for (const [percent, hasNote] of [
+    [10, false],
+    [50, true],
+  ] as const) {
+    test(`on the desktop the note's line is drawn only when there is a note (${percent}%)`, async ($, on) => {
+      engine(on, percent);
+      await $.session.measure({
+        context: { window: 1_000_000, percent },
+        rateLimits: [],
+        changed: ["context"],
+      } as never);
+      const ui = await $.ui.mount({
+        plugin: "continuity",
+        surface: "desktop",
+        component: "AbovePrompt",
+        props: {
+          hasSurvey: false,
+          isWorking: false,
+          maxRows: 10,
+          bodyColumns: 120,
+          scroll: { offset: 0, bodyRows: 10 },
+          view: {},
+        } as never,
+      });
+      expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
+      expect((await ui.find({ type: "Text", text: /handover at/ })) !== undefined).toBe(hasNote);
+      // only the usage-limit countdown ticks, so only it is a Client
+      expect((await ui.findAll({ type: "Client" })).map((c: any) => c.key)).toEqual(["continuity-gauge"]);
+      await ui.unmount();
+    });
+  }
+
+  test("on the desktop the usage-limit countdown ticks under the figures", async ($, on) => {
+    engine(on, 30);
+    await $.session.measure({
+      context: { window: 1_000_000, percent: 30 },
+      rateLimits: [],
+      changed: ["context"],
+    } as never);
+    await $.classic.StopFailure({ error: "rate_limit" } as never);
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "desktop",
+      component: "AbovePrompt",
+      props: {
+        hasSurvey: false,
+        isWorking: false,
+        maxRows: 10,
+        bodyColumns: 120,
+        scroll: { offset: 0, bodyRows: 10 },
+        view: {},
+      } as never,
+    });
+    // in the note's own Client, whose clock ticks it down
+    expect(
+      (await ui.find({ in: "continuity-note", type: "Text", text: /continues in/ }))?.text,
+    ).toBe("⏸ usage limit · continues in 1:01:00 · /continuity off cancels");
+    await ui.unmount();
   });
 
   test("the session length is read from the engine's clock", async ($, on) => {

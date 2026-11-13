@@ -4,12 +4,15 @@ import type { EngineInterface, Register, SessionMessage } from "claude-code";
 import type { CacheDeadline, ContinuityGauge, ContinuityMode } from "../types";
 import {
   bar,
+  barSvg,
   blockingLimit,
   buildNote,
   compactInstructions,
   continuePrompt,
   countDirty,
   fmtLength,
+  gaugeCells,
+  gaugeNote,
   lastCheck,
   MIN_TURNS_BETWEEN,
   openTodos,
@@ -250,6 +253,44 @@ async function refreshGauge($: EngineInterface) {
     ...(u.context.percent !== undefined ? { percent: u.context.percent } : {}),
     ...(u.context.tokens !== undefined ? { tokens: u.context.tokens } : {}),
   }));
+}
+
+/**
+ * The gauge in a proportional font: the bar as an Svg beside the ticking
+ * figures, and the note under them; only the usage-limit wait's countdown
+ * ticks, so only it is a second Client.
+ */
+async function desktopGauge(
+  $: EngineInterface,
+  e: Parameters<EngineInterface["ui"]["resolve"]>[0] & { surface: "desktop" },
+  props: GaugeProps,
+) {
+  const { Box, Client, Svg, Text } = $.ui.resolve(e);
+  const width = gaugeCells(props.columns) * 6;
+  const pct = props.percent;
+  const note = gaugeNote(props, await $.clock.now());
+  return (
+    <Box key="band-bottom:continuity" flexDirection="column">
+      <Box flexDirection="row" columnGap={1} alignItems="center">
+        <Text dimColor>ctx</Text>
+        <Svg
+          source={barSvg(pct, props.threshold, width, 6)}
+          alt={pct === null ? "context not measured yet" : `context ${pct}% full`}
+          width={width}
+          height={6}
+        />
+        <Client key="continuity-gauge" module="./gauge.tsx" props={{ ...props, part: "stats" }} />
+      </Box>
+      {note &&
+        (props.phase === "blocked" ? (
+          <Client key="continuity-note" module="./gauge.tsx" props={{ ...props, part: "note" }} />
+        ) : (
+          <Text key="continuity-note" color={note.color} dimColor={note.dim} wrap="truncate-end">
+            {note.text}
+          </Text>
+        ))}
+    </Box>
+  );
 }
 
 export const register: Register = (on, options) => {
@@ -506,13 +547,17 @@ export const register: Register = (on, options) => {
           yellowAt: t.cache.yellowAt,
           redAt: t.cache.redAt,
         },
+        part: "full",
       };
       // other bands first, its own lines last, right above the prompt
-      const row = (
-        <Box key="band-bottom:continuity">
-          <Client key="continuity-gauge" module="./gauge.tsx" props={props} />
-        </Box>
-      );
+      const row =
+        e.surface === "desktop" ? (
+          await desktopGauge($, e, props)
+        ) : (
+          <Box key="band-bottom:continuity">
+            <Client key="continuity-gauge" module="./gauge.tsx" props={props} />
+          </Box>
+        );
       return (
         <Box key={STACK} flexDirection="column" marginTop={1}>
           {stackRows(below, row)}

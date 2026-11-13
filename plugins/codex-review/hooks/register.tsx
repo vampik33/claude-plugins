@@ -584,40 +584,49 @@ export const register: Register = (on, options) => {
         </Text>
       );
     }
+    // the desktop: native buttons, no hotkey badges, at the row's far end
+    const desk = e.surface === "desktop";
     const row = (
-      <Box key="band:50-codex" flexDirection="row" columnGap={2}>
+      <Box
+        key="band:50-codex"
+        flexDirection="row"
+        columnGap={2}
+        justifyContent={desk ? "space-between" : undefined}
+      >
         {line}
-        {!job && last && (
-          <Button
-            key="codex-open"
-            hotkey="o"
-            dimColor
-            onPress={() => openLast($, t)}
-          >
-            open
-          </Button>
-        )}
-        {job ? (
-          <Button
-            key="codex-cancel"
-            hotkey="x"
-            dimColor
-            onPress={() => cancelJobs($)}
-          >
-            cancel
-          </Button>
-        ) : (
-          <Button
-            key="codex-review"
-            hotkey="x"
-            dimColor
-            onPress={async () =>
-              $.ui.toast(await startReview($, t, "adversarial", ""))
-            }
-          >
-            review
-          </Button>
-        )}
+        <Box flexDirection="row" columnGap={2}>
+          {!job && last && (
+            <Button
+              key="codex-open"
+              hotkey={desk ? undefined : "o"}
+              dimColor
+              onPress={() => openLast($, t)}
+            >
+              open
+            </Button>
+          )}
+          {job ? (
+            <Button
+              key="codex-cancel"
+              hotkey={desk ? undefined : "x"}
+              dimColor
+              onPress={() => cancelJobs($)}
+            >
+              cancel
+            </Button>
+          ) : (
+            <Button
+              key="codex-review"
+              hotkey={desk ? undefined : "x"}
+              dimColor
+              onPress={async () =>
+                $.ui.toast(await startReview($, t, "adversarial", ""))
+              }
+            >
+              review
+            </Button>
+          )}
+        </Box>
       </Box>
     );
     return (

@@ -1,0 +1,7 @@
+{
+  "name": "effort-pilot",
+  "version": "0.1.0",
+  "description": "Jev picks the effort level for each prompt and the mod applies it on models where a change keeps the prompt cache; each answer ends with its model and effort, and the last band line shows them",
+  "author": { "name": "vampik33" },
+  "types": "./types/index.d.ts"
+}

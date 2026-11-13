@@ -83,15 +83,15 @@
       "homepage": "https://github.com/vampik33/claude-plugins"
     },
     {
-      "name": "prompt-clock",
-      "description": "Send time on each typed prompt and start → end times on each turn's duration line",
-      "version": "0.1.3",
+      "name": "chat-view",
+      "description": "Your prompts as chat bubbles on the right of the terminal, with the send time under each; the time each reply started streaming; start → end times on each turn's duration line",
+      "version": "0.2.0",
       "author": {
         "name": "vampik33"
       },
-      "source": "./plugins/prompt-clock",
+      "source": "./plugins/chat-view",
       "category": "Workflow",
-      "keywords": ["time", "transcript", "prompts", "mod"],
+      "keywords": ["chat", "bubbles", "time", "transcript", "prompts", "mod"],
       "homepage": "https://github.com/vampik33/claude-plugins"
     },
     {

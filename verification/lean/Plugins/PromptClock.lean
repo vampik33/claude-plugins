@@ -1,5 +1,5 @@
 /-!
-# prompt-clock: `turnEnd` and `cap`
+# chat-view (formerly prompt-clock): `turnEnd` and `cap`
 
 `turns` and `record` are JS objects; here they are their `Object.entries`, in
 that order, which is what the differential tests feed both sides.

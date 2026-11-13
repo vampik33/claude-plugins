@@ -1,19 +1,22 @@
 /**
- * Property tests for prompt-clock/hooks/core.ts pure functions.
+ * Property tests for chat-view/hooks/core.ts pure functions.
  */
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import {
+  bubbleWidth,
   cap,
+  cellWidth,
   emptyTimes,
   fmtDuration,
   fmtTime,
   parseTranscript,
   promptText,
+  stampReply,
   turnEnd,
   turnRange,
-} from "../../plugins/prompt-clock/hooks/core.ts";
+} from "../../plugins/chat-view/hooks/core.ts";
 
 const epoch = fc.integer({ min: 1_000_000_000_000, max: 2_000_000_000_000 });
 
@@ -280,6 +283,35 @@ describe("turnRange", () => {
         },
       ),
       { numRuns: 500 },
+    );
+  });
+});
+
+describe("bubbleWidth", () => {
+  test("never past the row's room, never under 5 cells (or the row), fits a line that fits", () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 400 }), fc.integer({ min: 1, max: 400 }), (text, columns) => {
+        const w = bubbleWidth(text, columns);
+        const room = columns < 60 ? columns : Math.floor(columns * 0.7);
+        const longest = Math.max(0, ...text.split("\n").map(cellWidth));
+        expect(w).toBeLessThanOrEqual(Math.max(room, Math.min(5, columns)));
+        expect(w).toBeGreaterThanOrEqual(Math.min(5, columns));
+        if (longest + 4 <= room) expect(w).toBe(Math.max(longest + 4, Math.min(5, columns)));
+      }),
+      { numRuns: 2000 },
+    );
+  });
+});
+
+describe("stampReply", () => {
+  test("the time leads and the text follows unchanged", () => {
+    fc.assert(
+      fc.property(fc.string(), epoch, epoch, fc.boolean(), (text, at, now, seconds) => {
+        const time = fmtTime(at, now, seconds);
+        const s = stampReply(text, at, now, seconds);
+        expect([`${time} · ${text}`, `${time}\n\n${text}`]).toContain(s);
+      }),
+      { numRuns: 2000 },
     );
   });
 });

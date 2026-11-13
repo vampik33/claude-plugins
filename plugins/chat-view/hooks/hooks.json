@@ -1,0 +1,4 @@
+{
+  "description": "chat-view: session.append stamps each typed prompt and reply row, turn.step each reply's first token, turn.complete each turn's end; ui.render draws prompts as bubbles and adds the times to UserMessage, AssistantMessage and TurnDuration rows",
+  "modules": ["./register.tsx"]
+}

@@ -1,5 +1,5 @@
 /**
- * formal-verify T4: fleet, continuity and prompt-clock functions the Lean models leave out.
+ * formal-verify T4: fleet, continuity and chat-view functions the Lean models leave out.
  * Spec answers in .formal-verify/targets.md § T4. Guarantee ceiling: EXPLORED.
  */
 import { describe, expect, test } from "bun:test";
@@ -27,7 +27,7 @@ import {
   KEEP,
   parseTranscript,
   promptText,
-} from "../../plugins/prompt-clock/hooks/core.ts";
+} from "../../plugins/chat-view/hooks/core.ts";
 
 const SEED = Number(process.env.FV_SEED ?? 20261026);
 const RUNS = Number(process.env.FV_RUNS ?? 300);
@@ -686,7 +686,7 @@ function transcriptProperty(keys: string[]) {
 describe("P3 parseTranscript, past the cap", () => {
   // P3 (Q5: "the result stays within the limits cap enforces"): more typed prompts than KEEP keep
   // exactly the newest KEEP (cap's docstring: "the newest win")
-  // mutant: prompt-clock core.ts:70 `if (entries.length <= keep) return record;` -> `return record;`   input: any
+  // mutant: chat-view core.ts:70 `if (entries.length <= keep) return record;` -> `return record;`   input: any
   test("more than KEEP prompts keep the newest KEEP", () => {
     fc.assert(
       fc.property(fc.integer({ min: KEEP + 1, max: KEEP + 50 }), fc.nat(1_000), (n, shift) => {
@@ -707,7 +707,7 @@ describe("P3 parseTranscript, past the cap", () => {
 describe("P3 parseTranscript", () => {
   // P3 (Q5: "every typed prompt's text and uuid map to its timestamp, including keys like
   //     __proto__; never throws; the result stays within cap's limit"); turn ends by duration too
-  // mutant: prompt-clock core.ts:119 `!row.isMeta &&` -> ``   input: a meta row
+  // mutant: chat-view core.ts:190 `!row.isMeta &&` -> ``   input: a meta row
   test("each typed prompt's uuid and text map to its time, any key", () => {
     fc.assert(
       transcriptProperty(["__proto__", "constructor", "toString", "hasOwnProperty", "", "a"]),
@@ -717,7 +717,7 @@ describe("P3 parseTranscript", () => {
 
   // P3, the same checks with no "__proto__" key: a sub-case of the property above, kept so its
   // other checks still bite while that one is VIOLATED
-  // mutant: prompt-clock core.ts:119 `!row.isMeta &&` -> ``   input: a meta row
+  // mutant: chat-view core.ts:190 `!row.isMeta &&` -> ``   input: a meta row
   test("prompts other than __proto__: uuid and text map to their time", () => {
     fc.assert(transcriptProperty(["constructor", "toString", "hasOwnProperty", "", "a"]), opts());
   });

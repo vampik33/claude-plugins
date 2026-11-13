@@ -1,4 +1,0 @@
-{
-  "description": "prompt-clock: session.append stamps each typed prompt and turn.complete each turn's end; ui.render adds the times to UserMessage and TurnDuration rows",
-  "modules": ["./register.tsx"]
-}

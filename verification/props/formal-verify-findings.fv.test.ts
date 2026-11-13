@@ -26,7 +26,7 @@ import {
   compactInstructions,
   openTodos,
 } from "../../plugins/continuity/hooks/core.ts";
-import { parseTranscript, timeOf } from "../../plugins/prompt-clock/hooks/core.ts";
+import { parseTranscript, timeOf } from "../../plugins/chat-view/hooks/core.ts";
 
 const T0 = 1_000_000_000;
 const shell = (o: Partial<ScanShell>): ScanShell => ({

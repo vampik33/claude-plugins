@@ -2,7 +2,7 @@
 
 ## Mods (function-hook plugins)
 
-big-picture, codex-review, continuity, effort-pilot, fix-findings, fleet, memory-watch, palette, prompt-clock, ship and watchdog are TypeScript mods, not shell hooks.
+big-picture, chat-view, codex-review, continuity, effort-pilot, fix-findings, fleet, memory-watch, palette, ship and watchdog are TypeScript mods, not shell hooks.
 
 - Check: `claude plugin validate <dir>` and `claude plugin test <dir>`; `tsc -p <dir>` once the engine has loaded the mod (it lays `.claude-plugin/types/`, gitignored)
 - Type files in `<mod>/.claude-plugin/types/` are from whichever build last loaded the mod (its header says which); a fresh `tsc -p` can pass on old types, so also check against the current build's `claude-code.d.ts`, which the plugin-authoring skill writes when it loads
@@ -25,7 +25,7 @@ Mod gotchas:
 - See the real band, which tests don't paint: `tmux new-session -d -s probe -x 140 -y 40 -c "$PWD" 'claude --plugin-dir <mod dir>'`, then `tmux capture-pane -p -t probe` and `tmux kill-session -t probe`; installed mods load too, so name the working copies with `--plugin-dir`
 - When a render test breaks after a Claude Code update, print `JSON.stringify(await ui.drawn())` from a throwaway `tests/zz-probe.test.tsx` (delete it after) to see the shape the engine now hands back, before changing a mod
 - Mod `.tsx` files aren't prettier-clean, so the format-on-save hook reflows unrelated lines; revert that churn to keep diffs surgical
-- Some `core.ts`/`ttl.ts` functions (fleet `trim`/`applyStatuses`/`endShell`, codex-review `trimJobs`, continuity `decideTtl`/`observeTtl`, prompt-clock `turnEnd`/`cap`) have Lean models in `verification/lean/Plugins/`: change the behaviour and update the model and proofs too. `diff.lean.test.ts` fails when they drift, and `run.sh` rejects `sorry`.
+- Some `core.ts`/`ttl.ts` functions (fleet `trim`/`applyStatuses`/`endShell`, codex-review `trimJobs`, continuity `decideTtl`/`observeTtl`, chat-view `turnEnd`/`cap`, Lean module still `PromptClock`) have Lean models in `verification/lean/Plugins/`: change the behaviour and update the model and proofs too. `diff.lean.test.ts` fails when they drift, and `run.sh` rejects `sorry`.
 - A `core.ts` function that returns a shell script (big-picture `openArgv`, watchdog's scan scripts) is tested twice: its text in `tests/*.test.tsx`, its behaviour run for real in `verification/props/<mod>.prop.test.ts` with `Bun.spawnSync(argv, { env: { PATH: dir } })`, `dir` a temp dir holding symlinked tools and fake commands. Change the script, update both. For POSIX `sh` portability, rerun it under `debian:stable-slim` (`dash`) and `busybox:stable` in docker.
 
 ## Conventions

@@ -20,7 +20,7 @@ import {
   observeTtl,
   type Sample,
 } from "../../plugins/continuity/hooks/ttl.ts";
-import { cap, turnEnd } from "../../plugins/prompt-clock/hooks/core.ts";
+import { cap, turnEnd } from "../../plugins/chat-view/hooks/core.ts";
 
 const ORACLE = join(import.meta.dir, "../lean/.lake/build/bin/oracle");
 const RUNS = 2000;
@@ -246,7 +246,7 @@ describe("Lean ≡ TypeScript", () => {
       }),
     ));
 
-  test("prompt-clock turnEnd", () =>
+  test("chat-view turnEnd", () =>
     differential(
       "turnEnd",
       fc.record({
@@ -259,7 +259,7 @@ describe("Lean ≡ TypeScript", () => {
       ({ turns, durationMs }) => ({ turns: Object.entries(turns), durationMs }),
     ));
 
-  test("prompt-clock cap", () =>
+  test("chat-view cap", () =>
     differential(
       "cap",
       fc.record({

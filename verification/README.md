@@ -27,8 +27,8 @@ Needs `elan` (Lean), `bun`, `claude`, `shellcheck` and `bats` on `PATH` (`run.sh
 | fleet `endShell` | ending a shell twice reports it once |
 | continuity `decideTtl` | precedence: option › `FORCE_PROMPT_CACHING_5M` › … › account default |
 | continuity `observeTtl` | 1h is sticky; requests ≤ 5m10s apart never change the answer; 1h and 5m are only concluded from the right evidence |
-| prompt-clock `turnEnd` | an answer is within 1 s and no recorded turn is closer; nothing within 1 s → no answer |
-| prompt-clock `cap` | keeps exactly `min(n, keep)`; nothing dropped is newer than anything kept |
+| chat-view `turnEnd` | an answer is within 1 s and no recorded turn is closer; nothing within 1 s → no answer |
+| chat-view `cap` | keeps exactly `min(n, keep)`; nothing dropped is newer than anything kept |
 | continuity handover loop | ≥ 3 turns between automatic handovers |
 
 ## Limits

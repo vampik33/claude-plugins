@@ -1,8 +1,20 @@
 # Changelog
 
-All notable changes to the prompt-clock plugin will be documented in this file.
+All notable changes to the chat-view plugin (formerly prompt-clock) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [0.2.0] - 2026-11-13
+
+### Added
+- Your prompts drawn as bubbles on the right of the terminal, with the send time under each (`bubbles` option, on by default)
+- The time each reply started streaming, in front of the block that opens it; a resumed session's earlier replies show when their row was written
+
+### Changed
+- Renamed from `prompt-clock` to `chat-view`: uninstall `prompt-clock@vampik-plugins` and install `chat-view@vampik-plugins`
+
+### Fixed
+- Prompts sent from the Claude desktop app get their send time: the desktop app's prompts arrive as `sdk` or unstamped, not `composer`, so the mod skipped them. Remote Control (`bridge`) prompts get it too
 
 ## [0.1.3] - 2026-10-26
 

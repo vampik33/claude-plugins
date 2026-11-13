@@ -1,10 +1,16 @@
 {
-  "name": "prompt-clock",
-  "version": "0.1.3",
-  "description": "Shows when you sent each prompt, and when each turn started and ended, in the transcript.",
+  "name": "chat-view",
+  "version": "0.2.0",
+  "description": "Draws your prompts as chat bubbles on the right of the terminal, and shows when you sent each prompt, when each reply started and when each turn ended.",
   "author": { "name": "vampik33" },
   "types": "./types/index.d.ts",
   "userConfig": {
+    "bubbles": {
+      "type": "boolean",
+      "title": "Prompt bubbles",
+      "description": "Draws your prompts in a bubble on the right of the terminal, with the send time under it",
+      "default": true
+    },
     "seconds": {
       "type": "boolean",
       "title": "Show seconds",

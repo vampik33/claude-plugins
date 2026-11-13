@@ -327,6 +327,8 @@ describe("band", () => {
       await clock.advance(4 * MIN);
       ui = await band();
       expect(await ui.find({ text: /watchdog · ⚠ hang\.sh quiet 6m\/10m/ })).toBeDefined();
+      // its own part of the band, with no blank row above it
+      expect(JSON.stringify(await ui.drawn())).not.toContain("marginTop");
       await ui.unmount();
     });
 });

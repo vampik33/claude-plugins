@@ -208,6 +208,8 @@ describe("session", () => {
         await ui.find({ type: "Text", text: "ship · main ↑2 · ●1 uncommitted · fleet 0.4.2 → 0.5.0" }),
       ).toBeDefined();
       expect((await ui.find({ key: "ship-run" }))?.text).toBe("ship");
+      // its own part of the band, with no blank row above it
+      expect(JSON.stringify(await ui.drawn())).not.toContain("marginTop");
       await ui.unmount();
 
       w.ahead = 0;

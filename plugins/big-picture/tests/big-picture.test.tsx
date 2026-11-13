@@ -829,9 +829,11 @@ describe("session", () => {
       expect((await ui.find({ key }))?.props.hotkey).toBe(
         surface === "terminal" ? hotkey : undefined,
       );
-    expect((await ui.find({ key: "band:20-big-picture" }))?.props.justifyContent).toBe(
+    expect((await ui.find({ key: "band:big-picture" }))?.props.justifyContent).toBe(
       surface === "terminal" ? undefined : "space-between",
     );
+    // its own part of the band, with no blank row above it
+    expect(JSON.stringify(await ui.drawn())).not.toContain("marginTop");
     await ui.press({ key: "big-picture-show" });
     await ui.unmount();
     expect(seen.opens).toEqual([`file://${PAGE}`, `file://${PAGE}`]);

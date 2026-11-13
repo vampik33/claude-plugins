@@ -669,14 +669,14 @@ describe("session", () => {
       await spawn($, "map callers");
       ui = await mount();
       const drawn: any = await ui.drawn();
-      // in the band's shared column: one blank row above it, none between rows
-      expect(drawn.props).toMatchObject({
-        key: "band-stack",
-        flexDirection: "column",
-        marginTop: 1,
-      });
-      expect(drawn.children.at(-1).props.key).toBe("band:60-fleet");
-      expect(drawn.children.at(-1).props.marginTop).toBeUndefined();
+      // its own part of the band, one line with no blank row above it
+      const own =
+        drawn.part?.plugin === "fleet"
+          ? drawn
+          : drawn.children.find((c: any) => c.part?.plugin === "fleet");
+      expect(own.props).toEqual({ flexDirection: "column" });
+      expect(own.children.at(-1).props.key).toBe("band:fleet");
+      expect(own.children.at(-1).props.marginTop).toBeUndefined();
       expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
       expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
       await ui.press({ key: "fleet-toggle" });
@@ -703,7 +703,7 @@ describe("session", () => {
         expect((await ui.find({ key: "fleet-toggle" }))?.props.hotkey).toBe(
           surface === "terminal" ? "f" : undefined,
         );
-        expect((await ui.find({ key: "band:60-fleet" }))?.props.justifyContent).toBe(
+        expect((await ui.find({ key: "band:fleet" }))?.props.justifyContent).toBe(
           surface === "terminal" ? undefined : "space-between",
         );
         await ui.press({ key: "fleet-toggle" });

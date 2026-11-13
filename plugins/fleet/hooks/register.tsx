@@ -31,7 +31,6 @@ import {
   trim,
 } from "./core.ts";
 import { drawFleet, type FleetView } from "./view.tsx";
-import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "fleet";
 const ENDED = new Set(["completed", "failed", "killed"]);
@@ -523,7 +522,7 @@ export const register: Register = (on, options) => {
     return drawFleet($.ui.resolve(e), view, Date.now());
   });
 
-  // its own line under the other bands: the counts and a show/hide toggle
+  // its own line in the band: the counts and a show/hide toggle
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.viewport?.isFullscreen !== undefined)
       t.docks = e.viewport.isFullscreen;
@@ -538,7 +537,7 @@ export const register: Register = (on, options) => {
     const desk = e.surface === "desktop";
     const row = (
       <Box
-        key="band:60-fleet"
+        key="band:fleet"
         flexDirection="row"
         columnGap={2}
         justifyContent={desk ? "space-between" : undefined}
@@ -559,8 +558,9 @@ export const register: Register = (on, options) => {
       </Box>
     );
     return (
-      <Box key={STACK} flexDirection="column" marginTop={1}>
-        {stackRows(below, row)}
+      <Box flexDirection="column">
+        {below}
+        {row}
       </Box>
     );
   });

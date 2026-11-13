@@ -12,7 +12,6 @@ import {
   type Hunk,
   type MemoryRoots,
 } from "./core.ts";
-import { STACK, stackRows } from "./stack.ts";
 
 const PANE = "memory-watch";
 
@@ -172,7 +171,7 @@ export const register: Register = (on) => {
     );
   });
 
-  // its own line under the other bands: a show/hide toggle, once there is
+  // its own line in the band: a show/hide toggle, once there is
   // something to show (or the pane is open, so it can be hidden)
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
@@ -185,7 +184,7 @@ export const register: Register = (on) => {
     const desk = e.surface === "desktop";
     const row = (
       <Box
-        key="band:10-memory-watch"
+        key="band:memory-watch"
         flexDirection="row"
         columnGap={2}
         justifyContent={desk ? "space-between" : undefined}
@@ -205,8 +204,9 @@ export const register: Register = (on) => {
       </Box>
     );
     return (
-      <Box key={STACK} flexDirection="column" marginTop={1}>
-        {stackRows(below, row)}
+      <Box flexDirection="column">
+        {below}
+        {row}
       </Box>
     );
   });

@@ -13,7 +13,6 @@ import {
   staleMods,
   tailOf,
 } from "./core.ts";
-import { STACK, stackRows } from "./stack.ts";
 
 const status = atom(
   { plugin: "ship", key: "status" } as const,
@@ -199,7 +198,7 @@ export const register: Register = (on) => {
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);
     const row = (
-      <Box key="band:30-ship" flexDirection="row" columnGap={2}>
+      <Box key="band:ship" flexDirection="row" columnGap={2}>
         <Text dimColor>{bandLine(s)}</Text>
         {busy ? (
           <Text color="cyan">shipping…</Text>
@@ -217,8 +216,9 @@ export const register: Register = (on) => {
       </Box>
     );
     return (
-      <Box key={STACK} flexDirection="column" marginTop={1}>
-        {stackRows(below, row)}
+      <Box flexDirection="column">
+        {below}
+        {row}
       </Box>
     );
   });

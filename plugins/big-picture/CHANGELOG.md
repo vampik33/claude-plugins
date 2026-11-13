@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.2] - 2026-11-13
+
+### Fixed
+- The band line is its own part of the band with no blank row above it, so mods' lines no longer have blank rows between them. The shared `stack.ts` column is gone: Claude Code now draws each mod's band tree as a separate part, so the column could no longer merge or order the mods' lines
+
 ## [0.5.1] - 2026-11-13
 
 ### Changed

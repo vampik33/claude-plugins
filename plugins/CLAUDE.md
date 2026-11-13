@@ -15,6 +15,7 @@ big-picture, codex-review, continuity, effort-pilot, fix-findings, fleet, memory
 Mod gotchas:
 - Module variables reset on every hot reload; anything that must survive goes in `$.state` and is restored in `session.start` (timers re-armed there too)
 - `/clear` fires `session.end` with `reason: 'clear'` and no `session.start` after it; reset session-scoped state there
+- A prompt typed mid-turn fires `prompt.submit` at once (with the running turn's `e.turnId`), then queues: make per-turn decisions in `turn.start` and key them by its `turnId`
 - Render hooks can't write `$.state`: keep values like `e.viewport.isFullscreen` in a module variable; open a pane unasked only when it is `true`
 - `$.session.compact` is refused inside a `command.run` hook; defer it with `$.clock.after(0, …)`
 - `classic.*`, `session.compact` and `skill.prompt` hooks don't run where an organization manages Claude Code; say so in the mod's README

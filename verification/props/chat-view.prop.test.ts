@@ -1,8 +1,11 @@
 /**
  * Property tests for chat-view/hooks/core.ts pure functions.
  */
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   bubbleWidth,
@@ -16,6 +19,8 @@ import {
   stampReply,
   turnEnd,
   turnRange,
+  TRANSCRIPT_TAIL_BYTES,
+  transcriptTailArgv,
 } from "../../plugins/chat-view/hooks/core.ts";
 
 const epoch = fc.integer({ min: 1_000_000_000_000, max: 2_000_000_000_000 });
@@ -290,14 +295,19 @@ describe("turnRange", () => {
 describe("bubbleWidth", () => {
   test("never past the row's room, never under 5 cells (or the row), fits a line that fits", () => {
     fc.assert(
-      fc.property(fc.string({ maxLength: 400 }), fc.integer({ min: 1, max: 400 }), (text, columns) => {
-        const w = bubbleWidth(text, columns);
-        const room = columns < 60 ? columns : Math.floor(columns * 0.7);
-        const longest = Math.max(0, ...text.split("\n").map(cellWidth));
-        expect(w).toBeLessThanOrEqual(Math.max(room, Math.min(5, columns)));
-        expect(w).toBeGreaterThanOrEqual(Math.min(5, columns));
-        if (longest + 4 <= room) expect(w).toBe(Math.max(longest + 4, Math.min(5, columns)));
-      }),
+      fc.property(
+        fc.string({ maxLength: 400 }),
+        fc.integer({ min: 1, max: 400 }),
+        (text, columns) => {
+          const w = bubbleWidth(text, columns);
+          const room = columns < 60 ? columns : Math.floor(columns * 0.7);
+          const longest = Math.max(0, ...text.split("\n").map(cellWidth));
+          expect(w).toBeLessThanOrEqual(Math.max(room, Math.min(5, columns)));
+          expect(w).toBeGreaterThanOrEqual(Math.min(5, columns));
+          if (longest + 4 <= room)
+            expect(w).toBe(Math.max(longest + 4, Math.min(5, columns)));
+        },
+      ),
       { numRuns: 2000 },
     );
   });
@@ -306,12 +316,64 @@ describe("bubbleWidth", () => {
 describe("stampReply", () => {
   test("the time leads and the text follows unchanged", () => {
     fc.assert(
-      fc.property(fc.string(), epoch, epoch, fc.boolean(), (text, at, now, seconds) => {
-        const time = fmtTime(at, now, seconds);
-        const s = stampReply(text, at, now, seconds);
-        expect([`${time} · ${text}`, `${time}\n\n${text}`]).toContain(s);
-      }),
+      fc.property(
+        fc.string(),
+        epoch,
+        epoch,
+        fc.boolean(),
+        (text, at, now, seconds) => {
+          const time = fmtTime(at, now, seconds);
+          const s = stampReply(text, at, now, seconds);
+          expect([`${time} · ${text}`, `${time}\n\n${text}`]).toContain(s);
+        },
+      ),
       { numRuns: 2000 },
     );
+  });
+});
+
+describe("transcriptTailArgv, run for real", () => {
+  const dir = mkdtempSync(join(tmpdir(), "chat-view-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const run = (path: string) => {
+    const r = Bun.spawnSync(transcriptTailArgv(path));
+    return { code: r.exitCode, out: r.stdout.toString() };
+  };
+
+  test("a long transcript: the last TRANSCRIPT_TAIL_BYTES, and its whole rows parse", () => {
+    const row = {
+      type: "user",
+      uuid: "late",
+      timestamp: new Date(2026, 10, 13, 16, 42, 7).toISOString(),
+      message: { content: "late prompt" },
+    };
+    const path = join(dir, "long.jsonl");
+    // over 4 MiB, the cap $.fs.read refuses
+    writeFileSync(path, `${"x".repeat(5_000_000)}\n${JSON.stringify(row)}\n`);
+    const { code, out } = run(path);
+    expect(code).toBe(0);
+    expect(out.length).toBe(TRANSCRIPT_TAIL_BYTES);
+    expect(parseTranscript(out).sent.late).toBe(Date.parse(row.timestamp));
+  });
+
+  test("a short transcript comes back whole", () => {
+    const path = join(dir, "short.jsonl");
+    writeFileSync(path, "a\nb\n");
+    expect(run(path)).toEqual({ code: 0, out: "a\nb\n" });
+  });
+
+  test("a path starting with - is a path, not an option", () => {
+    const path = join(dir, "-n");
+    writeFileSync(path, "dash\n");
+    expect(
+      Bun.spawnSync(["tail", "-c", "10", "--", "-n"], {
+        cwd: dir,
+      }).stdout.toString(),
+    ).toBe("dash\n");
+    expect(run(path).out).toBe("dash\n");
+  });
+
+  test("a missing file prints nothing", () => {
+    expect(run(join(dir, "missing.jsonl")).out).toBe("");
   });
 });

@@ -116,6 +116,18 @@ describe("transcript", () => {
   });
 });
 
+/** Beneath the plugin: `tail` printing what `out` gives for its argv. */
+const tailOf = (on: any, out: (argv: readonly string[]) => string) =>
+  on("process.run", (_$: unknown, e: { argv: readonly string[] }) => ({
+    value: {
+      exitCode: 0,
+      stdout: out(e.argv),
+      stderr: "",
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
+  }));
+
 describe("rows", () => {
   test("a resumed session's typed prompt gets its send time; a notification's does not", async ($, on) => {
     mock.clock(on, { now: at(18, 0, 0) });
@@ -125,7 +137,7 @@ describe("rows", () => {
       timestamp: new Date(at(16, 42, 7)).toISOString(),
       message: { content: "run the tests" },
     };
-    on("fs.read", () => ({ value: JSON.stringify(row) + "\n" }));
+    tailOf(on, () => JSON.stringify(row) + "\n");
     on("classic.SessionStart", () => ({}));
     echoText(on);
     await $.classic.SessionStart({
@@ -203,11 +215,47 @@ describe("rows", () => {
     }
   });
 
+  test("a long transcript is read by its tail: a cut first line is skipped, the rows after it keep their times", async ($, on) => {
+    mock.clock(on, { now: at(18, 0, 0) });
+    const row = {
+      type: "user",
+      uuid: "row-9",
+      timestamp: new Date(at(16, 42, 7)).toISOString(),
+      message: { content: "late prompt" },
+    };
+    let argv: readonly string[] = [];
+    tailOf(on, (a) => {
+      argv = a;
+      return `"cut":"half a row"}\n${JSON.stringify(row)}\n`;
+    });
+    on("classic.SessionStart", () => ({}));
+    echoText(on);
+    await $.classic.SessionStart({
+      source: "resume",
+      transcript_path: "/long.jsonl",
+    } as never);
+    expect(argv).toEqual(["tail", "-c", "4000000", "--", "/long.jsonl"]);
+
+    const ui = await $.ui.mount({
+      plugin: "chat-view",
+      surface: "desktop",
+      component: "UserMessage",
+      requestId: "row-9",
+      props: {
+        text: "late prompt",
+        origin: { kind: "composer" },
+        isExpanded: false,
+      },
+    } as never);
+    expect(await ui.find({ type: "Text", text: /16:42:07/ })).toBeDefined();
+    await ui.unmount();
+  });
+
   test("the transcript is read on resume and fork, not on a fresh start", async ($, on) => {
     const reads: string[] = [];
-    on("fs.read", (_$, e) => {
-      reads.push(e.path);
-      return { value: "" };
+    tailOf(on, (argv) => {
+      reads.push(argv[argv.length - 1] ?? "");
+      return "";
     });
     on("classic.SessionStart", () => ({}));
     for (const source of ["startup", "clear", "compact"] as const)

@@ -85,7 +85,7 @@
     {
       "name": "chat-view",
       "description": "Your prompts as chat bubbles on the right of the terminal, with the send time under each; the time each reply started streaming; start → end times on each turn's duration line",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "author": {
         "name": "vampik33"
       },

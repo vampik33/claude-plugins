@@ -34,6 +34,7 @@ Coming from `prompt-clock`: `claude plugin uninstall prompt-clock@vampik-plugins
 - `turn.complete` records each turn's end; `ui.render` on `TurnDuration` draws the line with start → end (terminal only: other surfaces draw their own footer).
 - A resumed session reads earlier prompts' and replies' times from its transcript file. The file keeps when a reply's row was written, not its first token, so an earlier reply shows that time.
   That read runs in the classic `SessionStart` hook, which does not run where an organization manages Claude Code (there only plugins the organization lists run classic hooks): there, earlier rows of a resumed session show no time.
+- A slash command you type (`/review the diff`, a skill) keeps Claude Code's own `❯ /review the diff` line: Claude Code draws it itself, and no mod hook sees it, so it gets no bubble. `session.append` on the command's row adds a `sent 16:42:07` line under it instead, kept in the transcript so a resumed session shows it too. The bubble never carries a command's time, so it is never shown twice. A built-in command that does not ask the model (`/cost`, `/context`) gets no line.
 - Times from another day get the date: `Oct 4 23:10:05`.
 
 ## Configuration

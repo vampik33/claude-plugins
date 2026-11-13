@@ -4,6 +4,11 @@ All notable changes to the chat-view plugin (formerly prompt-clock) will be docu
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - 2026-11-13
+
+### Fixed
+- A typed slash command (`/review the diff`, a skill) shows when you sent it: a `sent 16:42:07` line under the command, kept in the transcript. Claude Code draws a command's line itself and no mod can restyle it, so it gets no bubble; it never shows the time twice
+
 ## [0.2.0] - 2026-11-13
 
 ### Added

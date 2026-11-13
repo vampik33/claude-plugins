@@ -6,6 +6,7 @@ import {
   cellWidth,
   fmtDuration,
   fmtTime,
+  isCommandEcho,
   isOwnPrompt,
   parseTranscript,
   promptText,
@@ -536,5 +537,135 @@ describe("live times", () => {
     });
     expect(await ui.find({ type: "Text", text: "sub text" })).toBeDefined();
     await ui.unmount();
+  });
+});
+
+describe("slash commands", () => {
+  /** Raises a slash command's echo row as a session appends it, from `kind`. */
+  const appendCommand = (
+    $: any,
+    uuid: string,
+    line: string,
+    kind: string,
+    extra = {},
+  ) =>
+    $.session.append({
+      door: "command",
+      origin: { kind },
+      uuid,
+      ...extra,
+      message: {
+        type: "user",
+        role: "user",
+        content: [{ type: "text", text: line }],
+      },
+    });
+  const echo =
+    "<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>the diff</command-args>";
+
+  test("a typed command's echo gets a sent line; another party's, a subagent's and a non-echo row get none", async ($, on) => {
+    mock.clock(on, { now: at(9, 30, 5) });
+    const logs: string[] = [];
+    on(
+      "ui.log",
+      (_$: unknown, e: { text: string }) => (
+        logs.push(e.text),
+        { value: undefined }
+      ),
+    );
+    await appendCommand($, "c1", echo, "composer");
+    await appendCommand($, "c2", echo, "scheduled-trigger");
+    await appendCommand($, "c3", echo, "composer", { agentId: "a1" });
+    await appendCommand(
+      $,
+      "c4",
+      "<local-command-stdout>ok</local-command-stdout>",
+      "composer",
+    );
+    expect(logs).toEqual(["sent 09:30:05"]);
+  });
+
+  test(
+    "seconds off: the sent line drops them",
+    { options: { seconds: false } },
+    async ($, on) => {
+      mock.clock(on, { now: at(9, 30, 5) });
+      const logs: string[] = [];
+      on(
+        "ui.log",
+        (_$: unknown, e: { text: string }) => (
+          logs.push(e.text),
+          { value: undefined }
+        ),
+      );
+      await appendCommand($, "c1", echo, "sdk");
+      expect(logs).toEqual(["sent 09:30"]);
+    },
+  );
+
+  test("a command's echo is no prompt: no bubble time for it, live or resumed", async ($, on) => {
+    mock.clock(on, { now: at(9, 30, 5) });
+    on("ui.log", () => ({ value: undefined }));
+    echoText(on);
+    await appendCommand($, "c1", echo, "composer");
+    const row = {
+      type: "user",
+      uuid: "c0",
+      timestamp: new Date(at(9, 0, 0)).toISOString(),
+      message: { content: echo },
+    };
+    expect(parseTranscript(JSON.stringify(row)).sent).toEqual({});
+    // prose or pasted code that mentions a tag is a prompt: it keeps its time on resume
+    for (const text of [
+      "Explain how <command-name> is parsed",
+      "```\n<command-name>/x</command-name>\n```",
+    ]) {
+      const prose = { ...row, uuid: "p0", message: { content: text } };
+      expect(parseTranscript(JSON.stringify(prose)).sent).toEqual({
+        p0: at(9, 0, 0),
+      });
+    }
+    for (const requestId of ["c1", "c0"]) {
+      const ui = await $.ui.mount({
+        plugin: "chat-view",
+        surface: "desktop",
+        component: "UserMessage",
+        requestId,
+        props: {
+          text: "/review the diff",
+          origin: { kind: "composer" },
+          isExpanded: false,
+        } as never,
+      });
+      expect(
+        await ui.find({ type: "Text", text: "/review the diff" }),
+      ).toBeDefined();
+      await ui.unmount();
+    }
+  });
+
+  test("a command's echo is told apart from a prompt that mentions one", () => {
+    expect(isCommandEcho([{ type: "text", text: echo }])).toBe(true);
+    expect(isCommandEcho("<command-name>/x</command-name>")).toBe(true);
+    expect(isCommandEcho("run /review on it")).toBe(false);
+    expect(
+      isCommandEcho(
+        "<command-name>/model</command-name>\n<command-message>model</command-message>",
+      ),
+    ).toBe(true);
+    expect(
+      isCommandEcho("Explain how <command-name> is parsed in this source file"),
+    ).toBe(false);
+    expect(
+      isCommandEcho("<command-name>/x</command-name> and what does this do?"),
+    ).toBe(false);
+    expect(isCommandEcho("<command-message>x</command-message>")).toBe(false);
+    // a long paste of tags stays linear (a backtracking regex took ~10 s here)
+    expect(
+      isCommandEcho(
+        "<command-name>/x</command-name>\n".repeat(30_000) + "tail",
+      ),
+    ).toBe(false);
+    expect(isCommandEcho([{ type: "tool_result" }])).toBe(false);
   });
 });

@@ -185,6 +185,37 @@ export function promptText(content: unknown): string | undefined {
 }
 
 /**
+ * Whether a user row is a typed slash command's echo
+ * (`<command-name>/review</command-name>`): the engine draws it itself, so
+ * its send time goes on a line of its own, never in a bubble.
+ */
+export function isCommandEcho(content: unknown): boolean {
+  const text = promptText(content);
+  if (text === undefined) return false;
+  // the whole row is the engine's command tags, a name among them: prose or code that mentions a tag is a prompt
+  let named = false;
+  let i = 0;
+  for (;;) {
+    ECHO_TAG.lastIndex = i;
+    const open = ECHO_TAG.exec(text);
+    if (!open) return named && text.slice(i).trim() === "";
+    const body = ECHO_TAG.lastIndex;
+    // indexOf, not a backtracking regex: a long paste of tags stays linear
+    const tag = open[1]!;
+    const close = text.indexOf(`</${tag}>`, body);
+    if (close < 0) return false;
+    if (tag === "command-name" && text[body] === "/") named = true;
+    i = close + tag.length + 3;
+  }
+}
+
+/** A `<command-message|name|args>` opening tag, whitespace before it, at `lastIndex`. */
+const ECHO_TAG = /\s*<(command-(?:message|name|args))>/y;
+
+/** The line under a slash command's echo: when it was sent. */
+export const sentLine = (time: string) => `sent ${time}`;
+
+/**
  * Times from a transcript file (JSONL): each typed prompt's row by uuid and
  * text, each reply row's by uuid and text, and each turn's end by its
  * duration. A reply row's time is when it was written, not its first token:
@@ -215,7 +246,8 @@ export function parseTranscript(jsonl: string): ChatViewTimes {
       typeof row.uuid === "string"
     ) {
       const text = promptText(row.message?.content);
-      if (text === undefined) continue;
+      // a command's time is already on its own line: never a second one in a bubble
+      if (text === undefined || isCommandEcho(row.message?.content)) continue;
       times.sent[row.uuid] = at;
       times.byText[text] = at;
     } else if (

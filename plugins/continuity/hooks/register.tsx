@@ -3,6 +3,7 @@ import type { EngineInterface, Register, SessionMessage } from "claude-code";
 
 import type { CacheDeadline, ContinuityGauge, ContinuityMode } from "../types";
 import {
+  bandOrder,
   bar,
   barSvg,
   blockingLimit,
@@ -581,4 +582,9 @@ export const register: Register = (on, options) => {
       </Box>
     );
   });
+
+  // codex, ctx, then model and effort are the band's last rows, in that order.
+  on("ui.render", { component: "AbovePromptList" }, async ($, e, next) =>
+    next({ ...e, props: { ...e.props, rows: bandOrder(e.props.rows) } }),
+  );
 };

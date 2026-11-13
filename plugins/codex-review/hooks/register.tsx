@@ -3,6 +3,7 @@ import type { EngineInterface, ProcessRunResult, Register } from "claude-code";
 
 import type { CxJob, CxMode, CxScope } from "../types";
 import {
+  bandOrder,
   buildPrompt,
   buildRawPrompt,
   chooseBase,
@@ -765,4 +766,9 @@ export const register: Register = (on, options) => {
       </Box>
     );
   });
+
+  // codex, ctx, then model and effort are the band's last rows, in that order.
+  on("ui.render", { component: "AbovePromptList" }, async ($, e, next) =>
+    next({ ...e, props: { ...e.props, rows: bandOrder(e.props.rows) } }),
+  );
 };

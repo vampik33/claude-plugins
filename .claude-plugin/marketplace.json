@@ -109,7 +109,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.3.9",
+      "version": "0.3.10",
       "author": {
         "name": "vampik33"
       },
@@ -121,7 +121,7 @@
     {
       "name": "continuity",
       "description": "Live context gauge, session length and prompt-cache countdown; handover note, compaction and continue past a threshold; resume after a usage limit",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "author": {
         "name": "vampik33"
       },
@@ -193,7 +193,7 @@
     {
       "name": "effort-pilot",
       "description": "Jev picks the effort level for each prompt and the mod applies it on models where a change keeps the prompt cache; each answer ends with its model and effort, and the last band line shows them",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "vampik33"
       },

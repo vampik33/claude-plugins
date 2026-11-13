@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from "claude-code";
 
 import type { EffortContext, Step, Verdict } from "../types";
 import {
+  bandOrder,
   footerLine,
   JEV_TIMEOUT_MS,
   JEV_URL,
@@ -34,8 +35,6 @@ const context = atom(
 /** Module variables: read again at each load. */
 let firstParty: boolean | undefined;
 let warned = false;
-/** The plugin name the band asks this mod's row by (`e.plugin`). */
-let bandName = NAME;
 
 const truthy = (v: string | undefined) =>
   !!v && v !== "0" && v.toLowerCase() !== "false";
@@ -197,7 +196,6 @@ export const register: Register = (on) => {
   });
 
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
-    bandName = e.plugin ?? NAME;
     if (e.props.hasSurvey) return next(e);
     const s = await read($, step);
     const m = s?.model ?? (await $.session.model().catch(() => undefined));
@@ -222,12 +220,8 @@ export const register: Register = (on) => {
     );
   });
 
-  // The model and effort row is the band's last line, under every other mod's.
-  on("ui.render", { component: "AbovePromptList" }, async ($, e, next) => {
-    const rows = e.props.rows;
-    const i = rows.findIndex((r) => r.plugin === bandName);
-    if (i < 0 || i === rows.length - 1) return next(e);
-    const moved = [...rows.slice(0, i), ...rows.slice(i + 1), rows[i]!];
-    return next({ ...e, props: { ...e.props, rows: moved } });
-  });
+  // codex, ctx, then model and effort are the band's last rows, in that order.
+  on("ui.render", { component: "AbovePromptList" }, async ($, e, next) =>
+    next({ ...e, props: { ...e.props, rows: bandOrder(e.props.rows) } }),
+  );
 };

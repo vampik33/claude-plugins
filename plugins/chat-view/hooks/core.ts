@@ -112,7 +112,8 @@ export function isOwnPrompt(origin: { kind: string }): boolean {
 }
 
 /** A heading, list item, quote, table, fence, HTML, rule or indented code. */
-const BLOCK_START = /^( {4}|\t|\s*([#>|<]|[-*+]\s|\d+[.)]\s|```|~~~|([-*_])\3\3))/;
+const BLOCK_START =
+  /^( {4}|\t|\s*([#>|<]|[-*+]\s|\d+[.)]\s|```|~~~|([-*_])\3\3))/;
 
 /** The reply's text with the time it started in front; on a line of its own before a block that a prefix would break. */
 export function stampReply(
@@ -123,9 +124,7 @@ export function stampReply(
 ): string {
   const time = fmtTime(at, now, seconds);
   // a block keeps its meaning only at the line's start
-  return BLOCK_START.test(text)
-    ? `${time}\n\n${text}`
-    : stampText(text, time);
+  return BLOCK_START.test(text) ? `${time}\n\n${text}` : stampText(text, time);
 }
 
 /** Wide (CJK, emoji) code points: two cells each. */
@@ -159,7 +158,12 @@ export function bubbleWidth(text: string, columns: number): number {
 export const textBlocks = (content: unknown): string[] =>
   Array.isArray(content)
     ? content
-        .filter((b: any) => b?.type === "text" && typeof b.text === "string" && b.text.trim() !== "")
+        .filter(
+          (b: any) =>
+            b?.type === "text" &&
+            typeof b.text === "string" &&
+            b.text.trim() !== "",
+        )
         .map((b: any) => (b.text as string).trim())
     : [];
 

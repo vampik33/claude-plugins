@@ -16,8 +16,10 @@ import {
 
 /** Beneath the plugin: the engine draws a row's (possibly rewritten) text. */
 const echoText = (on: any) =>
-  on("ui.render", (_$: unknown, e: { props: { text?: string } }) =>
-    h("Text", null, e.props.text ?? "engine") as never,
+  on(
+    "ui.render",
+    (_$: unknown, e: { props: { text?: string } }) =>
+      h("Text", null, e.props.text ?? "engine") as never,
   );
 
 const at = (h: number, m: number, s: number, day = 5) =>
@@ -226,7 +228,13 @@ describe("chat view helpers", () => {
   test("the person's own prompts: terminal, desktop (sdk or unstamped) and Remote Control", () => {
     for (const kind of ["composer", "sdk", "bridge", "unclassified"])
       expect(isOwnPrompt({ kind })).toBe(true);
-    for (const kind of ["task-notification", "peer", "plugin", "channel", "scheduled-trigger"])
+    for (const kind of [
+      "task-notification",
+      "peer",
+      "plugin",
+      "channel",
+      "scheduled-trigger",
+    ])
       expect(isOwnPrompt({ kind })).toBe(false);
   });
 
@@ -252,20 +260,54 @@ describe("chat view helpers", () => {
     expect(stampReply("The folder is set.", t, now, true)).toBe(
       "16:42:07 · The folder is set.",
     );
-    for (const block of ["# Title", "- item", "1. step", "> quote", "```ts\nx\n```", "| a |", "    code", "---"])
+    for (const block of [
+      "# Title",
+      "- item",
+      "1. step",
+      "> quote",
+      "```ts\nx\n```",
+      "| a |",
+      "    code",
+      "---",
+    ])
       expect(stampReply(block, t, now, true)).toBe(`16:42:07\n\n${block}`);
-    for (const inline of ["**Done.**", "_note_", "2026 was fine.", "-1 is negative."])
+    for (const inline of [
+      "**Done.**",
+      "_note_",
+      "2026 was fine.",
+      "-1 is negative.",
+    ])
       expect(stampReply(inline, t, now, true)).toBe(`16:42:07 · ${inline}`);
   });
 
   test("a resumed transcript's reply rows by uuid and text; a sidechain's and a tool call's skipped", () => {
     const ts = "2026-10-05T13:42:09.000Z";
     const rows = [
-      { type: "assistant", uuid: "a1", timestamp: ts, message: { content: [{ type: "text", text: " Done. " }] } },
-      { type: "assistant", uuid: "a2", timestamp: ts, message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: {} }] } },
-      { type: "assistant", uuid: "a3", isSidechain: true, timestamp: ts, message: { content: [{ type: "text", text: "sub" }] } },
+      {
+        type: "assistant",
+        uuid: "a1",
+        timestamp: ts,
+        message: { content: [{ type: "text", text: " Done. " }] },
+      },
+      {
+        type: "assistant",
+        uuid: "a2",
+        timestamp: ts,
+        message: {
+          content: [{ type: "tool_use", id: "t", name: "Bash", input: {} }],
+        },
+      },
+      {
+        type: "assistant",
+        uuid: "a3",
+        isSidechain: true,
+        timestamp: ts,
+        message: { content: [{ type: "text", text: "sub" }] },
+      },
     ];
-    const parsed = parseTranscript(rows.map((r) => JSON.stringify(r)).join("\n"));
+    const parsed = parseTranscript(
+      rows.map((r) => JSON.stringify(r)).join("\n"),
+    );
     expect(parsed.replies).toEqual({ a1: Date.parse(ts) });
     expect(parsed.repliesByText).toEqual({ "Done.": Date.parse(ts) });
   });
@@ -289,7 +331,12 @@ describe("live times", () => {
     await appendPrompt($, "p1", "a peer says hi", "peer");
     const cases = [
       ["d1", "from the desktop", "sdk", "09:30:00 · from the desktop"],
-      ["d2", "unstamped desktop", "unclassified", "09:30:00 · unstamped desktop"],
+      [
+        "d2",
+        "unstamped desktop",
+        "unclassified",
+        "09:30:00 · unstamped desktop",
+      ],
       ["p1", "a peer says hi", "peer", "a peer says hi"],
     ] as const;
     for (const [requestId, text, kind, drawn] of cases) {
@@ -322,34 +369,53 @@ describe("live times", () => {
     await ui.unmount();
   });
 
-  test("bubbles off: the terminal stamps the text in place", { options: { bubbles: false } }, async ($, on) => {
-    mock.clock(on, { now: at(9, 30, 0) });
-    echoText(on);
-    await appendPrompt($, "u1", "plain row", "composer");
-    const ui = await $.ui.mount({
-      plugin: "chat-view",
-      surface: "terminal",
-      component: "UserMessage",
-      requestId: "u1",
-      props: { text: "plain row", origin: { kind: "composer" }, isExpanded: false } as never,
-    });
-    expect(await ui.find({ type: "Text", text: "09:30:00 · plain row" })).toBeDefined();
-    expect(await ui.find({ key: "chat-view-bubble" })).toBeUndefined();
-    await ui.unmount();
-  });
+  test(
+    "bubbles off: the terminal stamps the text in place",
+    { options: { bubbles: false } },
+    async ($, on) => {
+      mock.clock(on, { now: at(9, 30, 0) });
+      echoText(on);
+      await appendPrompt($, "u1", "plain row", "composer");
+      const ui = await $.ui.mount({
+        plugin: "chat-view",
+        surface: "terminal",
+        component: "UserMessage",
+        requestId: "u1",
+        props: {
+          text: "plain row",
+          origin: { kind: "composer" },
+          isExpanded: false,
+        } as never,
+      });
+      expect(
+        await ui.find({ type: "Text", text: "09:30:00 · plain row" }),
+      ).toBeDefined();
+      expect(await ui.find({ key: "chat-view-bubble" })).toBeUndefined();
+      await ui.unmount();
+    },
+  );
 
   test("the bubble's width follows the row's columns", async ($, on) => {
     mock.clock(on, { now: at(9, 30, 0) });
     on("ui.render", () => h("Text", null, "engine") as never);
-    for (const [columns, width] of [[120, 84], [40, 40]] as const) {
+    for (const [columns, width] of [
+      [120, 84],
+      [40, 40],
+    ] as const) {
       const ui = await $.ui.mount({
         plugin: "chat-view",
         surface: "terminal",
         component: "UserMessage",
         viewport: { columns, rows: 40 },
-        props: { text: "y".repeat(300), origin: { kind: "composer" }, isExpanded: false } as never,
+        props: {
+          text: "y".repeat(300),
+          origin: { kind: "composer" },
+          isExpanded: false,
+        } as never,
       });
-      expect((await ui.find({ key: "chat-view-bubble" }))?.props.width).toBe(width);
+      expect((await ui.find({ key: "chat-view-bubble" }))?.props.width).toBe(
+        width,
+      );
       await ui.unmount();
     }
   });
@@ -364,9 +430,20 @@ describe("live times", () => {
       await clock.advance(5000);
       yield { kind: "text", index: 0, text: " answer." };
       yield { kind: "text", index: 1, text: "Second block." };
-      return { turnId: "t1", index: 0, answer: "First answer.Second block.", toolUses: [], stopReason: "end_turn" };
+      return {
+        turnId: "t1",
+        index: 0,
+        answer: "First answer.Second block.",
+        toolUses: [],
+        stopReason: "end_turn",
+      };
     } as never);
-    const stream = $.turn.step({ turnId: "t1", index: 0, model: "claude-opus-5-5", messageCount: 1 });
+    const stream = $.turn.step({
+      turnId: "t1",
+      index: 0,
+      model: "claude-opus-5-5",
+      messageCount: 1,
+    });
     for await (const _ of stream) {
       // drain
     }
@@ -376,7 +453,11 @@ describe("live times", () => {
         door: "response",
         origin: { kind: "model", model: "claude-opus-5-5" },
         uuid,
-        message: { type: "assistant", role: "assistant", content: [{ type: "text", text }] },
+        message: {
+          type: "assistant",
+          role: "assistant",
+          content: [{ type: "text", text }],
+        },
       });
     await reply("r1", "First answer.");
     await reply("r2", "Second block.");
@@ -405,7 +486,9 @@ describe("live times", () => {
         requestId: "r1",
         props: { text: "First answer.", isFirstOfReply: false },
       });
-      expect(await cont.find({ type: "Text", text: "First answer." })).toBeDefined();
+      expect(
+        await cont.find({ type: "Text", text: "First answer." }),
+      ).toBeDefined();
       await cont.unmount();
     }
   });
@@ -415,9 +498,21 @@ describe("live times", () => {
     echoText(on);
     on("turn.step", async function* () {
       yield { kind: "text", index: 0, text: "sub text" };
-      return { turnId: "t2", index: 0, answer: "sub text", toolUses: [], stopReason: "end_turn" };
+      return {
+        turnId: "t2",
+        index: 0,
+        answer: "sub text",
+        toolUses: [],
+        stopReason: "end_turn",
+      };
     } as never);
-    const stream = $.turn.step({ turnId: "t2", index: 0, model: "claude-haiku-5-5", messageCount: 1, agentId: "a1" });
+    const stream = $.turn.step({
+      turnId: "t2",
+      index: 0,
+      model: "claude-haiku-5-5",
+      messageCount: 1,
+      agentId: "a1",
+    });
     for await (const _ of stream) {
       // drain
     }
@@ -426,7 +521,11 @@ describe("live times", () => {
       origin: { kind: "model", model: "claude-haiku-5-5" },
       uuid: "s1",
       agentId: "a1",
-      message: { type: "assistant", role: "assistant", content: [{ type: "text", text: "sub text" }] },
+      message: {
+        type: "assistant",
+        role: "assistant",
+        content: [{ type: "text", text: "sub text" }],
+      },
     });
     const ui = await $.ui.mount({
       plugin: "chat-view",

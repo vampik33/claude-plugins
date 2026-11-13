@@ -20,6 +20,9 @@ const PROMPT_CHARS = 4_000;
 const EARLIER_PROMPT_CHARS = 1_000;
 const ANSWER_CHARS = 1_500;
 
+/** A model id without its context suffix: `claude-opus-5-5[1m]` → `claude-opus-5-5`. */
+const baseModelId = (m: string) => m.replace(/\[.*\]$/, "");
+
 export const isLevel = (x: unknown): x is EffortLevel =>
   typeof x === "string" && (LEVELS as readonly string[]).includes(x);
 
@@ -51,15 +54,37 @@ export const withAnswer = (
 });
 
 /**
- * Jev's question: which effort level the prompt needs. Jev (TypeSafe) is a
- * third party, so it gets prompts and answer text only, never tool output or
- * file contents.
+ * The effort level the settings give `model` by default, as the engine
+ * resolves it: `CLAUDE_CODE_EFFORT_LEVEL`, then the model's
+ * `modelSettings.<id>.effortLevel` (where `/effort` saves it), then
+ * `effortLevel`; undefined when none names a level.
+ */
+export function configuredEffort(
+  settings: Readonly<Record<string, unknown>>,
+  model: string | undefined,
+  envLevel: string | undefined,
+): EffortLevel | undefined {
+  if (isLevel(envLevel)) return envLevel;
+  const byModel = settings.modelSettings as
+    | Record<string, { effortLevel?: unknown } | undefined>
+    | undefined;
+  const id = model && baseModelId(model);
+  const perModel = id ? byModel?.[id]?.effortLevel : undefined;
+  if (isLevel(perModel)) return perModel;
+  return isLevel(settings.effortLevel) ? settings.effortLevel : undefined;
+}
+
+/**
+ * Jev's question: which effort level the prompt needs, knowing the level the
+ * assistant runs at by default (`defaultLevel`), which also stands when Jev is
+ * unsure. Jev (TypeSafe) is a third party, so it gets prompts and answer text
+ * only, never tool output or file contents.
  */
 export function jevRequest(
   prompt: string,
   ctx: EffortContext,
   model: string | undefined,
-  current: Step["session"],
+  defaultLevel: Step["session"],
 ) {
   return {
     model: "jev-latest",
@@ -68,13 +93,13 @@ export function jevRequest(
       earlierPrompts: ctx.prompts,
       previousAnswer: ctx.answer,
       model: model ?? "unknown",
-      currentEffort: isLevel(current) ? current : "unknown",
+      defaultEffort: isLevel(defaultLevel) ? defaultLevel : "unknown",
     },
     questions: {
       effort: {
         type: "score",
         instructions:
-          "A coding assistant is about to work on `prompt`, in a conversation whose earlier prompts and last answer are given. How much reasoning effort does this prompt need?",
+          "A coding assistant is about to work on `prompt`, in a conversation whose earlier prompts and last answer are given. It runs at `defaultEffort` unless you confidently pick another level, and stays at `defaultEffort` when you are unsure. How much reasoning effort does this prompt need?",
         criteria: [
           "low: a lookup, a one-line answer, a yes/no, or a trivial mechanical edit",
           "medium: a small, well-specified change or a direct question about known code",
@@ -124,19 +149,19 @@ export function keepsCacheOnChange(
   firstParty: boolean,
 ): boolean {
   if (!firstParty) return false;
-  const id = model.replace(/\[.*\]$/, "");
+  const id = baseModelId(model);
   if (/^claude-(opus|sonnet|haiku)-5-5(\b|-)/.test(id)) return true;
   const fable = /^claude-fable-5-(\d+)(\b|-)/.exec(id);
   return fable !== null && Number(fable[1]) >= 1;
 }
 
 /**
- * The level a main-loop request goes out at: Jev's when it may steer, Jev is
- * at least MIN_CONFIDENCE sure and the request names a level. When Jev is
- * less sure, or made no call for this turn (`verdict` null), the level the
- * previous request went out at (`previous`), or the session's own before any.
- * Otherwise the session's own (none on a model without effort, a number left
- * as it is).
+ * The level a main-loop request goes out at. The session's own when Jev may
+ * not steer, failed, or the request names no level (none on a model without
+ * effort, a number left as it is). With no call for this turn (`verdict`
+ * null), the level the previous request went out at (`previous`), else the
+ * session's. Otherwise Jev's when it is at least MIN_CONFIDENCE sure, else
+ * the session's own (the configured default).
  */
 export function stepEffort(
   session: Step["session"],
@@ -145,8 +170,8 @@ export function stepEffort(
   previous?: Step["sent"],
 ): Step["session"] {
   if (!steers || !isLevel(session) || verdict?.kind === "failed") return session;
-  if (verdict && verdict.confidence >= MIN_CONFIDENCE) return verdict.level;
-  return isLevel(previous) ? previous : session;
+  if (!verdict) return isLevel(previous) ? previous : session;
+  return verdict.confidence >= MIN_CONFIDENCE ? verdict.level : session;
 }
 
 /** A model id as a short name: `claude-opus-5-5` → `opus-5-5`. */
@@ -164,7 +189,7 @@ export function verdictWords(step: Step): string | undefined {
   if (!step.steered)
     return `Jev advises ${verdict.level} ${pct(verdict.confidence)} (not applied: a change would re-cache this model)`;
   if (verdict.confidence < MIN_CONFIDENCE)
-    return `Jev unsure: ${verdict.level} ${pct(verdict.confidence)}, kept ${String(step.sent)}`;
+    return `Jev unsure: ${verdict.level} ${pct(verdict.confidence)}, session level ${String(step.sent)}`;
   return step.session === step.sent
     ? `Jev kept ${verdict.level} ${pct(verdict.confidence)}`
     : `Jev: ${String(step.session)} → ${verdict.level} ${pct(verdict.confidence)}`;

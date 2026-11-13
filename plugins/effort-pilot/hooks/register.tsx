@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from "claude-code";
 import type { EffortContext, Step, Verdict } from "../types";
 import {
   bandOrder,
+  configuredEffort,
   footerLine,
   JEV_TIMEOUT_MS,
   JEV_URL,
@@ -105,14 +106,24 @@ async function decide(
   prompt: string,
   turnId: string,
 ): Promise<void> {
-  const [ctx, last, model] = await Promise.all([
+  // The settings and env name the default before any request has: read
+  // alongside the rest, so the prompt waits for one round of reads.
+  const [ctx, last, model, settings, envLevel] = await Promise.all([
     read($, context),
     read($, step),
     $.session.model().catch(() => undefined),
+    $.settings.read().catch(() => ({})),
+    $.env.get("CLAUDE_CODE_EFFORT_LEVEL").catch(() => undefined),
   ]);
+  const m = model ?? last?.model;
   const v = await askJev(
     $,
-    jevRequest(prompt, ctx, model ?? last?.model, last?.session),
+    jevRequest(
+      prompt,
+      ctx,
+      m,
+      last?.session ?? configuredEffort(settings, m, envLevel),
+    ),
   );
   await Promise.all([
     update($, verdict, () => ({ ...v, turnId })),

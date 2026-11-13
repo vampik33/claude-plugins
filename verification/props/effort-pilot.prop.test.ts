@@ -59,17 +59,17 @@ describe("parseJev", () => {
 });
 
 describe("stepEffort", () => {
-  test("sends Jev's level when it is sure enough, else the previous level, and never adds or drops effort", () => {
+  test("sends Jev's level when it is sure enough, the session's when unsure, the previous level with no call, and never adds or drops effort", () => {
     fc.assert(
       fc.property(session, verdict, fc.boolean(), session, (s, v, steers, prev) => {
         const sent = stepEffort(s, v, steers, prev);
         if (s === undefined || typeof s === "number") expect(sent).toBe(s);
         else if (!steers || v?.kind === "failed") expect(sent).toBe(s);
-        else if (v !== null && v.confidence >= MIN_CONFIDENCE)
-          expect(sent).toBe(v.level);
+        else if (v !== null)
+          expect(sent).toBe(v.confidence >= MIN_CONFIDENCE ? v.level : s);
         else expect(sent).toBe(typeof prev === "string" ? prev : s);
       }),
-      // The unsure-with-a-previous-level case is under 1% of draws.
+      // The no-call-with-a-previous-level case is under 1% of draws.
       { numRuns: 2_000 },
     );
   });

@@ -8,11 +8,13 @@ import {
   emptyTimes,
   fmtDuration,
   fmtTime,
+  isCommandEcho,
   isOwnPrompt,
   mergeTimes,
   parseTranscript,
   promptText,
   replyText,
+  sentLine,
   stampReply,
   stampText,
   textBlocks,
@@ -79,6 +81,17 @@ export const register: Register = (on, options) => {
       sent: cap({ ...t.sent, [r.uuid]: at }),
       byText: cap({ ...t.byText, [text]: at }),
     }));
+    return r;
+  });
+
+  // a typed slash command's echo: the engine draws it and no ui.render hook
+  // sees it, so its send time is a line of its own under it (kept in the transcript)
+  on("session.append", { door: "command" }, async ($, e, next) => {
+    const r = await next(e);
+    if (e.agentId || !isOwnPrompt(e.origin) || "deny" in r) return r;
+    if (e.message.isMeta || !isCommandEcho(e.message.content)) return r;
+    const at = await $.clock.now();
+    $.ui.log(sentLine(fmtTime(at, at, seconds)));
     return r;
   });
 

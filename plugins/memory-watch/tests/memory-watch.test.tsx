@@ -46,10 +46,16 @@ describe("core", () => {
 
   test("memory files under CLAUDE_CONFIG_DIR and the autoMemoryDirectory", () => {
     const roots = { configDir: "/cfg/claude", memoryDir: "/data/mem" };
-    expect(memoryFile("/cfg/claude/projects/s/memory/a.md", roots)).toBe("a.md");
+    expect(memoryFile("/cfg/claude/projects/s/memory/a.md", roots)).toBe(
+      "a.md",
+    );
     expect(memoryFile("/data/mem/MEMORY.md", roots)).toBe("MEMORY.md");
-    expect(memoryFile("/cfg/claude/projects/s/memory/x/a.md", roots)).toBeUndefined();
-    expect(memoryFile("/cfg/claude/projects/memory/a.md", roots)).toBeUndefined();
+    expect(
+      memoryFile("/cfg/claude/projects/s/memory/x/a.md", roots),
+    ).toBeUndefined();
+    expect(
+      memoryFile("/cfg/claude/projects/memory/a.md", roots),
+    ).toBeUndefined();
     expect(memoryFile("/data/mem/sub/a.md", roots)).toBeUndefined();
     expect(memoryFile("/data/memo/a.md", roots)).toBeUndefined();
     expect(memoryFile("/data/mem/a.md")).toBeUndefined();
@@ -257,7 +263,9 @@ describe("session", () => {
         surface,
         ...PANE,
       });
-      const texts = (await ui.findAll({ type: "Text" })).map((t: any) => t.text);
+      const texts = (await ui.findAll({ type: "Text" })).map(
+        (t: any) => t.text,
+      );
       expect(texts).toEqual([
         "MEMORY.md (index)",
         "09:05 updated · +1 −0",
@@ -279,7 +287,10 @@ describe("session", () => {
         ...PANE,
       });
       expect(
-        await ui.find({ type: "Text", text: "No memory written this session." }),
+        await ui.find({
+          type: "Text",
+          text: "No memory written this session.",
+        }),
       ).toBeDefined();
       await ui.unmount();
     });
@@ -290,7 +301,9 @@ describe("session", () => {
         $.ui.mount({ plugin: "memory-watch", surface, ...BAND });
       await $.command.run({ command: "memory-watch", args: "" } as never);
       let ui = await mount();
-      expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe("hide");
+      expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe(
+        "hide",
+      );
       await ui.press({ key: "memory-watch-toggle" });
       await ui.unmount();
       ui = await mount();
@@ -323,10 +336,12 @@ describe("session", () => {
       expect(JSON.stringify(await ui.drawn())).not.toContain("marginTop");
       // the desktop: no hotkey badge, the button at the row's far end
       const toggle = await ui.find({ key: "memory-watch-toggle" });
-      expect(toggle?.props.hotkey).toBe(surface === "terminal" ? "m" : undefined);
-      expect((await ui.find({ key: "band:memory-watch" }))?.props.justifyContent).toBe(
-        surface === "terminal" ? undefined : "space-between",
+      expect(toggle?.props.hotkey).toBe(
+        surface === "terminal" ? "m" : undefined,
       );
+      expect(
+        (await ui.find({ key: "band:memory-watch" }))?.props.justifyContent,
+      ).toBe(surface === "terminal" ? undefined : "space-between");
       await ui.press({ key: "memory-watch-toggle" });
       expect(seen.opened).toBe(1);
       await ui.unmount();
@@ -334,14 +349,18 @@ describe("session", () => {
       // read while open: nothing counts
       await write($, `${DIR}/c.md`, MEMO);
       ui = await mount();
-      expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe("hide");
+      expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe(
+        "hide",
+      );
       expect(await ui.find({ type: "Text", text: /new/ })).toBeUndefined();
       await ui.press({ key: "memory-watch-toggle" });
       expect(seen.closed).toBe(1);
       await ui.unmount();
 
       ui = await mount();
-      expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe("show");
+      expect((await ui.find({ key: "memory-watch-toggle" }))?.text).toBe(
+        "show",
+      );
       expect(await ui.find({ type: "Text", text: /new/ })).toBeUndefined();
       await ui.unmount();
     });
@@ -367,9 +386,16 @@ describe("session", () => {
       await ui.unmount();
 
       await $.command.run({ command: "memory-watch", args: "" } as never);
-      const paneUi = await $.ui.mount({ plugin: "memory-watch", surface, ...PANE });
+      const paneUi = await $.ui.mount({
+        plugin: "memory-watch",
+        surface,
+        ...PANE,
+      });
       expect(
-        await paneUi.find({ type: "Text", text: "No memory written this session." }),
+        await paneUi.find({
+          type: "Text",
+          text: "No memory written this session.",
+        }),
       ).toBeDefined();
       await paneUi.unmount();
     });

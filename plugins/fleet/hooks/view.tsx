@@ -67,13 +67,22 @@ const bar = (frac: number, n = 10) => {
 function shellDetail(Text: any, s: FleetShell, now: number, w: number) {
   const line = s.line ?? "";
   if (s.waiter)
-    return <Text dimColor>{fit(`   waiting${line ? ` · ${line}` : ""}`, w).trimEnd()}</Text>;
+    return (
+      <Text dimColor>
+        {fit(`   waiting${line ? ` · ${line}` : ""}`, w).trimEnd()}
+      </Text>
+    );
   if (s.stalled) {
     const head = `   ⚠ no output ${fmtLeft(quietMs(s, now))}`;
     return (
       <Text>
         <Text color="yellow">{head}</Text>
-        <Text dimColor>{fit(line ? ` · ${line}` : "", Math.max(0, w - head.length)).trimEnd()}</Text>
+        <Text dimColor>
+          {fit(
+            line ? ` · ${line}` : "",
+            Math.max(0, w - head.length),
+          ).trimEnd()}
+        </Text>
       </Text>
     );
   }
@@ -83,7 +92,9 @@ function shellDetail(Text: any, s: FleetShell, now: number, w: number) {
     return (
       <Text>
         <Text color="cyan">{head}</Text>
-        <Text dimColor>{fit(` · ${line}`, Math.max(0, w - head.length)).trimEnd()}</Text>
+        <Text dimColor>
+          {fit(` · ${line}`, Math.max(0, w - head.length)).trimEnd()}
+        </Text>
       </Text>
     );
   }

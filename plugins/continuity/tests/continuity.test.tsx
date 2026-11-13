@@ -57,18 +57,34 @@ describe("words", () => {
 
   test("the desktop's Svg bar: a track, a fill in the gauge's colour, none when unmeasured", () => {
     const half = barSvg(50, 60, 96, 6);
-    expect(half).toStartWith('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="6"');
-    expect(half).toContain('<rect width="48" height="6" rx="3" fill="#d29922"/>');
-    expect(barSvg(10, 60, 96, 6)).toContain('width="10" height="6" rx="3" fill="#3fb950"');
-    expect(barSvg(100, 60, 96, 6)).toContain('width="96" height="6" rx="3" fill="#f85149"');
-    expect(barSvg(150, 60, 96, 6)).toContain('<rect width="96" height="6" rx="3" fill="#f85149"/>');
+    expect(half).toStartWith(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="6"',
+    );
+    expect(half).toContain(
+      '<rect width="48" height="6" rx="3" fill="#d29922"/>',
+    );
+    expect(barSvg(10, 60, 96, 6)).toContain(
+      'width="10" height="6" rx="3" fill="#3fb950"',
+    );
+    expect(barSvg(100, 60, 96, 6)).toContain(
+      'width="96" height="6" rx="3" fill="#f85149"',
+    );
+    expect(barSvg(150, 60, 96, 6)).toContain(
+      '<rect width="96" height="6" rx="3" fill="#f85149"/>',
+    );
     // only the track: unmeasured, empty, or not a number
     for (const p of [null, 0, NaN, -5])
       expect(barSvg(p, 60, 96, 6).match(/<rect/g)).toHaveLength(1);
   });
 
   test("the gauge's note, in the order the phases outrank each other", () => {
-    const s = { percent: 10, threshold: 60, phase: "idle", paused: false, resumeAt: null } as const;
+    const s = {
+      percent: 10,
+      threshold: 60,
+      phase: "idle",
+      paused: false,
+      resumeAt: null,
+    } as const;
     expect(gaugeNote(s, 0)).toBeUndefined();
     expect(gaugeNote({ ...s, percent: null }, 0)).toBeUndefined();
     expect(gaugeNote({ ...s, percent: 50 }, 0)).toEqual({
@@ -79,13 +95,13 @@ describe("words", () => {
     expect(gaugeNote({ ...s, percent: 60, paused: true }, 0)?.text).toBe(
       "continuity paused · /continuity on",
     );
-    expect(gaugeNote({ ...s, phase: "compacting", paused: true }, 0)?.text).toBe(
-      "⟳ handover written · compacting",
-    );
+    expect(
+      gaugeNote({ ...s, phase: "compacting", paused: true }, 0)?.text,
+    ).toBe("⟳ handover written · compacting");
     expect(gaugeNote({ ...s, phase: "pending" }, 0)?.color).toBe("cyan");
-    expect(gaugeNote({ ...s, phase: "blocked", resumeAt: 65_000 }, 5_000)?.text).toBe(
-      "⏸ usage limit · continues in 0:01:00 · /continuity off cancels",
-    );
+    expect(
+      gaugeNote({ ...s, phase: "blocked", resumeAt: 65_000 }, 5_000)?.text,
+    ).toBe("⏸ usage limit · continues in 0:01:00 · /continuity off cancels");
     // blocked with no reset known falls through to the fill's note
     expect(gaugeNote({ ...s, phase: "blocked" }, 0)).toBeUndefined();
   });
@@ -255,12 +271,7 @@ describe("facts", () => {
 });
 
 /** The engine's side: usage, messages, git, and records of compaction and prompts. */
-function engine(
-  on: any,
-  percent: number,
-  skip?: string,
-  gate?: Promise<void>,
-) {
+function engine(on: any, percent: number, skip?: string, gate?: Promise<void>) {
   const seen = {
     toasts: [] as string[],
     compacted: [] as (string | undefined)[],
@@ -495,7 +506,10 @@ describe("session", () => {
     await turnEnd($);
     await clock.advance(5_000);
     expect(seen.compacted).toHaveLength(1);
-    const off = await $.command.run({ command: "continuity", args: "off" } as never);
+    const off = await $.command.run({
+      command: "continuity",
+      args: "off",
+    } as never);
     expect(JSON.stringify(off)).toContain("Continuity paused");
     release();
     await clock.advance(1_000);
@@ -536,7 +550,11 @@ describe("session", () => {
         });
         if (surface === "terminal")
           expect(
-            await ui.find({ in: "continuity-gauge", type: "Text", text: bar(50, cells) }),
+            await ui.find({
+              in: "continuity-gauge",
+              type: "Text",
+              text: bar(50, cells),
+            }),
           ).toBeDefined();
         else {
           // the desktop's proportional font: an Svg bar, no block characters
@@ -547,8 +565,11 @@ describe("session", () => {
           expect(await ui.find({ type: "Text", text: /[█░]/ })).toBeUndefined();
         }
         expect(
-          (await ui.find({ in: "continuity-gauge", type: "Text", text: " 500k/1M" })) !==
-            undefined,
+          (await ui.find({
+            in: "continuity-gauge",
+            type: "Text",
+            text: " 500k/1M",
+          })) !== undefined,
         ).toBe(tokens);
         await ui.unmount();
       }
@@ -621,9 +642,13 @@ describe("session", () => {
         } as never,
       });
       expect(await ui.find({ key: "continuity-gauge" })).toBeDefined();
-      expect((await ui.find({ type: "Text", text: /handover at/ })) !== undefined).toBe(hasNote);
+      expect(
+        (await ui.find({ type: "Text", text: /handover at/ })) !== undefined,
+      ).toBe(hasNote);
       // only the usage-limit countdown ticks, so only it is a Client
-      expect((await ui.findAll({ type: "Client" })).map((c: any) => c.key)).toEqual(["continuity-gauge"]);
+      expect(
+        (await ui.findAll({ type: "Client" })).map((c: any) => c.key),
+      ).toEqual(["continuity-gauge"]);
       await ui.unmount();
     });
   }
@@ -651,7 +676,13 @@ describe("session", () => {
     });
     // in the note's own Client, whose clock ticks it down
     expect(
-      (await ui.find({ in: "continuity-note", type: "Text", text: /continues in/ }))?.text,
+      (
+        await ui.find({
+          in: "continuity-note",
+          type: "Text",
+          text: /continues in/,
+        })
+      )?.text,
     ).toBe("⏸ usage limit · continues in 1:01:00 · /continuity off cancels");
     await ui.unmount();
   });

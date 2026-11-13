@@ -109,7 +109,12 @@ function world(on: any, over: World = {}) {
   );
   on("turn.step", async function* (_$: unknown, e: any) {
     seen.steps.push(e);
-    return { turnId: e.turnId, index: e.index, answer: "", toolUses: [] } as any;
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: "",
+      toolUses: [],
+    } as any;
   });
   return { seen, clock };
 }
@@ -215,17 +220,17 @@ describe("core", () => {
       "medium",
     );
     expect(stepEffort("medium", { ...v, confidence: 0.5 }, true)).toBe("max");
-    expect(stepEffort("medium", { ...v, confidence: 0.49 }, true, "xhigh")).toBe(
-      "medium",
-    );
+    expect(
+      stepEffort("medium", { ...v, confidence: 0.49 }, true, "xhigh"),
+    ).toBe("medium");
     expect(stepEffort("medium", null, true, "xhigh")).toBe("xhigh");
     expect(stepEffort("medium", null, true)).toBe("medium");
     expect(stepEffort("medium", { ...v, confidence: 0.9 }, true, "low")).toBe(
       "max",
     );
-    expect(stepEffort("medium", { ...v, confidence: 0.49 }, false, "xhigh")).toBe(
-      "medium",
-    );
+    expect(
+      stepEffort("medium", { ...v, confidence: 0.49 }, false, "xhigh"),
+    ).toBe("medium");
   });
 
   test("Jev gets prompts and answer text only, cut", () => {
@@ -262,7 +267,9 @@ describe("core", () => {
     const [low, medium, high, xhigh, max] = criteria;
     expect(low).toMatch(/^low: .*chat.*rename/);
     expect(medium).toMatch(/^medium: .*debugging.*feature.*bug fix/);
-    expect(high).toMatch(/^high: .*edge cases.*medium effort already fell short/);
+    expect(high).toMatch(
+      /^high: .*edge cases.*medium effort already fell short/,
+    );
     expect(xhigh).toMatch(/^xhigh: .*fell short on at high effort/);
     expect(max).toMatch(/^max: .*without the person.*security/);
     expect(instructions).toContain("`medium` is the default");
@@ -289,8 +296,12 @@ describe("core", () => {
     expect(configuredEffort(s, OPUS55, "unset")).toBeUndefined();
     // The user's own top-level effortLevel: Opus 5, Fable 5.1 and earlier only.
     expect(configuredEffort(s, "claude-opus-5", undefined)).toBe("medium");
-    expect(configuredEffort({ effortLevel: "low" }, "claude-fable-5-1", undefined)).toBe("low");
-    expect(configuredEffort({ effortLevel: "low" }, "claude-sonnet-5-5", undefined)).toBe("medium");
+    expect(
+      configuredEffort({ effortLevel: "low" }, "claude-fable-5-1", undefined),
+    ).toBe("low");
+    expect(
+      configuredEffort({ effortLevel: "low" }, "claude-sonnet-5-5", undefined),
+    ).toBe("medium");
     // One from another settings file counts on every model: the last one set.
     expect(
       configuredEffort({ effortLevel: "low" }, "claude-sonnet-5-5", undefined, [
@@ -313,10 +324,18 @@ describe("core", () => {
     expect(configuredEffort(s, undefined, undefined)).toBe("medium");
     // `max` is no settings level; a value that is none is skipped.
     expect(
-      configuredEffort({ modelSettings: { [OPUS55]: { effortLevel: "max" } } }, OPUS55, undefined),
+      configuredEffort(
+        { modelSettings: { [OPUS55]: { effortLevel: "max" } } },
+        OPUS55,
+        undefined,
+      ),
     ).toBe("medium");
     expect(
-      configuredEffort({ effortLevel: 7, modelSettings: "x" }, "claude-opus-5", undefined),
+      configuredEffort(
+        { effortLevel: 7, modelSettings: "x" },
+        "claude-opus-5",
+        undefined,
+      ),
     ).toBe("high");
   });
 
@@ -358,7 +377,9 @@ describe("core", () => {
         steered: true,
         verdict: { ...v, confidence: 0.33 },
       }),
-    ).toBe("opus-5-5 · effort medium · Jev unsure: xhigh 33%, session level medium");
+    ).toBe(
+      "opus-5-5 · effort medium · Jev unsure: xhigh 33%, session level medium",
+    );
     expect(
       footerLine({
         ...base,
@@ -368,7 +389,9 @@ describe("core", () => {
         held: "ultrathink",
         verdict: v,
       }),
-    ).toBe("opus-5-5 · effort xhigh · Jev advises xhigh 84% (not applied: ultrathink)");
+    ).toBe(
+      "opus-5-5 · effort xhigh · Jev advises xhigh 84% (not applied: ultrathink)",
+    );
   });
 });
 
@@ -406,7 +429,11 @@ describe("a session", () => {
     await startTurn($, "and the other one?", "t2");
     await stepAt($, "medium", { turnId: "t2" });
     await stepAt($, "medium", { turnId: "t2", index: 1 });
-    expect(seen.steps.map((s) => s.effort)).toEqual(["max", "medium", "medium"]);
+    expect(seen.steps.map((s) => s.effort)).toEqual([
+      "max",
+      "medium",
+      "medium",
+    ]);
     expect((await complete($, "Done.", "t2")).text).toBe(
       "opus-5-5 · effort medium · Jev unsure: low 33%, session level medium",
     );
@@ -572,7 +599,10 @@ describe("a session", () => {
   test("a project effortLevel sets Opus 5.5's default", async ($, on) => {
     const { seen } = world(on, {
       settings: { effortLevel: "high" },
-      sources: { user: { effortLevel: "low" }, project: { effortLevel: "high" } },
+      sources: {
+        user: { effortLevel: "low" },
+        project: { effortLevel: "high" },
+      },
     });
     await startTurn($, "first");
     expect(seen.bodies[0].state.defaultEffort).toBe("high");

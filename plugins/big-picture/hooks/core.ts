@@ -143,7 +143,10 @@ export function jevUpdateRequest(turn: Activity, since: Activity) {
  * Jev is a third party: it gets the commands, never their output (which may
  * hold secrets); only Haiku reads that.
  */
-export function jevProgressRequest(turn: Activity, running: readonly Progress[]) {
+export function jevProgressRequest(
+  turn: Activity,
+  running: readonly Progress[],
+) {
   return jevBody(
     "progress",
     {
@@ -491,7 +494,7 @@ export function securePage(html: string): string {
   let body = html
     .replace(/^\s*<!doctype[^>]*>/i, "")
     .replace(/<style data-big-picture>[\s\S]*?<\/style>/g, "");
-  for (let was = ""; was !== body; ) {
+  for (let was = ""; was !== body;) {
     was = body;
     body = body
       .replace(/<script\b[\s\S]*?(<\/script\s*>|$)/gi, "")

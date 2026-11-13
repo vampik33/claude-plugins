@@ -423,7 +423,11 @@ function engine(
     if (cmd === "git" && rest[0] === "rev-parse")
       return opts.repo === false
         ? fail()
-        : ok(rest.includes("HEAD") ? "/r/deployer\nabc1234def\n" : "/r/deployer\n");
+        : ok(
+            rest.includes("HEAD")
+              ? "/r/deployer\nabc1234def\n"
+              : "/r/deployer\n",
+          );
     if (cmd === "git" && rest[0] === "rev-list")
       return (seen.revList.push(rest[2]!), ok(`${opts.ahead ?? "2"}\n`));
     if (cmd === "git" && rest[0] === "status")
@@ -504,7 +508,9 @@ describe("session", () => {
         command: "cx",
         args: 'adv "avg helper"',
       } as never);
-      expect((started as { text: string }).text).toContain("deployer · base main");
+      expect((started as { text: string }).text).toContain(
+        "deployer · base main",
+      );
 
       const band = await $.ui.mount({
         plugin: "codex-review",
@@ -537,7 +543,9 @@ describe("session", () => {
       seen.alive = false;
       await clock.advance(10_000);
       expect(
-        seen.toasts.some((t) => /^Codex needs-attention · 2 findings · /.test(t)),
+        seen.toasts.some((t) =>
+          /^Codex needs-attention · 2 findings · /.test(t),
+        ),
       ).toBe(true);
       expect(seen.opened).toBe(1);
 
@@ -577,9 +585,9 @@ describe("session", () => {
       expect((await ui.find({ key: "codex-review" }))?.props.hotkey).toBe(
         surface === "terminal" ? "x" : undefined,
       );
-      expect((await ui.find({ key: "band:codex-review" }))?.props.justifyContent).toBe(
-        surface === "terminal" ? undefined : "space-between",
-      );
+      expect(
+        (await ui.find({ key: "band:codex-review" }))?.props.justifyContent,
+      ).toBe(surface === "terminal" ? undefined : "space-between");
       await ui.press({ key: "codex-review" });
       expect(seen.started).toBe(1);
       expect(seen.toasts.at(-1)).toContain(
@@ -693,9 +701,10 @@ describe("session", () => {
         surface,
         ...BAND,
       });
-      expect(
-        (await again.find({ key: "codex-band" }))?.props.props,
-      ).toEqual({ kind: "idle", last: null });
+      expect((await again.find({ key: "codex-band" }))?.props.props).toEqual({
+        kind: "idle",
+        last: null,
+      });
       expect(await again.find({ key: "codex-review" })).toBeDefined();
       await again.unmount();
       expect(seen.toasts.length).toBe(0);
@@ -847,9 +856,7 @@ describe("session", () => {
     await clock.advance(60_000);
     seen.alive = false;
     await clock.advance(10_000);
-    expect(seen.toasts).toContain(
-      "Codex needs-attention · 2 findings · 1m10s",
-    );
+    expect(seen.toasts).toContain("Codex needs-attention · 2 findings · 1m10s");
   });
 
   for (const surface of SURFACES) {

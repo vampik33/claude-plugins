@@ -11,7 +11,9 @@ export function parseStatus(
 ): Pick<ShipStatus, "branch" | "hasUpstream" | "ahead" | "changed"> {
   const lines = porcelain.split("\n").filter(Boolean);
   const head = lines[0]?.startsWith("## ") ? lines.shift()!.slice(3) : "";
-  const m = /^(?:No commits yet on )?(\S+?)(?:\.\.\.(\S+))?(?: \[|$)/.exec(head);
+  const m = /^(?:No commits yet on )?(\S+?)(?:\.\.\.(\S+))?(?: \[|$)/.exec(
+    head,
+  );
   return {
     branch: m?.[1] ?? "",
     hasUpstream: Boolean(m?.[2]),
@@ -59,7 +61,9 @@ export function staleMods(
   installed: Record<string, string>,
 ): ShipStale[] {
   return Object.keys(installed)
-    .filter((name) => repo[name] !== undefined && repo[name] !== installed[name])
+    .filter(
+      (name) => repo[name] !== undefined && repo[name] !== installed[name],
+    )
     .sort()
     .map((name) => ({ name, installed: installed[name]!, repo: repo[name]! }));
 }
@@ -70,7 +74,9 @@ export function needRestart(
   installed: Record<string, string>,
 ): string[] {
   return Object.keys(installed)
-    .filter((name) => loaded[name] !== undefined && loaded[name] !== installed[name])
+    .filter(
+      (name) => loaded[name] !== undefined && loaded[name] !== installed[name],
+    )
     .sort();
 }
 

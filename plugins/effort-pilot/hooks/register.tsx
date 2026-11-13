@@ -36,10 +36,7 @@ const context = atom(
   { plugin: "effort-pilot", key: "context" } as const,
   EMPTY,
 );
-const holds = atom(
-  { plugin: "effort-pilot", key: "holds" } as const,
-  NO_HOLDS,
-);
+const holds = atom({ plugin: "effort-pilot", key: "holds" } as const, NO_HOLDS);
 
 /** The settings files whose top-level `effortLevel` applies to every model, lowest first. */
 const SHARED_SOURCES = ["project", "local", "flag", "policy"] as const;
@@ -51,9 +48,7 @@ let warned = false;
 
 /** `CLAUDE_CODE_EFFORT_LEVEL`, read once: the environment doesn't change. */
 const effortEnvLevel = ($: EngineInterface) =>
-  (effortEnv ??= $.env
-    .get("CLAUDE_CODE_EFFORT_LEVEL")
-    .catch(() => undefined));
+  (effortEnv ??= $.env.get("CLAUDE_CODE_EFFORT_LEVEL").catch(() => undefined));
 
 const truthy = (v: string | undefined) =>
   !!v && v !== "0" && v.toLowerCase() !== "false";

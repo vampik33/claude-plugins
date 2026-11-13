@@ -197,7 +197,10 @@ async function writeSummary($: EngineInterface): Promise<boolean> {
   }
   const summary = extractHtml(reply.text);
   if (!summary) {
-    await setStatus($, { kind: "failed", reason: "the reply held no HTML page" });
+    await setStatus($, {
+      kind: "failed",
+      reason: "the reply held no HTML page",
+    });
     return false;
   }
   // the transcript may carry injected text: the page runs no script of the model's
@@ -282,7 +285,8 @@ async function manualOnce($: EngineInterface): Promise<void> {
 /** The checks one run of the queue asked for; a press covers all the others. */
 async function checkOnceFor($: EngineInterface, whys: Set<Why>): Promise<void> {
   if (whys.has("manual")) return manualOnce($);
-  if (whys.has("tools") || whys.has("turn")) await checkOnce($, whys.has("turn"));
+  if (whys.has("tools") || whys.has("turn"))
+    await checkOnce($, whys.has("turn"));
   if (whys.has("progress")) await progressOnce($);
 }
 
@@ -318,14 +322,19 @@ async function restore($: EngineInterface): Promise<void> {
 }
 
 /** Opens the page in the default browser, a placeholder before any summary; what it says, and whether it opened. */
-async function show($: EngineInterface): Promise<{ text: string; isOpened: boolean }> {
+async function show(
+  $: EngineInterface,
+): Promise<{ text: string; isOpened: boolean }> {
   const path = await pagePath($);
   try {
     if (!(await $.fs.exists(path).catch(() => false)))
       await writePage($, placeholderHtml(PLACEHOLDER));
   } catch (err) {
     // a failed write is said, not thrown: the command and the band's press both show it
-    return { text: `Could not write the summary page ${path}: ${String(err)}`, isOpened: false };
+    return {
+      text: `Could not write the summary page ${path}: ${String(err)}`,
+      isOpened: false,
+    };
   }
   const ran = await $.process
     .run(openArgv(encodeURI(`file://${path}`)), { timeoutMs: OPEN_MS })
@@ -385,8 +394,7 @@ export const register: Register = (on) => {
       const input = e as unknown as Record<string, unknown>;
       activity = logTool(activity, e.tool, input);
       since = logTool(since, e.tool, input);
-      if (isCheckDue(activity))
-        $.clock.after(0, () => void check($, "tools"));
+      if (isCheckDue(activity)) $.clock.after(0, () => void check($, "tools"));
     }
     return ran;
   });
@@ -404,7 +412,9 @@ export const register: Register = (on) => {
     if (e.props.hasSurvey) return next(e);
     const s = await read($, status);
     const isJudgingOnly =
-      s.kind === "working" && s.step === "classifying" && lastSummary === undefined;
+      s.kind === "working" &&
+      s.step === "classifying" &&
+      lastSummary === undefined;
     if (s.kind === "none" || isJudgingOnly) return next(e);
     const below = await next(e);
     const { Box, Button, Text } = $.ui.resolve(e);

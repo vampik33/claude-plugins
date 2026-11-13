@@ -123,9 +123,7 @@ export function mostUsed(
       );
     })
     .slice(0, n);
-  return items.length
-    ? { id: MOST_USED, title: MOST_USED, items }
-    : undefined;
+  return items.length ? { id: MOST_USED, title: MOST_USED, items } : undefined;
 }
 
 /**

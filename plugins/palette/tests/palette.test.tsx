@@ -164,17 +164,16 @@ describe("usage", () => {
       "command:clear": { count: 50, last: 1 },
     });
     expect(top!.id).toBe("most used");
-    expect(top!.items.map(label)).toEqual([
-      "/think",
-      "@think",
-      "/x:a",
-      "/x:b",
-    ]);
+    expect(top!.items.map(label)).toEqual(["/think", "@think", "/x:a", "/x:b"]);
   });
 
   test("at most n", () => {
     const usage = { "command:x:a": { count: 2, last: 0 } };
-    const top = mostUsed(groups, { ...usage, "command:x:b": { count: 1, last: 0 } }, 1);
+    const top = mostUsed(
+      groups,
+      { ...usage, "command:x:b": { count: 1, last: 0 } },
+      1,
+    );
     expect(top!.items.map(label)).toEqual(["/x:a"]);
   });
 });
@@ -192,7 +191,9 @@ describe("search", () => {
     {
       id: "plugin:hookify",
       title: "plugin:hookify",
-      items: [{ kind: "command", name: "hookify:list", description: "List rules" }],
+      items: [
+        { kind: "command", name: "hookify:list", description: "List rules" },
+      ],
     },
   ];
   const names = (gs: PaletteGroup[]) => gs.flatMap((g) => g.items.map(label));
@@ -211,13 +212,17 @@ describe("search", () => {
   });
 
   test("every word must match", () => {
-    expect(names(filterGroups(groups, "list rules"))).toEqual(["/hookify:list"]);
+    expect(names(filterGroups(groups, "list rules"))).toEqual([
+      "/hookify:list",
+    ]);
     expect(filterGroups(groups, "list think")).toEqual([]);
   });
 
   test("agent descriptions from agent.offer are searched", () => {
     expect(
-      names(filterGroups(groups, "rust expert", { "rust-engineer": "Rust expert" })),
+      names(
+        filterGroups(groups, "rust expert", { "rust-engineer": "Rust expert" }),
+      ),
     ).toEqual(["@rust-engineer"]);
   });
 });
@@ -415,7 +420,9 @@ describe("pane", () => {
         surface,
         ...PANE,
       });
-      expect(await ui.find({ type: "Text", text: "Rust expert" })).toBeDefined();
+      expect(
+        await ui.find({ type: "Text", text: "Rust expert" }),
+      ).toBeDefined();
       await ui.unmount();
     });
 
@@ -427,7 +434,9 @@ describe("pane", () => {
         surface,
         ...PANE,
       });
-      expect((await ui.find({ key: "group:project" }))?.text).toBe("▾ project (1)");
+      expect((await ui.find({ key: "group:project" }))?.text).toBe(
+        "▾ project (1)",
+      );
       expect(await ui.find({ key: "group:user" })).toBeDefined();
       await ui.unmount();
     });
@@ -458,7 +467,9 @@ describe("pane", () => {
       expect((await ui.find({ key: "group:most used" }))?.text).toBe(
         "▾ most used (2)",
       );
-      expect((await ui.find({ key: "top:command:think" }))?.text).toBe("/think");
+      expect((await ui.find({ key: "top:command:think" }))?.text).toBe(
+        "/think",
+      );
       expect((await ui.find({ key: "top:agent:rust-engineer" }))?.text).toBe(
         "@rust-engineer",
       );
@@ -488,7 +499,9 @@ describe("pane", () => {
       expect(seen.fills).toEqual([{ text: "/hookify:list ", mode: "replace" }]);
 
       await ui.input({ key: "palette-search", text: "nope", kind: "change" });
-      expect(await ui.find({ type: "Text", text: 'Nothing matches "nope".' })).toBeDefined();
+      expect(
+        await ui.find({ type: "Text", text: 'Nothing matches "nope".' }),
+      ).toBeDefined();
 
       await ui.input({ key: "palette-search", text: "", kind: "change" });
       expect(await ui.find({ key: "command:think" })).toBeDefined();

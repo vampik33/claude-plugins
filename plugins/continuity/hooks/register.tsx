@@ -228,13 +228,16 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
 async function armResume($: EngineInterface, t: Tracker, resumeAt: number) {
   t.resume?.cancel();
   await setPhase($, "blocked", resumeAt);
-  t.resume = $.clock.after(Math.max(0, resumeAt - (await $.clock.now())), async () => {
-    t.resume = undefined;
-    await setPhase($, "idle");
-    await $.prompt.submit({
-      text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
-    });
-  });
+  t.resume = $.clock.after(
+    Math.max(0, resumeAt - (await $.clock.now())),
+    async () => {
+      t.resume = undefined;
+      await setPhase($, "idle");
+      await $.prompt.submit({
+        text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
+      });
+    },
+  );
 }
 
 function cancelTimers(t: Tracker) {
@@ -275,17 +278,32 @@ async function desktopGauge(
         <Text dimColor>ctx</Text>
         <Svg
           source={barSvg(pct, props.threshold, width, 6)}
-          alt={pct === null ? "context not measured yet" : `context ${pct}% full`}
+          alt={
+            pct === null ? "context not measured yet" : `context ${pct}% full`
+          }
           width={width}
           height={6}
         />
-        <Client key="continuity-gauge" module="./gauge.tsx" props={{ ...props, part: "stats" }} />
+        <Client
+          key="continuity-gauge"
+          module="./gauge.tsx"
+          props={{ ...props, part: "stats" }}
+        />
       </Box>
       {note &&
         (props.phase === "blocked" ? (
-          <Client key="continuity-note" module="./gauge.tsx" props={{ ...props, part: "note" }} />
+          <Client
+            key="continuity-note"
+            module="./gauge.tsx"
+            props={{ ...props, part: "note" }}
+          />
         ) : (
-          <Text key="continuity-note" color={note.color} dimColor={note.dim} wrap="truncate-end">
+          <Text
+            key="continuity-note"
+            color={note.color}
+            dimColor={note.dim}
+            wrap="truncate-end"
+          >
             {note.text}
           </Text>
         ))}
@@ -397,7 +415,10 @@ export const register: Register = (on, options) => {
     const redIn = expiresAt - lifeMs * c.redAt - (await $.clock.now());
     if (c.toast && redIn > 0) {
       c.toastTimer = $.clock.after(redIn, async () => {
-        const mins = Math.max(1, Math.round((expiresAt - (await $.clock.now())) / 60_000));
+        const mins = Math.max(
+          1,
+          Math.round((expiresAt - (await $.clock.now())) / 60_000),
+        );
         $.ui.toast(
           `Prompt cache expires in ~${mins} min: send a message to keep it warm`,
         );
@@ -459,7 +480,9 @@ export const register: Register = (on, options) => {
     // the box takes no suggestion until the compaction has finished drawing
     if (e.trigger === "manual" && r.skip === undefined)
       $.clock.after(SUGGEST_DELAY_MS, () => {
-        void $.prompt.suggest({ text: `Continue from the handover in ${path}` });
+        void $.prompt.suggest({
+          text: `Continue from the handover in ${path}`,
+        });
       });
     return r;
   });
@@ -491,7 +514,9 @@ export const register: Register = (on, options) => {
     cancelTimers(t);
     // compaction is refused under the command's own turn: start it once that has ended
     t.grace = $.clock.after(0, () => void handover($, t));
-    return { text: "Writing the handover note, then compacting and continuing." };
+    return {
+      text: "Writing the handover note, then compacting and continuing.",
+    };
   });
 
   on("command.run", { command: "continuity" }, async ($, e) => {
@@ -567,7 +592,8 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e);
     const pct = g.percent;
     const now = await $.clock.now();
-    const until = d && ` · cache until ${new Date(d.expiresAt).toTimeString().slice(0, 5)}`;
+    const until =
+      d && ` · cache until ${new Date(d.expiresAt).toTimeString().slice(0, 5)}`;
     const row = (
       <Box key="band:continuity">
         <Text

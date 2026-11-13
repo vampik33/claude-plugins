@@ -4,6 +4,11 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.10] - 2026-11-13
+
+### Fixed
+- The codex line always sits just above the context gauge, with the model and effort line under that, at the band's end: every row's place no longer depends on the order Claude Code runs the mods in
+
 ## [0.3.9] - 2026-11-13
 
 ### Fixed

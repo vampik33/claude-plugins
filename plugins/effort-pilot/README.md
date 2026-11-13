@@ -31,7 +31,7 @@ Without one the mod shows a toast once and leaves the session's own level. Needs
 ## What you see
 
 - **Under each answer**: the model, the effort the turn ran at, and Jev's call: `Jev: medium → xhigh 84%` (changed), `Jev kept high 80%` (same as the session), `Jev unsure: xhigh 33%, kept medium` (under 50%: the previous turn's level stays), `Jev advises …` (not applied on this model), or `Jev: HTTP 500, session level`.
-- **The band's last line**, under every other mod's row (it moves its own row to the end): the current model and effort, and Jev's last call. Before the first request it shows `effort –`.
+- **The band's last line**, under every other mod's row: codex-review and continuity, when installed, sit just above it, codex then ctx: the current model and effort, and Jev's last call. Before the first request it shows `effort –`.
 
 Both are plain text, the same in the terminal and the desktop app.
 

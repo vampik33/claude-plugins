@@ -4,6 +4,11 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.9] - 2026-11-13
+
+### Fixed
+- The context gauge always sits second to last in the band, under the codex line and above the model and effort line: every row's place no longer depends on the order Claude Code runs the mods in
+
 ## [0.3.8] - 2026-11-13
 
 ### Fixed

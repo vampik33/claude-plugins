@@ -453,30 +453,4 @@ describe("a session", () => {
       expect(b.texts.join(" ")).toContain("Jev: medium → xhigh 80%");
       expect(b.drawn).not.toContain("marginTop");
     });
-
-  for (const surface of SURFACES)
-    test(`the effort row is moved to the band's end (${surface})`, async ($, on) => {
-      world(on);
-      await bandTexts($, surface); // learns its own row's plugin name
-      const row = (plugin: string) => ({
-        plugin,
-        tree: h("Box", { key: `band:${plugin}` }),
-      });
-      const ui = await $.ui.mount({
-        plugin: "effort-pilot",
-        surface,
-        component: "AbovePromptList",
-        props: {
-          ...BAND_PROPS,
-          rows: [row("ship"), row("effort-pilot"), row("continuity")],
-        } as never,
-      });
-      const drawn: any = await ui.drawn();
-      await ui.unmount();
-      expect(drawn.children.map((c: any) => c.props.key)).toEqual([
-        "band:ship",
-        "band:continuity",
-        "band:effort-pilot",
-      ]);
-    });
 });

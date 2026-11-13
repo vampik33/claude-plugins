@@ -1,17 +1,21 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { EffortContext, Step, Verdict } from "../types";
+import type { EffortContext, EffortLevel, Step, Verdict } from "../types";
 import {
   bandOrder,
   configuredEffort,
   footerLine,
+  isLevel,
   JEV_TIMEOUT_MS,
   JEV_URL,
   jevRequest,
   keepsCacheOnChange,
+  NO_HOLDS,
   parseJev,
   shortModel,
+  skillHolds,
+  startTurnHolds,
   stepEffort,
   verdictWords,
   withAnswer,
@@ -32,10 +36,24 @@ const context = atom(
   { plugin: "effort-pilot", key: "context" } as const,
   EMPTY,
 );
+const holds = atom(
+  { plugin: "effort-pilot", key: "holds" } as const,
+  NO_HOLDS,
+);
+
+/** The settings files whose top-level `effortLevel` applies to every model, lowest first. */
+const SHARED_SOURCES = ["project", "local", "flag", "policy"] as const;
 
 /** Module variables: read again at each load. */
 let firstParty: boolean | undefined;
+let effortEnv: Promise<string | undefined> | undefined;
 let warned = false;
+
+/** `CLAUDE_CODE_EFFORT_LEVEL`, read once: the environment doesn't change. */
+const effortEnvLevel = ($: EngineInterface) =>
+  (effortEnv ??= $.env
+    .get("CLAUDE_CODE_EFFORT_LEVEL")
+    .catch(() => undefined));
 
 const truthy = (v: string | undefined) =>
   !!v && v !== "0" && v.toLowerCase() !== "false";
@@ -106,29 +124,39 @@ async function decide(
   prompt: string,
   turnId: string,
 ): Promise<void> {
-  // The settings and env name the default before any request has: read
-  // alongside the rest, so the prompt waits for one round of reads.
-  const [ctx, last, model, settings, envLevel] = await Promise.all([
+  const [ctx, last, model] = await Promise.all([
     read($, context),
     read($, step),
     $.session.model().catch(() => undefined),
-    $.settings.read().catch(() => ({})),
-    $.env.get("CLAUDE_CODE_EFFORT_LEVEL").catch(() => undefined),
   ]);
   const m = model ?? last?.model;
+  // A held request's level (ultrathink, a skill's) is not the session's.
+  const sessionLevel = last && !last.held ? last.session : undefined;
   const v = await askJev(
     $,
-    jevRequest(
-      prompt,
-      ctx,
-      m,
-      last?.session ?? configuredEffort(settings, m, envLevel),
-    ),
+    jevRequest(prompt, ctx, m, sessionLevel ?? (await configuredLevel($, m))),
   );
   await Promise.all([
     update($, verdict, () => ({ ...v, turnId })),
     update($, context, (c) => withPrompt(c ?? EMPTY, prompt)),
   ]);
+}
+
+/** The level the settings and env give `model`, before a request shows the session's. */
+async function configuredLevel(
+  $: EngineInterface,
+  model: string | undefined,
+): Promise<EffortLevel | undefined> {
+  const [settings, shared, envLevel] = await Promise.all([
+    $.settings.read().catch(() => ({})),
+    Promise.all(
+      SHARED_SOURCES.map((source) =>
+        $.settings.read({ source }).catch(() => ({})),
+      ),
+    ),
+    effortEnvLevel($),
+  ]);
+  return configuredEffort(settings, model, envLevel, shared);
 }
 
 /** Jev's call when it was made for `turnId`; a call for another turn is none. */
@@ -146,6 +174,7 @@ const sameStep = (a: Step | null, b: Step) =>
 export const register: Register = (on) => {
   on("session.start", async ($, e, next) => {
     firstParty = undefined;
+    effortEnv = undefined;
     return next(e);
   });
 
@@ -154,7 +183,20 @@ export const register: Register = (on) => {
       await update($, verdict, () => null);
       await update($, step, () => null);
       await update($, context, () => EMPTY);
+      await update($, holds, () => NO_HOLDS);
     }
+    return next(e);
+  });
+
+  // A slash command typed over a running turn waits for a turn of its own:
+  // its skill's effort is that turn's, even if it expands before it starts.
+  on("prompt.submit", async ($, e, next) => {
+    const name = e.turnId !== undefined ? e.command?.name : undefined;
+    if (name !== undefined)
+      await update($, holds, (h = NO_HOLDS) => ({
+        ...h,
+        queued: [...h.queued, name],
+      }));
     return next(e);
   });
 
@@ -162,21 +204,46 @@ export const register: Register = (on) => {
   // first request. Asked at turn.start, not prompt.submit: a prompt typed
   // mid-turn is submitted while the running turn still has requests to send.
   on("turn.start", async ($, e, next) => {
-    if (e.agentId === undefined && e.text.trim())
-      await decide($, e.text, e.turnId);
+    if (e.agentId === undefined) {
+      await update($, holds, (h = NO_HOLDS) =>
+        startTurnHolds(h, e.text, e.turnId),
+      );
+      if (e.text.trim()) await decide($, e.text, e.turnId);
+    }
     return next(e);
   }).catch(($, e, next) => next(e));
 
-  // Each main-loop request goes out at Jev's level where a change keeps the cache.
+  // A skill's `effort` lasts to the end of its turn: hold the running main
+  // turn, or the next one when none runs or the skill is a queued command's.
+  // A subagent's skill holds it too, which only leaves the session's level.
+  on("skill.prompt", async ($, e, next) => {
+    if (isLevel(e.frontmatter.effort))
+      await update($, holds, (h = NO_HOLDS) =>
+        skillHolds(h, e.skill, `${e.skill} skill's effort`),
+      );
+    return next(e);
+  });
+
+  // Each main-loop request goes out at Jev's level where a change keeps the
+  // cache and nothing holds the level.
   on("turn.step", async function* ($, e, next) {
     if (e.agentId !== undefined) return yield* next(e);
     // `last`: the previous main-loop request, whose level stays when Jev is unsure.
-    const [v, last, direct] = await Promise.all([
+    const [v, last, direct, h, envLevel] = await Promise.all([
       verdictFor($, e.turnId),
       read($, step),
       isFirstParty($),
+      read($, holds),
+      effortEnvLevel($),
     ]);
-    const steers = keepsCacheOnChange(e.model, direct);
+    // The env var outranks every other source; ultrathink and a skill's
+    // effort outrank the session's level for their turn.
+    const held = isLevel(envLevel)
+      ? "CLAUDE_CODE_EFFORT_LEVEL is set"
+      : h?.held?.turnId === e.turnId
+        ? h.held.by
+        : undefined;
+    const steers = keepsCacheOnChange(e.model, direct) && !held;
     const sent = stepEffort(
       e.effort,
       v,
@@ -189,6 +256,7 @@ export const register: Register = (on) => {
       session: e.effort,
       sent,
       steered: steers,
+      held,
       verdict: v,
     };
     if (!sameStep(last, s)) await update($, step, () => s);
@@ -199,7 +267,10 @@ export const register: Register = (on) => {
   on("turn.complete", async ($, e, next) => {
     const r = await next(e);
     if (e.agentId !== undefined) return r;
-    await update($, context, (c) => withAnswer(c ?? EMPTY, e.answer));
+    await Promise.all([
+      update($, holds, (h = NO_HOLDS) => ({ ...h, running: null })),
+      update($, context, (c) => withAnswer(c ?? EMPTY, e.answer)),
+    ]);
     const s = await read($, step);
     if (!s || s.turnId !== e.turnId) return r;
     const line = footerLine(s);

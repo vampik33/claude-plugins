@@ -1,4 +1,10 @@
-import type { EffortContext, EffortLevel, Step, Verdict } from "../types";
+import type {
+  EffortContext,
+  EffortLevel,
+  Holds,
+  Step,
+  Verdict,
+} from "../types";
 
 /** The five effort levels, lowest first: Jev's score levels 0-4. */
 export const LEVELS: readonly EffortLevel[] = [
@@ -54,24 +60,105 @@ export const withAnswer = (
 });
 
 /**
- * The effort level the settings give `model` by default, as the engine
- * resolves it: `CLAUDE_CODE_EFFORT_LEVEL`, then the model's
- * `modelSettings.<id>.effortLevel` (where `/effort` saves it), then
- * `effortLevel`; undefined when none names a level.
+ * Claude Code's own default level per model (the model-config docs), and
+ * whether a top-level `effortLevel` in the user's own settings still applies
+ * to it: on Opus 5, Fable 5.1 and earlier, not on Opus 5.5 and later. A new
+ * model goes here, and in keepsCacheOnChange if an effort change keeps its
+ * cache.
+ */
+const MODELS: ReadonlyMap<
+  string,
+  { level: EffortLevel; userEffortLevel: boolean }
+> = new Map([
+  ["claude-fable-5-2", { level: "medium", userEffortLevel: false }],
+  ["claude-opus-5-5", { level: "medium", userEffortLevel: false }],
+  ["claude-sonnet-5-5", { level: "medium", userEffortLevel: false }],
+  ["claude-haiku-5-5", { level: "medium", userEffortLevel: false }],
+  ["claude-opus-4-7", { level: "xhigh", userEffortLevel: true }],
+  ["claude-fable-5-1", { level: "high", userEffortLevel: true }],
+  ["claude-fable-5", { level: "high", userEffortLevel: true }],
+  ["claude-opus-5", { level: "high", userEffortLevel: true }],
+  ["claude-sonnet-5", { level: "high", userEffortLevel: true }],
+  ["claude-opus-4-8", { level: "high", userEffortLevel: true }],
+  ["claude-opus-4-6", { level: "high", userEffortLevel: true }],
+  ["claude-sonnet-4-6", { level: "high", userEffortLevel: true }],
+]);
+
+/** A level a settings key takes: every level but `max`, which lasts one session. */
+const settingLevel = (x: unknown) =>
+  isLevel(x) && x !== "max" ? x : undefined;
+
+/**
+ * The effort level the configuration gives `model` before any request, as
+ * Claude Code resolves it: `CLAUDE_CODE_EFFORT_LEVEL` (`auto` or `unset`: no
+ * level is sent), then the model's `modelSettings.<id>.effortLevel` (where
+ * `/effort` saves it), then a top-level `effortLevel`, then the model's own
+ * default. The user's own top-level `effortLevel` counts only on Opus 5,
+ * Fable 5.1 and earlier; `sharedLayers` (the project, local, flag and policy
+ * settings, lowest precedence first) set it for every model. Undefined when
+ * none names a level.
  */
 export function configuredEffort(
   settings: Readonly<Record<string, unknown>>,
   model: string | undefined,
   envLevel: string | undefined,
+  sharedLayers: readonly Readonly<Record<string, unknown>>[] = [],
 ): EffortLevel | undefined {
   if (isLevel(envLevel)) return envLevel;
+  if (envLevel === "auto" || envLevel === "unset") return undefined;
   const byModel = settings.modelSettings as
     | Record<string, { effortLevel?: unknown } | undefined>
     | undefined;
   const id = model && baseModelId(model);
-  const perModel = id ? byModel?.[id]?.effortLevel : undefined;
-  if (isLevel(perModel)) return perModel;
-  return isLevel(settings.effortLevel) ? settings.effortLevel : undefined;
+  const known = id ? MODELS.get(id) : undefined;
+  const perModel = settingLevel(id ? byModel?.[id]?.effortLevel : undefined);
+  if (perModel) return perModel;
+  const topLevel =
+    !id || known?.userEffortLevel
+      ? settings.effortLevel
+      : sharedLayers.findLast((l) => l.effortLevel !== undefined)?.effortLevel;
+  return settingLevel(topLevel) ?? known?.level;
+}
+
+/**
+ * Whether a prompt asks for `ultrathink`, which can raise its turn to `xhigh`.
+ * Any mention counts: holding a turn's level is the safe side.
+ */
+export const asksUltrathink = (prompt: string) =>
+  /\bultrathink\b/i.test(prompt);
+
+export const NO_HOLDS: Holds = {
+  running: null,
+  held: null,
+  pending: null,
+  queued: [],
+};
+
+/**
+ * The holds once a main-loop turn starts: an ultrathink prompt holds it, as
+ * does a skill's effort expanded for it before it started; queued commands
+ * have their turns by now.
+ */
+export function startTurnHolds(h: Holds, text: string, turnId: string): Holds {
+  const by = asksUltrathink(text) ? "ultrathink" : h.pending;
+  return {
+    running: turnId,
+    held: by === null ? h.held : { turnId, by },
+    pending: null,
+    queued: [],
+  };
+}
+
+/**
+ * The holds once a skill whose frontmatter sets `effort` expands: it holds
+ * the running turn, or the next one when none runs or the skill is a command
+ * typed over the running turn (`queued`), leaving the running turn's hold.
+ */
+export function skillHolds(h: Holds, skill: string, by: string): Holds {
+  const i = h.queued.indexOf(skill);
+  if (h.running !== null && i < 0)
+    return { ...h, held: { turnId: h.running, by } };
+  return { ...h, pending: by, queued: h.queued.filter((_, k) => k !== i) };
 }
 
 /**
@@ -99,13 +186,13 @@ export function jevRequest(
       effort: {
         type: "score",
         instructions:
-          "A coding assistant is about to work on `prompt`, in a conversation whose earlier prompts and last answer are given. It runs at `defaultEffort` unless you confidently pick another level, and stays at `defaultEffort` when you are unsure. How much reasoning effort does this prompt need?",
+          "A coding assistant is about to work on `prompt`, in a conversation whose earlier prompts and last answer are given. It runs at `defaultEffort` unless you confidently pick another level, and stays at `defaultEffort` when you are unsure. On current models `medium` is the default and suits most everyday engineering; past `high`, one more level costs about as much as a bigger model, so pick `xhigh` or `max` only for what their criteria name. How much reasoning effort does this prompt need?",
         criteria: [
-          "low: a lookup, a one-line answer, a yes/no, or a trivial mechanical edit",
-          "medium: a small, well-specified change or a direct question about known code",
-          "high: a multi-step change in a few files, or debugging with a clear lead",
-          "xhigh: a feature, refactor or investigation across many files, or a subtle bug",
-          "max: hard reasoning: architecture, proofs, concurrency, security, or a problem earlier attempts failed on",
+          "low: a reply the person waits on and reviews right away: a lookup, a one-line answer, chat, brainstorming, a first sketch, or a small change such as a rename",
+          "medium: everyday engineering and debugging with a clear scope: implementing or iterating on a feature, a well-scoped bug fix, spec-driven work, or a review, investigation or draft of a kind done often",
+          "high: harder work where verification matters or edge cases are likely, or a task medium effort already fell short on",
+          "xhigh: a problem earlier attempts in this conversation fell short on at high effort",
+          "max: a hard problem to work through without the person, such as hunting for security vulnerabilities, where time and cost don't matter",
         ],
       },
     },
@@ -187,7 +274,7 @@ export function verdictWords(step: Step): string | undefined {
   if (step.session === undefined)
     return `Jev: ${verdict.level} (model takes no effort)`;
   if (!step.steered)
-    return `Jev advises ${verdict.level} ${pct(verdict.confidence)} (not applied: a change would re-cache this model)`;
+    return `Jev advises ${verdict.level} ${pct(verdict.confidence)} (not applied: ${step.held ?? "a change would re-cache this model"})`;
   if (verdict.confidence < MIN_CONFIDENCE)
     return `Jev unsure: ${verdict.level} ${pct(verdict.confidence)}, session level ${String(step.sent)}`;
   return step.session === step.sent

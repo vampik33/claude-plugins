@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "claude-code/testing";
 
 import {
+  asksUltrathink,
   configuredEffort,
   footerLine,
   jevRequest,
@@ -51,6 +52,8 @@ type World = {
   auth?: null;
   /** The merged settings `$.settings.read()` answers. */
   settings?: Record<string, unknown>;
+  /** One source's settings, as `$.settings.read({ source })` answers them. */
+  sources?: Record<string, Record<string, unknown>>;
 };
 
 function world(on: any, over: World = {}) {
@@ -68,7 +71,10 @@ function world(on: any, over: World = {}) {
     sessionId: e.sessionId,
   }));
   on("session.model", () => ({ value: over.model ?? OPUS55 }));
-  on("settings.read", () => ({ value: over.settings ?? {} }));
+  on("settings.read", (_$: unknown, e: { source?: string }) => ({
+    value: e.source ? (over.sources?.[e.source] ?? {}) : (over.settings ?? {}),
+  }));
+  on("skill.prompt", (_$: unknown, e: { text: string }) => ({ text: e.text }));
   on("session.authorize", () => ({
     value: "auth" in over ? over.auth : { handle: "h", kind: "bearer" },
   }));
@@ -129,6 +135,14 @@ async function stepAt(
   for await (const _ of s);
   return s.result;
 }
+
+/** The engine expanding the skill `skill`, its frontmatter naming `effort`. */
+const expandSkill = ($: any, skill: string, effort?: string) =>
+  $.skill.prompt({
+    skill,
+    text: "Do it.",
+    frontmatter: effort === undefined ? {} : { effort },
+  });
 
 const complete = ($: any, answer = "Done.", turnId = "t1") =>
   $.turn.complete({
@@ -238,7 +252,31 @@ describe("core", () => {
     expect(body.questions.effort.criteria).toHaveLength(5);
   });
 
-  test("configuredEffort resolves the env, then the model's, then the top-level setting", () => {
+  test("Jev's criteria follow the guide: medium for everyday work, past high only rarely", () => {
+    const { instructions, criteria } = jevRequest(
+      "p",
+      { prompts: [], answer: "" },
+      OPUS55,
+      "medium",
+    ).questions.effort;
+    const [low, medium, high, xhigh, max] = criteria;
+    expect(low).toMatch(/^low: .*chat.*rename/);
+    expect(medium).toMatch(/^medium: .*debugging.*feature.*bug fix/);
+    expect(high).toMatch(/^high: .*edge cases.*medium effort already fell short/);
+    expect(xhigh).toMatch(/^xhigh: .*fell short on at high effort/);
+    expect(max).toMatch(/^max: .*without the person.*security/);
+    expect(instructions).toContain("`medium` is the default");
+    expect(instructions).toContain("past `high`");
+  });
+
+  test("asksUltrathink finds the keyword as a word, in any case", () => {
+    expect(asksUltrathink("ultrathink: why does the cache miss?")).toBe(true);
+    expect(asksUltrathink("Please UltraThink this")).toBe(true);
+    expect(asksUltrathink("ultrathinking")).toBe(false);
+    expect(asksUltrathink("think hard")).toBe(false);
+  });
+
+  test("configuredEffort resolves the env, the model's, the top-level setting, then the model's default", () => {
     const s = {
       effortLevel: "medium",
       modelSettings: { [OPUS55]: { effortLevel: "high" } },
@@ -246,13 +284,40 @@ describe("core", () => {
     expect(configuredEffort(s, OPUS55, "max")).toBe("max");
     expect(configuredEffort(s, OPUS55, undefined)).toBe("high");
     expect(configuredEffort(s, `${OPUS55}[1m]`, undefined)).toBe("high");
-    expect(configuredEffort(s, OPUS55, "auto")).toBe("high");
-    expect(configuredEffort(s, "claude-sonnet-5-5", undefined)).toBe("medium");
-    expect(configuredEffort(s, undefined, undefined)).toBe("medium");
-    expect(configuredEffort({}, OPUS55, undefined)).toBeUndefined();
+    // `auto` and `unset`: Claude Code sends no level.
+    expect(configuredEffort(s, OPUS55, "auto")).toBeUndefined();
+    expect(configuredEffort(s, OPUS55, "unset")).toBeUndefined();
+    // The user's own top-level effortLevel: Opus 5, Fable 5.1 and earlier only.
+    expect(configuredEffort(s, "claude-opus-5", undefined)).toBe("medium");
+    expect(configuredEffort({ effortLevel: "low" }, "claude-fable-5-1", undefined)).toBe("low");
+    expect(configuredEffort({ effortLevel: "low" }, "claude-sonnet-5-5", undefined)).toBe("medium");
+    // One from another settings file counts on every model: the last one set.
     expect(
-      configuredEffort({ effortLevel: 7, modelSettings: "x" }, OPUS55, undefined),
-    ).toBeUndefined();
+      configuredEffort({ effortLevel: "low" }, "claude-sonnet-5-5", undefined, [
+        { effortLevel: "high" },
+        {},
+        { effortLevel: "xhigh" },
+        {},
+      ]),
+    ).toBe("xhigh");
+    // Each model's own default.
+    expect(configuredEffort({}, OPUS55, undefined)).toBe("medium");
+    expect(configuredEffort({}, "claude-fable-5-2", undefined)).toBe("medium");
+    expect(configuredEffort({}, "claude-haiku-5-5", undefined)).toBe("medium");
+    expect(configuredEffort({}, "claude-opus-4-7", undefined)).toBe("xhigh");
+    expect(configuredEffort({}, "claude-opus-5", undefined)).toBe("high");
+    expect(configuredEffort({}, "claude-fable-5-1", undefined)).toBe("high");
+    expect(configuredEffort({}, "claude-haiku-4-5", undefined)).toBeUndefined();
+    expect(configuredEffort({}, "toString", undefined)).toBeUndefined();
+    // No model: the merged top-level setting.
+    expect(configuredEffort(s, undefined, undefined)).toBe("medium");
+    // `max` is no settings level; a value that is none is skipped.
+    expect(
+      configuredEffort({ modelSettings: { [OPUS55]: { effortLevel: "max" } } }, OPUS55, undefined),
+    ).toBe("medium");
+    expect(
+      configuredEffort({ effortLevel: 7, modelSettings: "x" }, "claude-opus-5", undefined),
+    ).toBe("high");
   });
 
   test("footer names the model, the level sent and Jev's call", () => {
@@ -294,6 +359,16 @@ describe("core", () => {
         verdict: { ...v, confidence: 0.33 },
       }),
     ).toBe("opus-5-5 · effort medium · Jev unsure: xhigh 33%, session level medium");
+    expect(
+      footerLine({
+        ...base,
+        session: "xhigh",
+        sent: "xhigh",
+        steered: false,
+        held: "ultrathink",
+        verdict: v,
+      }),
+    ).toBe("opus-5-5 · effort xhigh · Jev advises xhigh 84% (not applied: ultrathink)");
   });
 });
 
@@ -473,10 +548,175 @@ describe("a session", () => {
     expect(seen.bodies[0].state.defaultEffort).toBe("xhigh");
   });
 
-  test("with no setting Jev is told the default is unknown", async ($, on) => {
+  test("with no setting Jev is told the model's own default", async ($, on) => {
     const { seen } = world(on);
     await startTurn($, "first");
+    expect(seen.bodies[0].state.defaultEffort).toBe("medium");
+  });
+
+  test("on a model with no known default, Jev is told it is unknown", async ($, on) => {
+    const { seen } = world(on, { model: "claude-haiku-4-5" });
+    await startTurn($, "first");
     expect(seen.bodies[0].state.defaultEffort).toBe("unknown");
+  });
+
+  test("a user-level effortLevel doesn't set Opus 5.5's default", async ($, on) => {
+    const { seen } = world(on, {
+      settings: { effortLevel: "low" },
+      sources: { user: { effortLevel: "low" } },
+    });
+    await startTurn($, "first");
+    expect(seen.bodies[0].state.defaultEffort).toBe("medium");
+  });
+
+  test("a project effortLevel sets Opus 5.5's default", async ($, on) => {
+    const { seen } = world(on, {
+      settings: { effortLevel: "high" },
+      sources: { user: { effortLevel: "low" }, project: { effortLevel: "high" } },
+    });
+    await startTurn($, "first");
+    expect(seen.bodies[0].state.defaultEffort).toBe("high");
+  });
+
+  test("CLAUDE_CODE_EFFORT_LEVEL holds every request's level; Jev only advises", async ($, on) => {
+    const { seen } = world(on, { env: { CLAUDE_CODE_EFFORT_LEVEL: "high" } });
+    await startTurn($, "Refactor the auth flow across the services");
+    await stepAt($, "high");
+    await stepAt($, "high", { index: 1 });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["high", "high"]);
+    expect((await complete($)).text).toBe(
+      "opus-5-5 · effort high · Jev advises xhigh 80% (not applied: CLAUDE_CODE_EFFORT_LEVEL is set)",
+    );
+  });
+
+  test("an ultrathink prompt holds its turn's level; the next turn is Jev's again", async ($, on) => {
+    const { seen } = world(on, { level: 0 });
+    await startTurn($, "ultrathink: why does the cache miss?");
+    await stepAt($, "xhigh");
+    await stepAt($, "xhigh", { index: 1 });
+    expect((await complete($)).text).toBe(
+      "opus-5-5 · effort xhigh · Jev advises low 80% (not applied: ultrathink)",
+    );
+    await startTurn($, "and the other one?", "t2");
+    // ultrathink's xhigh was the turn's, not the session's default.
+    expect(seen.bodies[1].state.defaultEffort).toBe("medium");
+    await stepAt($, "medium", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh", "low"]);
+  });
+
+  test("a turn with no prompt after an ultrathink turn takes the session's level", async ($, on) => {
+    const { seen } = world(on, { level: 0 });
+    await startTurn($, "ultrathink about it");
+    await stepAt($, "xhigh");
+    await complete($);
+    await startTurn($, "", "t2");
+    await stepAt($, "medium", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "medium"]);
+  });
+
+  test("a skill's effort holds the rest of its turn", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "Refactor the auth flow across the services");
+    await stepAt($, "medium");
+    await expandSkill($, "deep-review", "max");
+    await stepAt($, "max", { index: 1 });
+    expect((await complete($)).text).toBe(
+      "opus-5-5 · effort max · Jev advises xhigh 80% (not applied: deep-review skill's effort)",
+    );
+    await startTurn($, "next", "t2");
+    await stepAt($, "medium", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "max", "xhigh"]);
+  });
+
+  test("a skill expanded before its turn starts (a typed /name) holds that turn only", async ($, on) => {
+    const { seen } = world(on);
+    await expandSkill($, "quick", "low");
+    await startTurn($, "/quick fix the typo");
+    await stepAt($, "low");
+    await complete($);
+    await startTurn($, "next", "t2");
+    await stepAt($, "medium", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["low", "xhigh"]);
+  });
+
+  /** A `/name` slash command typed over the running turn `t1`. */
+  const typeOver = ($: any, name: string) =>
+    $.prompt.submit({
+      text: `/${name} fix the typo`,
+      command: { name, args: "fix the typo" },
+      wait: true,
+      turnId: "t1",
+      origin: { kind: "composer" },
+    });
+
+  test("a /skill typed mid-turn and expanded at once holds its own turn, not the running one", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "Refactor the auth flow across the services");
+    await stepAt($, "medium");
+    await typeOver($, "quick");
+    await expandSkill($, "quick", "low");
+    await stepAt($, "medium", { index: 1 });
+    expect((await complete($)).text).toBe(
+      "opus-5-5 · effort xhigh · Jev: medium → xhigh 80%",
+    );
+    await startTurn($, "/quick fix the typo", "t2");
+    await stepAt($, "low", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh", "low"]);
+  });
+
+  test("a /skill typed mid-turn and expanded once its turn started holds that turn", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "Refactor the auth flow across the services");
+    await stepAt($, "medium");
+    await typeOver($, "quick");
+    await complete($);
+    await startTurn($, "/quick fix the typo", "t2");
+    await expandSkill($, "quick", "low");
+    await stepAt($, "low", { turnId: "t2" });
+    await complete($, "Done.", "t2");
+    await startTurn($, "next", "t3");
+    await stepAt($, "medium", { turnId: "t3" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "low", "xhigh"]);
+  });
+
+  test("a queued skill's hold keeps the running turn's own hold", async ($, on) => {
+    const { seen } = world(on, { level: 0 });
+    await startTurn($, "ultrathink: why does the cache miss?");
+    await stepAt($, "xhigh");
+    await typeOver($, "quick");
+    await expandSkill($, "quick", "low");
+    await stepAt($, "xhigh", { index: 1 });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh"]);
+  });
+
+  test("a skill with no effort level holds nothing", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "go");
+    await expandSkill($, "commit");
+    await expandSkill($, "odd", "ultracode");
+    await stepAt($, "medium");
+    expect(seen.steps[0].effort).toBe("xhigh");
+  });
+
+  test("/clear drops a hold waiting for the next turn", async ($, on) => {
+    const { seen } = world(on);
+    await expandSkill($, "quick", "low");
+    await $.session.end({
+      reason: "clear",
+      sessionId: "s1",
+      resume: {},
+    } as never);
+    await startTurn($, "go");
+    await stepAt($, "medium");
+    expect(seen.steps[0].effort).toBe("xhigh");
+  });
+
+  test("a hold survives a reload", async ($, on) => {
+    const { seen } = world(on, { level: 0 });
+    await startTurn($, "ultrathink: go");
+    await $.session.start({ cwd: "/r" } as never);
+    await stepAt($, "xhigh");
+    expect(seen.steps[0].effort).toBe("xhigh");
   });
 
   test("/clear forgets the verdict and context; a reload keeps them", async ($, on) => {

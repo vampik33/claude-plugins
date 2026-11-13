@@ -26,7 +26,10 @@ const POLL_MS = 10_000;
 /** Bytes of a run's output read for its last line. */
 const TAIL_BYTES = "4096";
 
-const runs = atom({ plugin: "watchdog", key: "runs" } as const, [] as WatchRun[]);
+const runs = atom(
+  { plugin: "watchdog", key: "runs" } as const,
+  [] as WatchRun[],
+);
 
 /** What the module keeps outside `$.state`; a reload starts it over. */
 type Watch = {
@@ -42,9 +45,13 @@ type Watch = {
 
 /** The engine's pid: the parent of a child it runs. */
 async function findRoot($: EngineInterface): Promise<number | undefined> {
-  const r = await $.process.run(["sh", "-c", "echo $PPID"]).catch(() => undefined);
+  const r = await $.process
+    .run(["sh", "-c", "echo $PPID"])
+    .catch(() => undefined);
   const pid = Number(r?.stdout.trim());
-  return r?.exitCode === 0 && Number.isInteger(pid) && pid > 1 ? pid : undefined;
+  return r?.exitCode === 0 && Number.isInteger(pid) && pid > 1
+    ? pid
+    : undefined;
 }
 
 const signal = ($: EngineInterface, sig: "TERM" | "KILL", r: WatchRun) =>
@@ -63,9 +70,10 @@ async function stop($: EngineInterface, w: Watch, r: WatchRun, now: number) {
   const res = await $.tool
     .call({ tool: "TaskStop", task_id: r.taskId } as never)
     .catch(() => undefined);
-  if (!res || res.deny !== undefined || res.isError)
-    await signal($, "TERM", r);
-  void $.prompt.submit({ text: killNote(r, now, w.limitMs) }).catch(() => undefined);
+  if (!res || res.deny !== undefined || res.isError) await signal($, "TERM", r);
+  void $.prompt
+    .submit({ text: killNote(r, now, w.limitMs) })
+    .catch(() => undefined);
 }
 
 /** One look at the shells: output, CPU, ends, stops. */
@@ -126,7 +134,8 @@ async function look($: EngineInterface, w: Watch): Promise<void> {
     await update($, runs, (prev) =>
       prev.map((r) => (lines.has(r.id) ? { ...r, line: lines.get(r.id) } : r)),
     );
-  for (const r of stuck) await stop($, w, { ...r, line: lines.get(r.id) ?? r.line }, now);
+  for (const r of stuck)
+    await stop($, w, { ...r, line: lines.get(r.id) ?? r.line }, now);
   for (const r of kill) await signal($, "KILL", r);
   // quiet minutes move with no state change: the band redraws each look while it shows
   const banded = bandItems(await read($, runs), now, w.limitMs).length > 0;
@@ -139,7 +148,10 @@ function ensurePoll($: EngineInterface, w: Watch) {
 }
 
 /** Marks a run ended unless it already is; answers it as it now stands. */
-async function endRun($: EngineInterface, id: string): Promise<WatchRun | undefined> {
+async function endRun(
+  $: EngineInterface,
+  id: string,
+): Promise<WatchRun | undefined> {
   let run: WatchRun | undefined;
   const now = await $.clock.now();
   await update($, runs, (prev) =>
@@ -175,7 +187,8 @@ export const register: Register = (on, options) => {
     const r = await next(e);
     await $.command.register({
       name: "watchdog",
-      description: "Summarize this session's Bash commands: running, quiet, and stopped as stuck",
+      description:
+        "Summarize this session's Bash commands: running, quiet, and stopped as stuck",
     });
     // a reload while commands run: pick the look up again
     if ((await read($, runs)).some(isWatched)) ensurePoll($, w);
@@ -195,7 +208,8 @@ export const register: Register = (on, options) => {
 
   on("tool.call", { tool: "Bash" }, async ($, e, next) => {
     const now = await $.clock.now();
-    const id = e.tool_use_id ?? `call-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const id =
+      e.tool_use_id ?? `call-${now}-${Math.random().toString(36).slice(2, 8)}`;
     const base = {
       id,
       command: e.command,
@@ -207,7 +221,8 @@ export const register: Register = (on, options) => {
     const r = await next(e);
     const taskId =
       r.deny === undefined
-        ? (r.result as { backgroundTaskId?: string } | undefined)?.backgroundTaskId
+        ? (r.result as { backgroundTaskId?: string } | undefined)
+            ?.backgroundTaskId
         : undefined;
     if (taskId) {
       // started in the background, or a foreground one moved there (its timeout, ctrl+b)
@@ -251,7 +266,11 @@ export const register: Register = (on, options) => {
 
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
-    const items = bandItems(await read($, runs), await $.clock.now(), w.limitMs);
+    const items = bandItems(
+      await read($, runs),
+      await $.clock.now(),
+      w.limitMs,
+    );
     if (items.length === 0) return next(e);
     const below = await next(e);
     const { Box, Text } = $.ui.resolve(e);

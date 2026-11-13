@@ -48,7 +48,9 @@ async function locate($: EngineInterface): Promise<Repo | undefined> {
   if (top?.exitCode !== 0) return undefined;
   const root = top.stdout.trim();
   const mkt = parsed(
-    await $.fs.read(`${root}/.claude-plugin/marketplace.json`).catch(() => undefined),
+    await $.fs
+      .read(`${root}/.claude-plugin/marketplace.json`)
+      .catch(() => undefined),
     marketplaceVersions,
   );
   const home = await $.env.get("HOME").catch(() => undefined);
@@ -77,7 +79,9 @@ async function refresh(
     $.process
       .run(["git", "status", "--porcelain=v1", "--branch"], { cwd: r.root })
       .catch(() => undefined),
-    $.fs.read(`${r.root}/.claude-plugin/marketplace.json`).catch(() => undefined),
+    $.fs
+      .read(`${r.root}/.claude-plugin/marketplace.json`)
+      .catch(() => undefined),
     readInstalled($, r),
     read($, loaded),
   ]);
@@ -94,7 +98,12 @@ async function refresh(
 
 type Ran = { exitCode: number; stdout: string; stderr: string };
 
-const runIn = ($: EngineInterface, r: Repo, argv: string[], timeoutMs: number) =>
+const runIn = (
+  $: EngineInterface,
+  r: Repo,
+  argv: string[],
+  timeoutMs: number,
+) =>
   $.process
     .run(argv, { cwd: r.root, env: NO_PROMPT, timeoutMs })
     .catch((err): Ran => ({ exitCode: 1, stdout: "", stderr: String(err) }));
@@ -105,7 +114,8 @@ const said = (x: Ran) => tailOf(x.stderr || x.stdout);
 async function shipSteps($: EngineInterface, r: Repo): Promise<string> {
   const s = await refresh($, r);
   if (!s) return "ship: could not read git status or the marketplace.";
-  if (!canShip(s)) return "Nothing to ship: no commits to push and every installed mod is current.";
+  if (!canShip(s))
+    return "Nothing to ship: no commits to push and every installed mod is current.";
   const lines: string[] = [];
 
   if (s.ahead > 0) {
@@ -113,19 +123,34 @@ async function shipSteps($: EngineInterface, r: Repo): Promise<string> {
       return `ship: ${s.branch} has no upstream; push it once with git push -u origin ${s.branch}.`;
     const push = await runIn($, r, ["git", "push"], PUSH_MS);
     if (push.exitCode !== 0) return `ship: git push failed:\n${said(push)}`;
-    lines.push(`Pushed ${s.ahead} commit${s.ahead === 1 ? "" : "s"} on ${s.branch}.`);
+    lines.push(
+      `Pushed ${s.ahead} commit${s.ahead === 1 ? "" : "s"} on ${s.branch}.`,
+    );
   }
 
   if (s.stale.length > 0) {
     if (s.branch !== "main") {
-      lines.push(`On ${s.branch}: the marketplace reads main, so no mod was updated.`);
+      lines.push(
+        `On ${s.branch}: the marketplace reads main, so no mod was updated.`,
+      );
     } else {
-      const mk = await runIn($, r, ["claude", "plugin", "marketplace", "update", r.marketplace], PLUGIN_MS);
+      const mk = await runIn(
+        $,
+        r,
+        ["claude", "plugin", "marketplace", "update", r.marketplace],
+        PLUGIN_MS,
+      );
       if (mk.exitCode !== 0)
         return [...lines, `Marketplace update failed:\n${said(mk)}`].join("\n");
       for (const m of s.stale) {
-        const up = await runIn($, r, ["claude", "plugin", "update", `${m.name}@${r.marketplace}`], PLUGIN_MS);
-        if (up.exitCode !== 0) lines.push(`${m.name}: update failed: ${tailOf(said(up), 1)}`);
+        const up = await runIn(
+          $,
+          r,
+          ["claude", "plugin", "update", `${m.name}@${r.marketplace}`],
+          PLUGIN_MS,
+        );
+        if (up.exitCode !== 0)
+          lines.push(`${m.name}: update failed: ${tailOf(said(up), 1)}`);
       }
     }
   }
@@ -136,21 +161,28 @@ async function shipSteps($: EngineInterface, r: Repo): Promise<string> {
     (m) => installed[m.name] !== undefined && installed[m.name] !== m.installed,
   );
   if (updated.length)
-    lines.push(`Updated ${updated.map((m) => `${m.name} ${m.installed} → ${installed[m.name]}`).join(", ")}.`);
-  const behind = (after?.stale ?? []).filter((m) => s.branch === "main" || !s.stale.some((x) => x.name === m.name));
+    lines.push(
+      `Updated ${updated.map((m) => `${m.name} ${m.installed} → ${installed[m.name]}`).join(", ")}.`,
+    );
+  const behind = (after?.stale ?? []).filter(
+    (m) => s.branch === "main" || !s.stale.some((x) => x.name === m.name),
+  );
   if (behind.length && s.branch === "main")
     lines.push(
       `Still behind the repo: ${behind.map((m) => `${m.name} ${m.installed} (repo ${m.repo})`).join(", ")}; is the version bump committed and pushed?`,
     );
   if (after?.changed)
-    lines.push(`${after.changed} uncommitted file${after.changed === 1 ? " was" : "s were"} not shipped.`);
+    lines.push(
+      `${after.changed} uncommitted file${after.changed === 1 ? " was" : "s were"} not shipped.`,
+    );
   if (after?.restart.length)
     lines.push(`Restart Claude Code to load: ${after.restart.join(", ")}.`);
   return lines.join("\n");
 }
 
 async function ship($: EngineInterface, r: Repo | undefined): Promise<string> {
-  if (!r) return "ship: this is not a plugin marketplace repo (no .claude-plugin/marketplace.json at the git root).";
+  if (!r)
+    return "ship: this is not a plugin marketplace repo (no .claude-plugin/marketplace.json at the git root).";
   if (await read($, running)) return "ship is already running.";
   await update($, running, () => true);
   try {
@@ -207,7 +239,9 @@ export const register: Register = (on) => {
             <Button
               key="ship-run"
               dimColor
-              onPress={() => void $.command.run({ command: "ship", args: "" } as never)}
+              onPress={() =>
+                void $.command.run({ command: "ship", args: "" } as never)
+              }
             >
               ship
             </Button>

@@ -13,7 +13,9 @@ describe("band order", () => {
     expect(
       names(
         bandOrder(
-          ["effort-pilot", "ship", "continuity", "fleet", "codex-review"].map(row),
+          ["effort-pilot", "ship", "continuity", "fleet", "codex-review"].map(
+            row,
+          ),
         ),
       ),
     ).toEqual(["ship", "fleet", "codex-review", "continuity", "effort-pilot"]);

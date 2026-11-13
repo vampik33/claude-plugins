@@ -262,7 +262,8 @@ export function outputFileOf(text: string | undefined): string | undefined {
 }
 
 /** Escape sequences: OSC (titles, links, clipboard), then CSI (colours, cursor), then any other ESC pair. */
-const ESCAPES = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[\s\S]?/g;
+const ESCAPES =
+  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[\s\S]?/g;
 /** Control characters left once lines are split: none of them reaches the screen. */
 const CONTROLS = /[\x00-\x1f\x7f-\x9f]/g;
 
@@ -334,8 +335,10 @@ export function shellName(command: string): string {
     command
       .split(/&&|\|\||;|\n/)
       .map((s) => s.trim())
-      .find((s) => s && !SETUP.test(s) && !s.split(/\s+/).every((w) => ASSIGN.test(w))) ??
-    command.trim();
+      .find(
+        (s) =>
+          s && !SETUP.test(s) && !s.split(/\s+/).every((w) => ASSIGN.test(w)),
+      ) ?? command.trim();
   const name = step
     .split(/\s+/)
     .filter((w) => !ASSIGN.test(w))

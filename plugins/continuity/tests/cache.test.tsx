@@ -254,12 +254,19 @@ describe("band", () => {
     engine(on, { read: 80_000, write: 1_000 }, h("Text", null, "Heads up"));
     await measure($);
     await step($);
-    const ui = await $.ui.mount({ plugin: "continuity", surface: "mobile", ...BAND });
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "mobile",
+      ...BAND,
+    });
     const own = partOf(await ui.drawn(), "continuity");
     expect(own.children[1].props.key).toBe("band:continuity");
     expect(own.children[1].children[0].type).toBe("Text");
     expect(
-      await ui.find({ type: "Text", text: /^ctx [█░]+ 29% · session .* · cache until \d\d:\d\d$/ }),
+      await ui.find({
+        type: "Text",
+        text: /^ctx [█░]+ 29% · session .* · cache until \d\d:\d\d$/,
+      }),
     ).toBeDefined();
     await ui.unmount();
   });

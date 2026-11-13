@@ -1,6 +1,14 @@
 import type { ClientModule } from "claude-code";
 
-import { bar, fmtLength, fmtTokens, gaugeCells, gaugeColor, gaugeNote, NARROW } from "./core.ts";
+import {
+  bar,
+  fmtLength,
+  fmtTokens,
+  gaugeCells,
+  gaugeColor,
+  gaugeNote,
+  NARROW,
+} from "./core.ts";
 import { colorFor, fmtClock } from "./ttl.ts";
 
 export type CacheClock = {
@@ -58,20 +66,38 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
     (cacheLeft <= 0 ? (
       <Text color="red">● cache cold</Text>
     ) : (
-      <Text bold color={colorFor(cacheLeft, p.cache.lifeMs, p.cache.yellowAt, p.cache.redAt)}>
+      <Text
+        bold
+        color={colorFor(
+          cacheLeft,
+          p.cache.lifeMs,
+          p.cache.yellowAt,
+          p.cache.redAt,
+        )}
+      >
         {`⏱ ${fmtClock(cacheLeft)}`}
       </Text>
     ));
   /** The fill and, on a wide band, the tokens; `lead` goes before the fill. */
   const figures = (lead: string, fill: number) => [
     <Text bold>{`${lead}${fill}%`}</Text>,
-    ...(narrow ? [] : [<Text dimColor>{` ${fmtTokens(p.tokens ?? 0)}/${fmtTokens(p.window)}`}</Text>]),
+    ...(narrow
+      ? []
+      : [
+          <Text
+            dimColor
+          >{` ${fmtTokens(p.tokens ?? 0)}/${fmtTokens(p.window)}`}</Text>,
+        ]),
   ];
 
   if (p.part === "stats")
     return (
       <Box flexDirection="row" columnGap={2}>
-        {pct === null ? <Text dimColor>--</Text> : <Text>{figures("", pct)}</Text>}
+        {pct === null ? (
+          <Text dimColor>--</Text>
+        ) : (
+          <Text>{figures("", pct)}</Text>
+        )}
         <Text>
           <Text dimColor>session </Text>
           <Text>{fmtLength(now - p.startedAt)}</Text>

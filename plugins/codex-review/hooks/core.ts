@@ -310,7 +310,9 @@ export function companionJobId(
       r.workspaceRoot === job.root &&
       r.pid === job.pid,
   );
-  return typeof mine?.id === "string" && mine.id ? { id: mine.id, phase: mine.phase } : undefined;
+  return typeof mine?.id === "string" && mine.id
+    ? { id: mine.id, phase: mine.phase }
+    : undefined;
 }
 
 /** The band's last three rows, top to bottom: codex, ctx, then model and effort. */
@@ -321,7 +323,9 @@ const BAND_TAIL = ["codex-review", "continuity", "effort-pilot"];
  * they came. Each of the three mods applies it, so the order is the same
  * whichever of them is installed and whatever order their hooks run in.
  */
-export function bandOrder<R extends { plugin: string }>(rows: readonly R[]): R[] {
+export function bandOrder<R extends { plugin: string }>(
+  rows: readonly R[],
+): R[] {
   return [
     ...rows.filter((r) => !BAND_TAIL.includes(r.plugin)),
     ...BAND_TAIL.flatMap((p) => rows.filter((r) => r.plugin === p)),

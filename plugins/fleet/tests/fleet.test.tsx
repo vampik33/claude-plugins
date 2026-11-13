@@ -115,15 +115,26 @@ describe("words", () => {
   });
 
   test("the summary counts lost shells apart", () => {
-    const shell = (id: string, status: string) => ({ id, command: "x", startedAt: T0, status });
+    const shell = (id: string, status: string) => ({
+      id,
+      command: "x",
+      startedAt: T0,
+      status,
+    });
     const f: FleetState = {
       ...emptyFleet(),
       batchStart: T0,
-      shells: [shell("a", "completed"), shell("b", "failed"), shell("c", "lost")],
+      shells: [
+        shell("a", "completed"),
+        shell("b", "failed"),
+        shell("c", "lost"),
+      ],
     };
-    expect(summary(f, "r", T0 + 1_000).split("\n").at(-1)).toBe(
-      "Background shells: ✓ 1   ✗ 1   ? 1",
-    );
+    expect(
+      summary(f, "r", T0 + 1_000)
+        .split("\n")
+        .at(-1),
+    ).toBe("Background shells: ✓ 1   ✗ 1   ? 1");
   });
 
   test("the summary carries no shell command text", () => {
@@ -175,7 +186,13 @@ describe("transitions", () => {
     const shells = [
       { id: "b1", command: "sleep 9", startedAt: T0, status: "running" },
       { id: "b2", command: "sleep 8", startedAt: T0, status: "running" },
-      { id: "b3", command: "true", startedAt: T0, endedAt: T0 + 1, status: "completed" },
+      {
+        id: "b3",
+        command: "true",
+        startedAt: T0,
+        endedAt: T0 + 1,
+        status: "completed",
+      },
     ];
     const lost = loseShells(shells, new Set(["b2"]), T0 + 5_000);
     expect(lost.map((s) => [s.id, s.status, s.endedAt])).toEqual([
@@ -278,8 +295,8 @@ describe("shell output", () => {
   });
 
   test("wait loops", () => {
-    expect(isWaiter('until grep -q DONE log; do sleep 30; done')).toBe(true);
-    expect(isWaiter('while pgrep -f retrain; do sleep 60; done')).toBe(true);
+    expect(isWaiter("until grep -q DONE log; do sleep 30; done")).toBe(true);
+    expect(isWaiter("while pgrep -f retrain; do sleep 60; done")).toBe(true);
     expect(isWaiter("cargo test")).toBe(false);
     expect(isWaiter("python sim.py --until 2026")).toBe(false);
   });
@@ -290,9 +307,9 @@ describe("shell output", () => {
     );
     expect(shellName("export A=1; uv run python sim.py")).toBe("uv run");
     expect(shellName("cargo test --workspace")).toBe("cargo test");
-    expect(shellName("S=/tmp/a; python3 -I /very/long/path/to/some_script_name.py")).toBe(
-      "python3 -I",
-    );
+    expect(
+      shellName("S=/tmp/a; python3 -I /very/long/path/to/some_script_name.py"),
+    ).toBe("python3 -I");
   });
 
   test("band notes: progress with ETA, stalls, nothing for waiters or ended", () => {
@@ -308,9 +325,16 @@ describe("shell output", () => {
       shellNotes(
         [
           sh({ progress: { frac: 0.4, firstAt: T0, firstFrac: 0.2 } }),
-          sh({ command: "./retrain.sh d57", stalled: true, outputAt: T0 + 4 * 60_000 }),
+          sh({
+            command: "./retrain.sh d57",
+            stalled: true,
+            outputAt: T0 + 4 * 60_000,
+          }),
           sh({ command: "until x; do sleep 9; done", waiter: true }),
-          sh({ status: "completed", progress: { frac: 1, firstAt: T0, firstFrac: 0 } }),
+          sh({
+            status: "completed",
+            progress: { frac: 1, firstAt: T0, firstFrac: 0 },
+          }),
           sh({ line: "no count here" }),
         ],
         now,
@@ -395,7 +419,14 @@ function engine(
   });
   on("fs.stat", (_$: unknown, e: { path: string }) =>
     e.path in files
-      ? { value: { kind: "file", size: files[e.path]!.length, mtimeMs: 0, isLink: false } }
+      ? {
+          value: {
+            kind: "file",
+            size: files[e.path]!.length,
+            mtimeMs: 0,
+            isLink: false,
+          },
+        }
       : { value: { kind: "other", size: 0, mtimeMs: 0, isLink: false } },
   );
   on(
@@ -422,10 +453,21 @@ function engine(
         : { isPlaced: false, reason: "narrow" },
     };
   });
-  on("ui.close", () => (seen.closed++, (seen.isOpen = false), { value: undefined }));
+  on(
+    "ui.close",
+    () => (seen.closed++, (seen.isOpen = false), { value: undefined }),
+  );
   on("ui.panes", () => ({
     value: seen.isOpen
-      ? [{ id: "fleet", title: "Fleet", isShown: seen.isShown, isFocused: false, isPlaced: seen.isPlaced }]
+      ? [
+          {
+            id: "fleet",
+            title: "Fleet",
+            isShown: seen.isShown,
+            isFocused: false,
+            isPlaced: seen.isPlaced,
+          },
+        ]
       : [],
   }));
   on("agent.list", () => ({
@@ -526,9 +568,17 @@ describe("session", () => {
         let n = 0;
         on("tool.call", () => ({ result: { backgroundTaskId: `b${++n}` } }));
         on("classic.Stop", () => ({}));
-        const task = (id: string) => ({ id, type: "shell", status: "running", description: "" });
+        const task = (id: string) => ({
+          id,
+          type: "shell",
+          status: "running",
+          description: "",
+        });
         const stop = (ids: string[]) =>
-          $.classic.Stop({ stop_hook_active: false, background_tasks: ids.map(task) } as never);
+          $.classic.Stop({
+            stop_hook_active: false,
+            background_tasks: ids.map(task),
+          } as never);
         const line = async () => {
           const ui = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
           const text = (await ui.find({ type: "Text" }))?.text;
@@ -549,7 +599,9 @@ describe("session", () => {
         // no toast of its own for a lost shell; the batch's all-done counts it
         expect(seen.toasts).toEqual([]);
         await clock.advance(2_100);
-        expect(seen.toasts).toEqual(["All done in 0s · Background shells: ✓ 0   ? 2"]);
+        expect(seen.toasts).toEqual([
+          "All done in 0s · Background shells: ✓ 0   ? 2",
+        ]);
       },
     );
 
@@ -586,10 +638,15 @@ describe("session", () => {
         TELEGRAM_BOT_TOKEN: "t",
         TELEGRAM_CHAT_ID: "c",
       });
-      on("prompt.submit", (_$: unknown, e: { text: string }) => ({ text: e.text }));
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
       on("session.start", (_$, e) => e as never);
       await $.session.start({ cwd: "/r/deployer" } as never);
-      await $.prompt.submit({ text: "go", origin: { kind: "composer" } } as never);
+      await $.prompt.submit({
+        text: "go",
+        origin: { kind: "composer" },
+      } as never);
       await spawn($, "review plan");
       await spawn($, "review apply");
       await clock.advance(6 * 60_000);
@@ -615,13 +672,18 @@ describe("session", () => {
         TELEGRAM_BOT_TOKEN: "t",
         TELEGRAM_CHAT_ID: "c",
       });
-      on("prompt.submit", (_$: unknown, e: { text: string }) => ({ text: e.text }));
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
       on("session.start", (_$, e) => e as never);
       await $.session.start({ cwd: "/r/deployer" } as never);
       await spawn($, "review plan");
       await spawn($, "review apply");
       await clock.advance(6 * 60_000);
-      await $.prompt.submit({ text: "go", origin: { kind: "composer" } } as never);
+      await $.prompt.submit({
+        text: "go",
+        origin: { kind: "composer" },
+      } as never);
       list[0]!.status = "completed";
       list[1]!.status = "completed";
       await clock.advance(2_000);
@@ -677,7 +739,9 @@ describe("session", () => {
       expect(own.props).toEqual({ flexDirection: "column" });
       expect(own.children.at(-1).props.key).toBe("band:fleet");
       expect(own.children.at(-1).props.marginTop).toBeUndefined();
-      expect(await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" })).toBeDefined();
+      expect(
+        await ui.find({ type: "Text", text: "fleet 1▶ 0✓ 0✗" }),
+      ).toBeDefined();
       expect((await ui.find({ key: "fleet-toggle" }))?.text).toBe("show");
       await ui.press({ key: "fleet-toggle" });
       expect(seen.opened).toBe(1);
@@ -703,9 +767,9 @@ describe("session", () => {
         expect((await ui.find({ key: "fleet-toggle" }))?.props.hotkey).toBe(
           surface === "terminal" ? "f" : undefined,
         );
-        expect((await ui.find({ key: "band:fleet" }))?.props.justifyContent).toBe(
-          surface === "terminal" ? undefined : "space-between",
-        );
+        expect(
+          (await ui.find({ key: "band:fleet" }))?.props.justifyContent,
+        ).toBe(surface === "terminal" ? undefined : "space-between");
         await ui.press({ key: "fleet-toggle" });
         await ui.unmount();
       };
@@ -836,7 +900,10 @@ describe("shell progress", () => {
       async ($, on) => {
         const { clock, files } = engine(on, []);
         on("tool.call", () => bgResult("b1"));
-        await $.tool.call({ tool: "Bash", command: "uv run python sim.py" } as never);
+        await $.tool.call({
+          tool: "Bash",
+          command: "uv run python sim.py",
+        } as never);
         files["/tmp/t/b1.output"] = "loading\nmonth 6/30\n";
         await clock.advance(5_000);
         files["/tmp/t/b1.output"] += "month 12/30\n";
@@ -851,7 +918,11 @@ describe("shell progress", () => {
         // the pane's Client ticks on the wall clock, which the mocked one ran ahead of: no ETA there yet
         const pane = await $.ui.mount({ plugin: "fleet", surface, ...PANE });
         expect(
-          await pane.find({ in: "fleet-body", type: "Text", text: /▓▓▓▓░░░░░░ 40%( ~\d+m)? · month 12\/30/ }),
+          await pane.find({
+            in: "fleet-body",
+            type: "Text",
+            text: /▓▓▓▓░░░░░░ 40%( ~\d+m)? · month 12\/30/,
+          }),
         ).toBeDefined();
         await pane.unmount();
       },
@@ -864,7 +935,10 @@ describe("shell progress", () => {
       async ($, on) => {
         const { seen, clock, files } = engine(on, []);
         on("tool.call", () => bgResult("b1"));
-        await $.tool.call({ tool: "Bash", command: "./retrain.sh d57" } as never);
+        await $.tool.call({
+          tool: "Bash",
+          command: "./retrain.sh d57",
+        } as never);
         files["/tmp/t/b1.output"] = "fitting\n";
         await clock.advance(5_000);
         await clock.advance(5 * 60_000);
@@ -873,13 +947,17 @@ describe("shell progress", () => {
         expect(seen.toasts).toHaveLength(1);
 
         let band = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
-        expect((await band.find({ type: "Text" }))?.text).toMatch(/· retrain.sh d57 ⚠ \dm$/);
+        expect((await band.find({ type: "Text" }))?.text).toMatch(
+          /· retrain.sh d57 ⚠ \dm$/,
+        );
         await band.unmount();
 
         files["/tmp/t/b1.output"] += "fold 2\n";
         await clock.advance(5_000);
         band = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
-        expect((await band.find({ type: "Text" }))?.text).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+        expect((await band.find({ type: "Text" }))?.text).toBe(
+          "fleet 0▶ 0✓ 0✗ · bg 1",
+        );
         await band.unmount();
       },
     );
@@ -891,13 +969,22 @@ describe("shell progress", () => {
       async ($, on) => {
         const { seen, clock, files } = engine(on, []);
         const stopped: string[] = [];
-        on("tool.call", (_$: unknown, e: { tool: string; task_id?: string }) => {
-          if (e.tool === "TaskStop") {
-            stopped.push(e.task_id!);
-            return { result: { message: "stopped", task_id: e.task_id, task_type: "shell" } };
-          }
-          return bgResult("b1");
-        });
+        on(
+          "tool.call",
+          (_$: unknown, e: { tool: string; task_id?: string }) => {
+            if (e.tool === "TaskStop") {
+              stopped.push(e.task_id!);
+              return {
+                result: {
+                  message: "stopped",
+                  task_id: e.task_id,
+                  task_type: "shell",
+                },
+              };
+            }
+            return bgResult("b1");
+          },
+        );
         await $.tool.call({
           tool: "Bash",
           command: "until grep -q DONE log; do sleep 30; done",
@@ -907,8 +994,16 @@ describe("shell progress", () => {
         expect(seen.toasts).toEqual([]);
 
         const pane = await $.ui.mount({ plugin: "fleet", surface, ...PANE });
-        expect(await pane.find({ in: "fleet-body", type: "Text", text: /^ +waiting$/ })).toBeDefined();
-        expect((await pane.find({ key: "fleet-stop-b1" }))?.text).toBe("stop until grep");
+        expect(
+          await pane.find({
+            in: "fleet-body",
+            type: "Text",
+            text: /^ +waiting$/,
+          }),
+        ).toBeDefined();
+        expect((await pane.find({ key: "fleet-stop-b1" }))?.text).toBe(
+          "stop until grep",
+        );
         await pane.press({ key: "fleet-stop-b1" });
         expect(stopped).toEqual(["b1"]);
         await pane.unmount();
@@ -927,7 +1022,11 @@ describe("shell progress", () => {
       await $.session.start({ cwd: "/r/deployer" } as never);
       files["/tmp/t/b1.output"] = "50%\n";
       await clock.advance(5_000);
-      const band = await $.ui.mount({ plugin: "fleet", surface: "terminal", ...BAND });
+      const band = await $.ui.mount({
+        plugin: "fleet",
+        surface: "terminal",
+        ...BAND,
+      });
       expect((await band.find({ type: "Text" }))?.text).toBe(
         "fleet 0▶ 0✓ 0✗ · bg 1 · python sim.py 50%",
       );
@@ -953,13 +1052,35 @@ describe("view", () => {
         repo: "r",
         width: 50,
         agents: [
-          agent({ id: "a", startedAt: at - 372_000, endedAt: at, status: "completed" }),
+          agent({
+            id: "a",
+            startedAt: at - 372_000,
+            endedAt: at,
+            status: "completed",
+          }),
           agent({ id: "b", type: "Plan", startedAt: at, status: "running" }),
         ],
         shells: [
-          { id: "s1", command: "cargo test", startedAt: at - 5_000, endedAt: at, status: "failed" },
-          { id: "s2", command: "cargo build", startedAt: at, status: "running" },
-          { id: "s3", command: "cargo doc", startedAt: at - 3_000, endedAt: at, status: "lost" },
+          {
+            id: "s1",
+            command: "cargo test",
+            startedAt: at - 5_000,
+            endedAt: at,
+            status: "failed",
+          },
+          {
+            id: "s2",
+            command: "cargo build",
+            startedAt: at,
+            status: "running",
+          },
+          {
+            id: "s3",
+            command: "cargo doc",
+            startedAt: at - 3_000,
+            endedAt: at,
+            status: "lost",
+          },
         ],
         trees: [],
       },
@@ -968,9 +1089,15 @@ describe("view", () => {
     const text = lines(tree);
     expect(text).toContain(`✓ ${"Explore".padEnd(18)} 6m12s · 16:42`);
     expect(text).toContain(`▶ ${"Plan".padEnd(18)} 45s`);
-    expect(text.find((l) => l.includes("cargo test"))).toMatch(/^✗ cargo test +5s · 16:42$/);
-    expect(text.find((l) => l.includes("cargo build"))).toMatch(/^▶ cargo build +45s$/);
-    expect(text.find((l) => l.includes("cargo doc"))).toMatch(/^\? cargo doc +3s · 16:42$/);
+    expect(text.find((l) => l.includes("cargo test"))).toMatch(
+      /^✗ cargo test +5s · 16:42$/,
+    );
+    expect(text.find((l) => l.includes("cargo build"))).toMatch(
+      /^▶ cargo build +45s$/,
+    );
+    expect(text.find((l) => l.includes("cargo doc"))).toMatch(
+      /^\? cargo doc +3s · 16:42$/,
+    );
     expect(text.every((l) => l.length <= 50)).toBe(true);
   });
 });

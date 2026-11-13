@@ -24,7 +24,11 @@ const status = (over: Partial<ShipStatus> = {}): ShipStatus => ({
 
 describe("reading", () => {
   test("git status: branch, upstream, ahead, changed", () => {
-    expect(parseStatus("## main...origin/main [ahead 2, behind 1]\n M a.ts\n?? b.ts\n")).toEqual({
+    expect(
+      parseStatus(
+        "## main...origin/main [ahead 2, behind 1]\n M a.ts\n?? b.ts\n",
+      ),
+    ).toEqual({
       branch: "main",
       hasUpstream: true,
       ahead: 2,
@@ -58,11 +62,15 @@ describe("reading", () => {
     const json = JSON.stringify({
       plugins: {
         "fleet@vampik-plugins": [{ scope: "user", version: "0.4.2" }],
-        "hookify@claude-plugins-official": [{ scope: "user", version: "9.9.9" }],
+        "hookify@claude-plugins-official": [
+          { scope: "user", version: "9.9.9" },
+        ],
         "odd@vampik-plugins": [],
       },
     });
-    expect(installedVersions(json, "vampik-plugins")).toEqual({ fleet: "0.4.2" });
+    expect(installedVersions(json, "vampik-plugins")).toEqual({
+      fleet: "0.4.2",
+    });
   });
 
   test("stale: installed and in the repo at another version", () => {
@@ -75,7 +83,12 @@ describe("reading", () => {
   });
 
   test("restart: installed now at another version than loaded", () => {
-    expect(needRestart({ fleet: "0.4.2", palette: "0.4.2" }, { fleet: "0.5.0", palette: "0.4.2", ship: "0.1.0" })).toEqual(["fleet"]);
+    expect(
+      needRestart(
+        { fleet: "0.4.2", palette: "0.4.2" },
+        { fleet: "0.5.0", palette: "0.4.2", ship: "0.1.0" },
+      ),
+    ).toEqual(["fleet"]);
   });
 });
 
@@ -90,7 +103,9 @@ describe("words", () => {
           restart: ["palette"],
         }),
       ),
-    ).toBe("ship · main ↑2 · ●3 uncommitted · fleet 0.4.2 → 0.5.0 · restart needed");
+    ).toBe(
+      "ship · main ↑2 · ●3 uncommitted · fleet 0.4.2 → 0.5.0 · restart needed",
+    );
     expect(bandLine(status())).toBe("ship · main");
   });
 
@@ -100,7 +115,9 @@ describe("words", () => {
     expect(hasNews(status({ restart: ["x"] }))).toBe(true);
     expect(canShip(status({ restart: ["x"] }))).toBe(false);
     expect(canShip(status({ ahead: 1 }))).toBe(true);
-    expect(canShip(status({ stale: [{ name: "a", installed: "1", repo: "2" }] }))).toBe(true);
+    expect(
+      canShip(status({ stale: [{ name: "a", installed: "1", repo: "2" }] })),
+    ).toBe(true);
   });
 });
 
@@ -124,13 +141,27 @@ function world(on: any) {
     ran: [] as string[],
   };
   const ok = (stdout = "") => ({
-    value: { exitCode: 0, stdout, stderr: "", isStdoutTruncated: false, isStderrTruncated: false },
+    value: {
+      exitCode: 0,
+      stdout,
+      stderr: "",
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
   });
   const fail = (stderr: string) => ({
-    value: { exitCode: 1, stdout: "", stderr, isStdoutTruncated: false, isStderrTruncated: false },
+    value: {
+      exitCode: 1,
+      stdout: "",
+      stderr,
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
   });
   mock.env(on, { HOME: "/home/u" });
-  on("turn.complete", (_$: unknown, e: { answer: string }) => ({ text: e.answer }));
+  on("turn.complete", (_$: unknown, e: { answer: string }) => ({
+    text: e.answer,
+  }));
   on("ui.render", () => h("Box", null));
   on("session.start", (_$: unknown, e: unknown) => e);
   on("command.register", () => ({ value: undefined }));
@@ -139,14 +170,20 @@ function world(on: any) {
       return {
         value: JSON.stringify({
           name: "vampik-plugins",
-          plugins: Object.entries(w.repo).map(([name, version]) => ({ name, version })),
+          plugins: Object.entries(w.repo).map(([name, version]) => ({
+            name,
+            version,
+          })),
         }),
       };
     if (e.path === INSTALLED)
       return {
         value: JSON.stringify({
           plugins: Object.fromEntries(
-            Object.entries(w.installed).map(([n, v]) => [`${n}@vampik-plugins`, [{ scope: "user", version: v }]]),
+            Object.entries(w.installed).map(([n, v]) => [
+              `${n}@vampik-plugins`,
+              [{ scope: "user", version: v }],
+            ]),
           ),
         }),
       };
@@ -162,12 +199,16 @@ function world(on: any) {
           " M x.ts\n".repeat(w.changed),
       );
     if (cmd === "git push") {
-      if (w.pushFails) return fail("! [rejected] main -> main (fetch first)\nerror: failed to push");
+      if (w.pushFails)
+        return fail(
+          "! [rejected] main -> main (fetch first)\nerror: failed to push",
+        );
       w.ahead = 0;
       w.remote = { ...w.repo };
       return ok();
     }
-    if (cmd === "claude plugin marketplace update vampik-plugins") return ok("✔ updated");
+    if (cmd === "claude plugin marketplace update vampik-plugins")
+      return ok("✔ updated");
     const up = /^claude plugin update (\S+)@vampik-plugins$/.exec(cmd);
     if (up) {
       w.installed[up[1]!] = w.remote[up[1]!]!;
@@ -205,7 +246,10 @@ describe("session", () => {
       await start($);
       let ui = await $.ui.mount({ plugin: "ship", surface, ...BAND });
       expect(
-        await ui.find({ type: "Text", text: "ship · main ↑2 · ●1 uncommitted · fleet 0.4.2 → 0.5.0" }),
+        await ui.find({
+          type: "Text",
+          text: "ship · main ↑2 · ●1 uncommitted · fleet 0.4.2 → 0.5.0",
+        }),
       ).toBeDefined();
       expect((await ui.find({ key: "ship-run" }))?.text).toBe("ship");
       // its own part of the band, with no blank row above it
@@ -214,10 +258,21 @@ describe("session", () => {
 
       w.ahead = 0;
       w.installed.fleet = "0.5.0";
-      await $.turn.complete({ answer: "", durationMs: 1, isAborted: false, turnId: "t", reason: "answer" } as never);
+      await $.turn.complete({
+        answer: "",
+        durationMs: 1,
+        isAborted: false,
+        turnId: "t",
+        reason: "answer",
+      } as never);
       ui = await $.ui.mount({ plugin: "ship", surface, ...BAND });
       // fleet was updated outside a restart: the session still runs 0.4.2
-      expect(await ui.find({ type: "Text", text: "ship · main · ●1 uncommitted · restart needed" })).toBeDefined();
+      expect(
+        await ui.find({
+          type: "Text",
+          text: "ship · main · ●1 uncommitted · restart needed",
+        }),
+      ).toBeDefined();
       expect(await ui.find({ key: "ship-run" })).toBeUndefined();
       await ui.unmount();
     });
@@ -227,13 +282,21 @@ describe("session", () => {
     w.ahead = 1;
     await start($);
     const text = await runShip($);
-    expect(w.ran.filter((c) => !c.startsWith("git status") && !c.startsWith("git rev-parse"))).toEqual([
+    expect(
+      w.ran.filter(
+        (c) => !c.startsWith("git status") && !c.startsWith("git rev-parse"),
+      ),
+    ).toEqual([
       "git push",
       "claude plugin marketplace update vampik-plugins",
       "claude plugin update fleet@vampik-plugins",
     ]);
     expect(text).toBe(
-      ["Pushed 1 commit on main.", "Updated fleet 0.4.2 → 0.5.0.", "Restart Claude Code to load: fleet."].join("\n"),
+      [
+        "Pushed 1 commit on main.",
+        "Updated fleet 0.4.2 → 0.5.0.",
+        "Restart Claude Code to load: fleet.",
+      ].join("\n"),
     );
   });
 
@@ -255,7 +318,10 @@ describe("session", () => {
     await start($);
     const text = await runShip($);
     expect(text).toBe(
-      ["Pushed 1 commit on feat/x.", "On feat/x: the marketplace reads main, so no mod was updated."].join("\n"),
+      [
+        "Pushed 1 commit on feat/x.",
+        "On feat/x: the marketplace reads main, so no mod was updated.",
+      ].join("\n"),
     );
     expect(w.ran.some((c) => c.startsWith("claude plugin"))).toBe(false);
   });
@@ -286,6 +352,8 @@ describe("session", () => {
     const w = world(on);
     w.isMarketplace = false;
     await start($);
-    expect(await runShip($)).toMatch(/^ship: this is not a plugin marketplace repo/);
+    expect(await runShip($)).toMatch(
+      /^ship: this is not a plugin marketplace repo/,
+    );
   });
 });

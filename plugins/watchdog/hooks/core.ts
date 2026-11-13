@@ -136,7 +136,11 @@ export function parseScan(stdout: string): ScanShell[] {
     const ageMs = Number(f[6]);
     const size = Number(f[7]);
     // every number the scan prints is a whole count; a pid of 0 or -1 would make kill signal a whole group
-    if (![f[0], ...tree, f[2], f[4], f[7]].every((n) => COUNT.test(n!)) || pid <= 0 || pids.some((p) => p <= 0))
+    if (
+      ![f[0], ...tree, f[2], f[4], f[7]].every((n) => COUNT.test(n!)) ||
+      pid <= 0 ||
+      pids.some((p) => p <= 0)
+    )
       continue;
     if (!FLAG.test(f[3]!) || !FLAG.test(f[5]!) || !f[8]) continue;
     // a shell gone mid-scan has no age (-1): skipped, so it is never taken for a new one
@@ -167,7 +171,8 @@ const waitingOf = (runs: WatchRun[]) =>
 
 /** A waiting call another waiting call shares its command with: which shell is whose can't be told. */
 const isTwin = (r: WatchRun, waiting: WatchRun[]) =>
-  waiting.includes(r) && waiting.some((o) => o !== r && o.command === r.command);
+  waiting.includes(r) &&
+  waiting.some((o) => o !== r && o.command === r.command);
 
 /**
  * Which new shell is each waiting foreground call's: the one whose command
@@ -190,7 +195,9 @@ export function matchShells(
     if (isTwin(r, waiting)) continue;
     const q = evalQuoted(r.command);
     // the quoted command whole, not the start of a longer one (`a` inside `a' b`)
-    const s = free.find((x) => !taken.has(x.file) && ` ${x.cmdline} `.includes(` ${q} `));
+    const s = free.find(
+      (x) => !taken.has(x.file) && ` ${x.cmdline} `.includes(` ${q} `),
+    );
     if (s) {
       out.set(r.id, s);
       taken.add(s.file);
@@ -227,7 +234,8 @@ export function applyScan(
   const next = runs.map((r): WatchRun => {
     if (r.endedAt !== undefined) return r;
     const s =
-      matched.get(r.id) ?? (r.outputFile ? byFile.get(r.outputFile) : undefined);
+      matched.get(r.id) ??
+      (r.outputFile ? byFile.get(r.outputFile) : undefined);
     if (!s) {
       if (r.outputFile) return ended(r, now);
       // a held twin's shell may be working unseen: it counts as active until it gets its shell
@@ -251,7 +259,9 @@ export function applyScan(
       sleeping: s.sleeping,
       serving: s.serving,
       // a sleep counts as active: what runs after it gets the whole limit; a server or watcher waits by design
-      ...(wasHeld || isGrown || isWorking || isMoving || s.sleeping || s.serving ? { activeAt: now } : {}),
+      ...(wasHeld || isGrown || isWorking || isMoving || s.sleeping || s.serving
+        ? { activeAt: now }
+        : {}),
     };
   });
   return { runs: next, grew };
@@ -259,7 +269,11 @@ export function applyScan(
 
 /** Where a run stands: stopped by the watchdog, ended by itself, or running. */
 export const statusOf = (r: WatchRun): "running" | "done" | "killed" =>
-  r.killedAt !== undefined ? "killed" : r.endedAt !== undefined ? "done" : "running";
+  r.killedAt !== undefined
+    ? "killed"
+    : r.endedAt !== undefined
+      ? "done"
+      : "running";
 
 /** Foreground until its result came back with a background task. */
 export const kindOf = (r: WatchRun): "fg" | "bg" => (r.taskId ? "bg" : "fg");
@@ -271,11 +285,14 @@ export function ended(r: WatchRun, now: number): WatchRun {
 }
 
 /** How long a run has printed nothing, used no CPU, moved no data, run no sleep and served nothing. */
-export const quietMs = (r: WatchRun, now: number) => now - (r.activeAt ?? r.startedAt);
+export const quietMs = (r: WatchRun, now: number) =>
+  now - (r.activeAt ?? r.startedAt);
 
 /** The rule: a running command with a shell, quiet for the limit. */
 export const isStuck = (r: WatchRun, now: number, limitMs: number) =>
-  statusOf(r) === "running" && r.pid !== undefined && quietMs(r, now) >= limitMs;
+  statusOf(r) === "running" &&
+  r.pid !== undefined &&
+  quietMs(r, now) >= limitMs;
 
 /** A stopped run, the grace over, whose KILL has not gone out: sent whether or not its shell still stands. */
 export const needsKill = (r: WatchRun, now: number) =>
@@ -295,9 +312,7 @@ export const isWatched = (r: WatchRun) =>
  * so a reused pid is never hit).
  */
 export const killTargets = (r: WatchRun): string[] =>
-  r.pid === undefined
-    ? []
-    : ["--", `-${r.pid}`, ...(r.pids ?? []).map(String)];
+  r.pid === undefined ? [] : ["--", `-${r.pid}`, ...(r.pids ?? []).map(String)];
 
 /** Keeps every live run and the newest ended ones, `keep` in all. */
 export function trim(runs: WatchRun[], keep = KEEP): WatchRun[] {
@@ -345,7 +360,8 @@ export function notifiedTask(text: string): string | undefined {
 }
 
 /** Escape sequences: OSC (titles, links, clipboard), then CSI (colours, cursor), then any other ESC pair. */
-const ESCAPES = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[\s\S]?/g;
+const ESCAPES =
+  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[\s\S]?/g;
 /** Control characters left once lines are split: none of them reaches the screen. */
 const CONTROLS = /[\x00-\x1f\x7f-\x9f]/g;
 
@@ -372,8 +388,10 @@ export function shellName(command: string): string {
     command
       .split(/&&|\|\||;|\n/)
       .map((s) => s.trim())
-      .find((s) => s && !SETUP.test(s) && !s.split(/\s+/).every((w) => ASSIGN.test(w))) ??
-    command.trim();
+      .find(
+        (s) =>
+          s && !SETUP.test(s) && !s.split(/\s+/).every((w) => ASSIGN.test(w)),
+      ) ?? command.trim();
   const name = step
     .split(/\s+/)
     .filter((w) => !ASSIGN.test(w))
@@ -383,7 +401,8 @@ export function shellName(command: string): string {
   return name.length > 20 ? `${name.slice(0, 19)}…` : name;
 }
 
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const clip = (s: string, n: number) =>
+  s.length > n ? `${s.slice(0, n - 1)}…` : s;
 
 /** Drops every `<output>` tag, nested spellings included, so a line cannot close its own block. */
 function unwrap(line: string): string {
@@ -417,14 +436,21 @@ export const killLine = (r: WatchRun, limitMs: number) =>
   `watchdog: stopped ${kindOf(r)} ${shellName(r.command)} · no output, CPU or I/O for ${fmtLeft(limitMs)}`;
 
 /** The band's items: live runs quiet for half the limit, and stops in the last limit. */
-export function bandItems(runs: WatchRun[], now: number, limitMs: number): string[] {
+export function bandItems(
+  runs: WatchRun[],
+  now: number,
+  limitMs: number,
+): string[] {
   const items: string[] = [];
   for (const r of runs) {
     const name = shellName(r.command);
-    if (r.killedAt !== undefined && now - r.killedAt < limitMs) items.push(`✗ ${name} stopped`);
+    if (r.killedAt !== undefined && now - r.killedAt < limitMs)
+      items.push(`✗ ${name} stopped`);
     // stuck half a limit from now: quiet for half of it already
     else if (isStuck(r, now + limitMs / 2, limitMs))
-      items.push(`⚠ ${name} quiet ${fmtLeft(quietMs(r, now))}/${fmtLeft(limitMs)}`);
+      items.push(
+        `⚠ ${name} quiet ${fmtLeft(quietMs(r, now))}/${fmtLeft(limitMs)}`,
+      );
   }
   return items;
 }
@@ -447,14 +473,22 @@ function runNote(r: WatchRun, now: number): string {
 }
 
 /** The /watchdog summary: the rule, then each run, newest last. */
-export function summary(runs: WatchRun[], now: number, limitMs: number): string {
+export function summary(
+  runs: WatchRun[],
+  now: number,
+  limitMs: number,
+): string {
   const live = runs.filter((r) => r.endedAt === undefined).length;
   const stopped = runs.filter((r) => r.killedAt !== undefined).length;
   const head = `watchdog · stops a command after ${fmtLeft(limitMs)} with no output, no CPU and no I/O · ${live} running · ${stopped} stopped`;
   if (runs.length === 0) return `${head}\nNo Bash commands yet.`;
   const lines = runs.map((r) => {
     const took = fmtElapsed((r.endedAt ?? now) - r.startedAt);
-    const parts = [`${MARK[statusOf(r)]} ${kindOf(r)} ${shellName(r.command)}`, took, runNote(r, now)];
+    const parts = [
+      `${MARK[statusOf(r)]} ${kindOf(r)} ${shellName(r.command)}`,
+      took,
+      runNote(r, now),
+    ];
     if (r.line) parts.push(clip(r.line, 60));
     return parts.join(" · ");
   });

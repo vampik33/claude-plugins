@@ -156,7 +156,8 @@ async function startJob(
 
   const sub = req.mode === "adversarial" ? "adversarial-review" : "review";
   // after "--" the focus is free text, never an option of the companion's
-  const focus = req.mode === "adversarial" && req.focus ? ["--", req.focus] : [];
+  const focus =
+    req.mode === "adversarial" && req.focus ? ["--", req.focus] : [];
   // read-only: never --write; detached so the review outlives this call and a reload
   const started = await run($, [
     "sh",
@@ -562,7 +563,10 @@ export const register: Register = (on, options) => {
       : {
           kind: "idle",
           last: last
-            ? { text: resultText(last), endedAt: last.endedAt ?? last.startedAt }
+            ? {
+                text: resultText(last),
+                endedAt: last.endedAt ?? last.startedAt,
+              }
             : null,
         };
     const below = await next(e);
@@ -691,8 +695,7 @@ export const register: Register = (on, options) => {
       const now = await read($, cx);
       if (now.shown !== job.id) return;
       const picked = findings.filter((_, i) => now.picked[i]);
-      if (picked.length > 0)
-        await send(buildPrompt(job, picked, verifyOnly));
+      if (picked.length > 0) await send(buildPrompt(job, picked, verifyOnly));
     };
     const sevColor = (sev: string) =>
       sev === "critical" || sev === "high"

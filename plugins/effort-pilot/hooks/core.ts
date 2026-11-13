@@ -107,8 +107,7 @@ export function configuredEffort(
   if (isLevel(envLevel)) return envLevel;
   if (envLevel === "auto" || envLevel === "unset") return undefined;
   const byModel = settings.modelSettings as
-    | Record<string, { effortLevel?: unknown } | undefined>
-    | undefined;
+    Record<string, { effortLevel?: unknown } | undefined> | undefined;
   const id = model && baseModelId(model);
   const known = id ? MODELS.get(id) : undefined;
   const perModel = settingLevel(id ? byModel?.[id]?.effortLevel : undefined);
@@ -256,7 +255,8 @@ export function stepEffort(
   steers: boolean,
   previous?: Step["sent"],
 ): Step["session"] {
-  if (!steers || !isLevel(session) || verdict?.kind === "failed") return session;
+  if (!steers || !isLevel(session) || verdict?.kind === "failed")
+    return session;
   if (!verdict) return isLevel(previous) ? previous : session;
   return verdict.confidence >= MIN_CONFIDENCE ? verdict.level : session;
 }
@@ -300,7 +300,9 @@ const BAND_TAIL = ["codex-review", "continuity", "effort-pilot"];
  * they came. Each of the three mods applies it, so the order is the same
  * whichever of them is installed and whatever order their hooks run in.
  */
-export function bandOrder<R extends { plugin: string }>(rows: readonly R[]): R[] {
+export function bandOrder<R extends { plugin: string }>(
+  rows: readonly R[],
+): R[] {
   return [
     ...rows.filter((r) => !BAND_TAIL.includes(r.plugin)),
     ...BAND_TAIL.flatMap((p) => rows.filter((r) => r.plugin === p)),

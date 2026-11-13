@@ -214,7 +214,10 @@ async function watchShells($: EngineInterface, t: Tracker): Promise<void> {
         outputAt: now,
         stalled: false,
         ...(line
-          ? { line, progress: nextProgress(s.progress, parseProgress(line), now) }
+          ? {
+              line,
+              progress: nextProgress(s.progress, parseProgress(line), now),
+            }
           : {}),
       });
     } else if (!s.waiter && !s.stalled && quietMs(s, now) >= STALL_MS) {
@@ -543,9 +546,7 @@ export const register: Register = (on, options) => {
         justifyContent={desk ? "space-between" : undefined}
       >
         <Text dimColor>
-          {[statusLine(f) ?? "fleet", ...shellNotes(f.shells, now)].join(
-            " · ",
-          )}
+          {[statusLine(f) ?? "fleet", ...shellNotes(f.shells, now)].join(" · ")}
         </Text>
         <Button
           key="fleet-toggle"

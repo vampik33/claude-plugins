@@ -4,6 +4,15 @@ All notable changes to the effort-pilot plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-11-13
+
+### Changed
+- Jev's criteria follow [Which Claude model should you build with?](https://claude.dev/blog/which-claude-model-should-you-build-with/) and Claude Code's effort guide: everyday engineering, debugging and feature work is `medium` (was `xhigh` for a feature), `high` is for work where verification matters or `medium` fell short, `xhigh` only after `high` fell short on the same problem, and `max` for a hard problem worked through unattended. Jev is told that past `high` one more level costs about as much as a bigger model
+- The default Jev is told before the first request falls back to the model's own default (`medium` on Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.2, `xhigh` on Opus 4.7, `high` on the others) instead of `unknown`; a top-level `effortLevel` in your user settings counts only on Opus 5, Fable 5.1 and earlier; `max` in a settings key and `CLAUDE_CODE_EFFORT_LEVEL=auto`/`unset` name no level. After a held turn Jev is told this default, not the held level
+
+### Fixed
+- The mod no longer overrides a level Claude Code ranks above the session's: every request while `CLAUDE_CODE_EFFORT_LEVEL` names a level, a turn whose prompt says `ultrathink`, and the rest of a turn in which a skill with an `effort` in its frontmatter runs. Jev only advises there, and the line says why (`not applied: ultrathink`)
+
 ## [0.1.2] - 2026-11-13
 
 ### Changed

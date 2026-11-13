@@ -821,6 +821,17 @@ describe("session", () => {
     await turn($, clock, "big refactor", 10);
     expect((await band($)).show).toBe("show");
     const ui = await $.ui.mount({ plugin: "big-picture", surface, ...BAND });
+    // the desktop: no hotkey badges, the buttons at the row's far end
+    for (const [key, hotkey] of [
+      ["big-picture-show", "s"],
+      ["big-picture-update", "u"],
+    ] as const)
+      expect((await ui.find({ key }))?.props.hotkey).toBe(
+        surface === "terminal" ? hotkey : undefined,
+      );
+    expect((await ui.find({ key: "band:20-big-picture" }))?.props.justifyContent).toBe(
+      surface === "terminal" ? undefined : "space-between",
+    );
     await ui.press({ key: "big-picture-show" });
     await ui.unmount();
     expect(seen.opens).toEqual([`file://${PAGE}`, `file://${PAGE}`]);

@@ -1,6 +1,6 @@
 import type { ClientModule } from "claude-code";
 
-import { bar, fmtCountdown, fmtLength, fmtTokens, gaugeColor, WARN_POINTS } from "./core.ts";
+import { bar, fmtLength, fmtTokens, gaugeCells, gaugeColor, gaugeNote, NARROW } from "./core.ts";
 import { colorFor, fmtClock } from "./ttl.ts";
 
 export type CacheClock = {
@@ -23,10 +23,13 @@ export type GaugeProps = {
   columns: number;
   /** The prompt cache's countdown, once a request touched the cache */
   cache: CacheClock | null;
+  /**
+   * What this instance draws: `full`, the terminal's text bar, figures and note;
+   * on the desktop the hook draws the bar as an Svg, `stats` the figures beside
+   * it and `note` the usage-limit countdown under them.
+   */
+  part: "full" | "stats" | "note";
 };
-
-/** About the full line's width: ctx, a 16-cell bar, fill, tokens, session and the cache clock. */
-const NARROW = 60;
 
 /** Context fill, session length and the cache countdown; the clocks tick with no hook call. */
 const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
@@ -38,19 +41,44 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
   const now = surface.state ?? Date.now();
   const pct = p.percent;
   const narrow = p.columns < NARROW;
-  const cells = narrow ? 8 : 16;
+  const cells = gaugeCells(p.columns);
+
+  const note = gaugeNote(p, now);
+  const noteLine = note && (
+    <Text color={note.color} dimColor={note.dim} wrap="truncate-end">
+      {note.text}
+    </Text>
+  );
+  if (p.part === "note") return noteLine ?? <Text>{""}</Text>;
 
   const cacheLeft = p.cache && p.cache.expiresAt - now;
+  const clock =
+    p.cache &&
+    cacheLeft !== null &&
+    (cacheLeft <= 0 ? (
+      <Text color="red">● cache cold</Text>
+    ) : (
+      <Text bold color={colorFor(cacheLeft, p.cache.lifeMs, p.cache.yellowAt, p.cache.redAt)}>
+        {`⏱ ${fmtClock(cacheLeft)}`}
+      </Text>
+    ));
+  /** The fill and, on a wide band, the tokens; `lead` goes before the fill. */
+  const figures = (lead: string, fill: number) => [
+    <Text bold>{`${lead}${fill}%`}</Text>,
+    ...(narrow ? [] : [<Text dimColor>{` ${fmtTokens(p.tokens ?? 0)}/${fmtTokens(p.window)}`}</Text>]),
+  ];
 
-  let note: { text: string; color?: string; dim?: boolean } | undefined;
-  if (p.phase === "blocked" && p.resumeAt)
-    note = { text: `⏸ usage limit · continues in ${fmtCountdown(p.resumeAt - now)} · /continuity off cancels`, color: "yellow" };
-  else if (p.phase === "pending") note = { text: "⟳ handover + compact in a few seconds · send a prompt to cancel", color: "cyan" };
-  else if (p.phase === "compacting") note = { text: "⟳ handover written · compacting", color: "cyan" };
-  else if (p.paused) note = { text: "continuity paused · /continuity on", dim: true };
-  else if (pct !== null && pct >= p.threshold) note = { text: `over ${p.threshold}%: handover + compact after this turn`, color: "yellow" };
-  else if (pct !== null && pct >= p.threshold - WARN_POINTS)
-    note = { text: `handover at ${p.threshold}% · ${p.threshold - pct} points to go`, dim: true };
+  if (p.part === "stats")
+    return (
+      <Box flexDirection="row" columnGap={2}>
+        {pct === null ? <Text dimColor>--</Text> : <Text>{figures("", pct)}</Text>}
+        <Text>
+          <Text dimColor>session </Text>
+          <Text>{fmtLength(now - p.startedAt)}</Text>
+        </Text>
+        {clock}
+      </Box>
+    );
 
   return (
     <Box flexDirection="column">
@@ -61,30 +89,19 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
         ) : (
           <Text>
             <Text color={gaugeColor(pct, p.threshold)}>{bar(pct, cells)}</Text>
-            <Text bold>{` ${pct}%`}</Text>
-            {!narrow && <Text dimColor>{` ${fmtTokens(p.tokens ?? 0)}/${fmtTokens(p.window)}`}</Text>}
+            {figures(" ", pct)}
           </Text>
         )}
         <Text dimColor>{narrow ? "  " : "   session "}</Text>
         <Text>{fmtLength(now - p.startedAt)}</Text>
-        {p.cache && cacheLeft !== null && (
+        {clock && (
           <Text>
             {narrow ? "  " : "   "}
-            {cacheLeft <= 0 ? (
-              <Text color="red">● cache cold</Text>
-            ) : (
-              <Text bold color={colorFor(cacheLeft, p.cache.lifeMs, p.cache.yellowAt, p.cache.redAt)}>
-                {`⏱ ${fmtClock(cacheLeft)}`}
-              </Text>
-            )}
+            {clock}
           </Text>
         )}
       </Text>
-      {note && (
-        <Text color={note.color} dimColor={note.dim} wrap="truncate-end">
-          {note.text}
-        </Text>
-      )}
+      {noteLine}
     </Box>
   );
 };

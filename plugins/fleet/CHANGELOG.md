@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.5] - 2026-11-13
+
+### Changed
+- In the desktop app, the band's `show`/`hide` button sits at the row's far end with no hotkey badge; the terminal keeps `f`
+
 ## [0.5.4] - 2026-11-11
 
 ### Changed

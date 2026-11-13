@@ -319,6 +319,12 @@ describe("session", () => {
       await write($, `${DIR}/b.md`, MEMO);
       ui = await mount();
       expect(await ui.find({ type: "Text", text: "● 2 new" })).toBeDefined();
+      // the desktop: no hotkey badge, the button at the row's far end
+      const toggle = await ui.find({ key: "memory-watch-toggle" });
+      expect(toggle?.props.hotkey).toBe(surface === "terminal" ? "m" : undefined);
+      expect((await ui.find({ key: "band:10-memory-watch" }))?.props.justifyContent).toBe(
+        surface === "terminal" ? undefined : "space-between",
+      );
       await ui.press({ key: "memory-watch-toggle" });
       expect(seen.opened).toBe(1);
       await ui.unmount();

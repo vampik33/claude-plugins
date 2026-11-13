@@ -61,7 +61,7 @@
     {
       "name": "big-picture",
       "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated while the work goes on; /big-picture opens it in the default browser",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "author": {
         "name": "vampik33"
       },
@@ -97,7 +97,7 @@
     {
       "name": "fleet",
       "description": "A side pane with the session's subagents, background shells and worktrees, with alerts when they finish or fail",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "author": {
         "name": "vampik33"
       },
@@ -109,7 +109,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "author": {
         "name": "vampik33"
       },
@@ -121,7 +121,7 @@
     {
       "name": "continuity",
       "description": "Live context gauge, session length and prompt-cache countdown; handover note, compaction and continue past a threshold; resume after a usage limit",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "author": {
         "name": "vampik33"
       },
@@ -133,7 +133,7 @@
     {
       "name": "memory-watch",
       "description": "A side pane summarizing each auto-memory file the session creates or updates",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "author": {
         "name": "vampik33"
       },

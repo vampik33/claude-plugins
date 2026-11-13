@@ -4,6 +4,11 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.8] - 2026-11-13
+
+### Changed
+- In the desktop app, the row's `open`, `review` and `cancel` buttons sit at its far end with no hotkey badge; the terminal keeps `o` and `x`
+
 ## [0.3.7] - 2026-11-11
 
 ### Changed

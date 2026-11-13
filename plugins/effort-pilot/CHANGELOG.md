@@ -4,6 +4,12 @@ All notable changes to the effort-pilot plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.2] - 2026-11-13
+
+### Changed
+- When Jev is less than 50% sure, the turn runs at the session's own level (your configured default) instead of the level the previous turn ran at, and the line says `Jev unsure: …, session level <level>`. A turn with no prompt still keeps the previous turn's level
+- Jev is told the session's default level (`defaultEffort`, was `currentEffort`) and that it stands when Jev is unsure; on a session's first prompt it comes from `CLAUDE_CODE_EFFORT_LEVEL`, `modelSettings.<model>.effortLevel` or `effortLevel` instead of `unknown`
+
 ## [0.1.1] - 2026-11-13
 
 ### Fixed

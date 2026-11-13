@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "claude-code/testing";
 
 import {
+  configuredEffort,
   footerLine,
   jevRequest,
   keepsCacheOnChange,
@@ -48,6 +49,8 @@ type World = {
   confidence?: number;
   /** The session's first-party credential; null under a 3P provider or gateway. */
   auth?: null;
+  /** The merged settings `$.settings.read()` answers. */
+  settings?: Record<string, unknown>;
 };
 
 function world(on: any, over: World = {}) {
@@ -65,6 +68,7 @@ function world(on: any, over: World = {}) {
     sessionId: e.sessionId,
   }));
   on("session.model", () => ({ value: over.model ?? OPUS55 }));
+  on("settings.read", () => ({ value: over.settings ?? {} }));
   on("session.authorize", () => ({
     value: "auth" in over ? over.auth : { handle: "h", kind: "bearer" },
   }));
@@ -198,8 +202,10 @@ describe("core", () => {
     );
     expect(stepEffort("medium", { ...v, confidence: 0.5 }, true)).toBe("max");
     expect(stepEffort("medium", { ...v, confidence: 0.49 }, true, "xhigh")).toBe(
-      "xhigh",
+      "medium",
     );
+    expect(stepEffort("medium", null, true, "xhigh")).toBe("xhigh");
+    expect(stepEffort("medium", null, true)).toBe("medium");
     expect(stepEffort("medium", { ...v, confidence: 0.9 }, true, "low")).toBe(
       "max",
     );
@@ -217,14 +223,36 @@ describe("core", () => {
     expect(c.answer.length).toBeLessThan(1600);
     const body = jevRequest("y".repeat(10_000), c, OPUS55, "high");
     expect(Object.keys(body.state).sort()).toEqual([
-      "currentEffort",
+      "defaultEffort",
       "earlierPrompts",
       "model",
       "previousAnswer",
       "prompt",
     ]);
     expect(body.state.prompt.length).toBeLessThan(4100);
+    expect(body.state.defaultEffort).toBe("high");
+    expect(body.questions.effort.instructions).toContain("`defaultEffort`");
+    expect(jevRequest("p", c, OPUS55, undefined).state.defaultEffort).toBe(
+      "unknown",
+    );
     expect(body.questions.effort.criteria).toHaveLength(5);
+  });
+
+  test("configuredEffort resolves the env, then the model's, then the top-level setting", () => {
+    const s = {
+      effortLevel: "medium",
+      modelSettings: { [OPUS55]: { effortLevel: "high" } },
+    };
+    expect(configuredEffort(s, OPUS55, "max")).toBe("max");
+    expect(configuredEffort(s, OPUS55, undefined)).toBe("high");
+    expect(configuredEffort(s, `${OPUS55}[1m]`, undefined)).toBe("high");
+    expect(configuredEffort(s, OPUS55, "auto")).toBe("high");
+    expect(configuredEffort(s, "claude-sonnet-5-5", undefined)).toBe("medium");
+    expect(configuredEffort(s, undefined, undefined)).toBe("medium");
+    expect(configuredEffort({}, OPUS55, undefined)).toBeUndefined();
+    expect(
+      configuredEffort({ effortLevel: 7, modelSettings: "x" }, OPUS55, undefined),
+    ).toBeUndefined();
   });
 
   test("footer names the model, the level sent and Jev's call", () => {
@@ -265,7 +293,7 @@ describe("core", () => {
         steered: true,
         verdict: { ...v, confidence: 0.33 },
       }),
-    ).toBe("opus-5-5 · effort medium · Jev unsure: xhigh 33%, kept medium");
+    ).toBe("opus-5-5 · effort medium · Jev unsure: xhigh 33%, session level medium");
   });
 });
 
@@ -284,17 +312,17 @@ describe("a session", () => {
     expect(r.text).toBe("opus-5-5 · effort xhigh · Jev: medium → xhigh 80%");
   });
 
-  test("Jev under 50% sure with no earlier level leaves the session's level", async ($, on) => {
+  test("Jev under 50% sure on the first turn sends the session's level", async ($, on) => {
     const { seen } = world(on, { confidence: 0.33 });
     await startTurn($, "go");
     await stepAt($, "medium");
     expect(seen.steps[0].effort).toBe("medium");
     expect((await complete($)).text).toBe(
-      "opus-5-5 · effort medium · Jev unsure: xhigh 33%, kept medium",
+      "opus-5-5 · effort medium · Jev unsure: xhigh 33%, session level medium",
     );
   });
 
-  test("Jev under 50% sure keeps the level the previous turn ran at", async ($, on) => {
+  test("Jev under 50% sure sends the session's level, not the previous turn's", async ($, on) => {
     const { seen } = world(on, { level: 4 });
     await startTurn($, "Prove the queue is lock-free");
     await stepAt($, "medium");
@@ -303,9 +331,9 @@ describe("a session", () => {
     await startTurn($, "and the other one?", "t2");
     await stepAt($, "medium", { turnId: "t2" });
     await stepAt($, "medium", { turnId: "t2", index: 1 });
-    expect(seen.steps.map((s) => s.effort)).toEqual(["max", "max", "max"]);
+    expect(seen.steps.map((s) => s.effort)).toEqual(["max", "medium", "medium"]);
     expect((await complete($, "Done.", "t2")).text).toBe(
-      "opus-5-5 · effort max · Jev unsure: low 33%, kept max",
+      "opus-5-5 · effort medium · Jev unsure: low 33%, session level medium",
     );
     seen.confidence = 0.9;
     await startTurn($, "what is 2+2", "t3");
@@ -421,8 +449,34 @@ describe("a session", () => {
       earlierPrompts: ["first"],
       previousAnswer: "The first answer.",
       model: OPUS55,
-      currentEffort: "medium",
+      defaultEffort: "medium",
     });
+  });
+
+  test("Jev's first call of a session names the configured default", async ($, on) => {
+    const { seen } = world(on, {
+      settings: {
+        effortLevel: "medium",
+        modelSettings: { [OPUS55]: { effortLevel: "high" } },
+      },
+    });
+    await startTurn($, "first");
+    expect(seen.bodies[0].state.defaultEffort).toBe("high");
+  });
+
+  test("CLAUDE_CODE_EFFORT_LEVEL is the default Jev is told", async ($, on) => {
+    const { seen } = world(on, {
+      env: { CLAUDE_CODE_EFFORT_LEVEL: "xhigh" },
+      settings: { effortLevel: "high" },
+    });
+    await startTurn($, "first");
+    expect(seen.bodies[0].state.defaultEffort).toBe("xhigh");
+  });
+
+  test("with no setting Jev is told the default is unknown", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "first");
+    expect(seen.bodies[0].state.defaultEffort).toBe("unknown");
   });
 
   test("/clear forgets the verdict and context; a reload keeps them", async ($, on) => {

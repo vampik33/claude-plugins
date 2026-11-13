@@ -6,6 +6,8 @@
  * MIT): Claude Code's documented order, then a correction from request timing.
  */
 
+import type { CacheHits } from "../types";
+
 export type Ttl = "5m" | "1h";
 
 export type CacheEnv = {
@@ -125,4 +127,26 @@ export function fmtClock(ms: number): string {
   const s = total % 60;
   const pad = (n: number) => String(n).padStart(2, "0");
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/** `hits` with one more request's prompt added. */
+export const addHits = (hits: CacheHits | null, s: Sample): CacheHits => ({
+  read: (hits?.read ?? 0) + s.read,
+  total: (hits?.total ?? 0) + promptTokens(s),
+});
+
+/** The cache's share of the prompt tokens, 0-100, rounded down so 100 means all; none before a token. */
+export const hitPercent = (hits: CacheHits | null): number | undefined =>
+  hits && hits.total > 0
+    ? Math.floor((hits.read / hits.total) * 100)
+    : undefined;
+
+/** Green from `greenAt`%, yellow from `yellowAt`%, red below. */
+export function hitColor(
+  percent: number,
+  greenAt: number,
+  yellowAt: number,
+): Color {
+  if (percent >= greenAt) return "green";
+  return percent >= yellowAt ? "yellow" : "red";
 }

@@ -6,10 +6,13 @@ import fc from "fast-check";
 
 import {
   accountOf,
+  addHits,
   colorFor,
   decideTtl,
   expiryOf,
   fmtClock,
+  hitColor,
+  hitPercent,
   isOn,
   observeTtl,
   ttlMs,
@@ -113,6 +116,51 @@ describe("colorFor", () => {
           );
         },
       ),
+      { numRuns: 1000 },
+    );
+  });
+});
+
+describe("hit rate", () => {
+  const tokens = fc.integer({ min: 0, max: 2_000_000 });
+  const samples = fc.array(
+    fc.record({ read: tokens, write: tokens, fresh: tokens }),
+    { maxLength: 30 },
+  );
+
+  test("an integer 0-100, 100 only when the cache served every token", () => {
+    fc.assert(
+      fc.property(samples, (ss) => {
+        let hits = null as ReturnType<typeof addHits> | null;
+        for (const s of ss)
+          hits = addHits(hits, { model: "m", startedAt: 0, ...s });
+        const pct = hitPercent(hits);
+        if (!hits || hits.total === 0) {
+          expect(pct).toBeUndefined();
+          return;
+        }
+        expect(Number.isInteger(pct)).toBe(true);
+        expect(pct).toBeGreaterThanOrEqual(0);
+        expect(pct).toBeLessThanOrEqual(100);
+        expect(pct === 100).toBe(hits.read === hits.total);
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  test("monotonicity: a lower rate never gives a less severe colour", () => {
+    const severity = { green: 0, yellow: 1, red: 2 } as const;
+    const pct = fc.integer({ min: 0, max: 100 });
+    fc.assert(
+      fc.property(pct, pct, pct, pct, (a, b, g, y) => {
+        const green = Math.max(g, y);
+        const yellow = Math.min(g, y);
+        expect(
+          severity[hitColor(Math.min(a, b), green, yellow)],
+        ).toBeGreaterThanOrEqual(
+          severity[hitColor(Math.max(a, b), green, yellow)],
+        );
+      }),
       { numRuns: 1000 },
     );
   });

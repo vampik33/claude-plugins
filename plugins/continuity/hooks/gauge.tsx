@@ -9,13 +9,20 @@ import {
   gaugeNote,
   NARROW,
 } from "./core.ts";
-import { colorFor, fmtClock } from "./ttl.ts";
+import { colorFor, fmtClock, hitColor } from "./ttl.ts";
 
 export type CacheClock = {
   expiresAt: number;
   lifeMs: number;
   yellowAt: number;
   redAt: number;
+};
+
+/** The session's cache hit rate and where its colour steps. */
+export type CacheHitRate = {
+  percent: number;
+  greenAt: number;
+  yellowAt: number;
 };
 
 export type GaugeProps = {
@@ -31,6 +38,8 @@ export type GaugeProps = {
   columns: number;
   /** The prompt cache's countdown, once a request touched the cache */
   cache: CacheClock | null;
+  /** The share of the session's prompt tokens the cache served, once a request reported usage */
+  hits: CacheHitRate | null;
   /**
    * What this instance draws: `full`, the terminal's text bar, figures and note;
    * on the desktop the hook draws the bar as an Svg, `stats` the figures beside
@@ -66,18 +75,32 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
     (cacheLeft <= 0 ? (
       <Text color="red">● cache cold</Text>
     ) : (
-      <Text
-        bold
-        color={colorFor(
-          cacheLeft,
-          p.cache.lifeMs,
-          p.cache.yellowAt,
-          p.cache.redAt,
-        )}
-      >
-        {`⏱ ${fmtClock(cacheLeft)}`}
+      <Text>
+        <Text dimColor>cache </Text>
+        <Text
+          bold
+          color={colorFor(
+            cacheLeft,
+            p.cache.lifeMs,
+            p.cache.yellowAt,
+            p.cache.redAt,
+          )}
+        >
+          {fmtClock(cacheLeft)}
+        </Text>
       </Text>
     ));
+  const hit = p.hits && (
+    <Text>
+      <Text dimColor>hit </Text>
+      <Text
+        bold
+        color={hitColor(p.hits.percent, p.hits.greenAt, p.hits.yellowAt)}
+      >
+        {`${p.hits.percent}%`}
+      </Text>
+    </Text>
+  );
   /** The fill and, on a wide band, the tokens; `lead` goes before the fill. */
   const figures = (lead: string, fill: number) => [
     <Text bold>{`${lead}${fill}%`}</Text>,
@@ -102,6 +125,7 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
           <Text dimColor>session </Text>
           <Text>{fmtLength(now - p.startedAt)}</Text>
         </Text>
+        {hit}
         {clock}
       </Box>
     );
@@ -120,11 +144,14 @@ const Gauge: ClientModule<GaugeProps, number> = (p, surface) => {
         )}
         <Text dimColor>{narrow ? "  " : "   session "}</Text>
         <Text>{fmtLength(now - p.startedAt)}</Text>
-        {clock && (
-          <Text>
-            {narrow ? "  " : "   "}
-            {clock}
-          </Text>
+        {[hit, clock].map(
+          (item) =>
+            item && (
+              <Text>
+                {narrow ? "  " : "   "}
+                {item}
+              </Text>
+            ),
         )}
       </Text>
       {noteLine}

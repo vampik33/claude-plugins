@@ -125,6 +125,11 @@ async function decide(
     $.session.model().catch(() => undefined),
   ]);
   const m = model ?? last?.model;
+  // Where a change would re-cache, Jev's level could never apply: don't ask.
+  if (m && !keepsCacheOnChange(m, await isFirstParty($))) {
+    await update($, context, (c) => withPrompt(c ?? EMPTY, prompt));
+    return;
+  }
   // A held request's level (ultrathink, a skill's) is not the session's.
   const sessionLevel = last && !last.held ? last.session : undefined;
   const v = await askJev(

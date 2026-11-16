@@ -486,29 +486,50 @@ describe("a session", () => {
     expect(seen.steps[0].effort).toBe("medium");
   });
 
-  test("on a model that re-caches on a change, Jev only advises", async ($, on) => {
+  test("on a model that re-caches on a change, Jev is not asked", async ($, on) => {
     const { seen } = world(on, { model: "claude-opus-5" });
     await startTurn($, "go");
     await stepAt($, "high", { model: "claude-opus-5" });
-    expect(seen.steps[0].effort).toBe("high");
-    const r = await complete($);
-    expect(r.text).toContain("Jev advises xhigh");
-    expect(r.text).toContain("effort high");
+    await startTurn($, "and again", "t2");
+    await stepAt($, "high", { model: "claude-opus-5", turnId: "t2" });
+    expect(seen.bodies).toHaveLength(0);
+    expect(seen.steps.map((s) => s.effort)).toEqual(["high", "high"]);
+    expect((await complete($, "Done.", "t2")).text).toBe(
+      "opus-5 · effort high",
+    );
+    const { texts } = await bandTexts($, "terminal");
+    expect(texts.join(" ")).not.toContain("Jev");
   });
 
-  test("with no first-party credential (a 3P provider, a gateway), Jev only advises", async ($, on) => {
+  test("switching to a cache-keeping model asks Jev again, with the earlier prompts", async ($, on) => {
+    const over: World = { model: "claude-opus-5" };
+    const { seen } = world(on, over);
+    await startTurn($, "go");
+    await stepAt($, "high", { model: over.model });
+    expect(seen.bodies).toHaveLength(0);
+    over.model = OPUS55;
+    await startTurn($, "now this", "t2");
+    await stepAt($, "medium", { turnId: "t2" });
+    expect(seen.bodies).toHaveLength(1);
+    expect(seen.bodies[0].state.earlierPrompts).toEqual(["go"]);
+    expect(seen.steps[1].effort).toBe("xhigh");
+  });
+
+  test("with no first-party credential (a 3P provider, a gateway), Jev is not asked", async ($, on) => {
     const { seen } = world(on, { auth: null });
     await startTurn($, "go");
     await stepAt($, "high");
+    expect(seen.bodies).toHaveLength(0);
     expect(seen.steps[0].effort).toBe("high");
   });
 
-  test("with experimental betas off, Jev only advises", async ($, on) => {
+  test("with experimental betas off, Jev is not asked", async ($, on) => {
     const { seen } = world(on, {
       env: { CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1" },
     });
     await startTurn($, "go");
     await stepAt($, "high");
+    expect(seen.bodies).toHaveLength(0);
     expect(seen.steps[0].effort).toBe("high");
   });
 
@@ -582,7 +603,7 @@ describe("a session", () => {
   });
 
   test("on a model with no known default, Jev is told it is unknown", async ($, on) => {
-    const { seen } = world(on, { model: "claude-haiku-4-5" });
+    const { seen } = world(on, { model: "claude-sonnet-5-5-20261101" });
     await startTurn($, "first");
     expect(seen.bodies[0].state.defaultEffort).toBe("unknown");
   });

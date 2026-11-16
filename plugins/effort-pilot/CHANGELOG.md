@@ -4,6 +4,11 @@ All notable changes to the effort-pilot plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-11-16
+
+### Changed
+- Where an effort change would re-cache the conversation (a model other than Opus 5.5, Sonnet 5.5, Haiku 5.5 or Fable 5.1+, a 3P provider or gateway, or experimental betas off), Jev is no longer asked: no call, and no `Jev advises … (not applied: a change would re-cache this model)` line. Switching to a model where a change keeps the cache asks Jev again, with your earlier prompts
+
 ## [0.2.0] - 2026-11-13
 
 ### Changed

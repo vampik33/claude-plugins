@@ -19,7 +19,9 @@ export type WatchRun = {
   ticks?: number;
   /** Bytes the tree had read and written at the last look */
   io?: number;
-  /** When it last printed, used CPU, moved data, ran a sleep or served */
+  /** Summed sizes of the regular files the tree held open at the last look */
+  written?: number;
+  /** When it last printed, grew a file it holds open, used CPU, moved data, ran a sleep or a timeout, or served */
   activeAt?: number;
   /** The last non-blank line of output */
   line?: string;
@@ -27,6 +29,10 @@ export type WatchRun = {
   sleeping?: boolean;
   /** A listening TCP socket or an inotify watch in its tree at the last look: a server or a watcher */
   serving?: boolean;
+  /** A `timeout` in its tree at the last look: the command bounds itself */
+  bounded?: boolean;
+  /** A remote client (ssh, docker, kubectl, podman) in its tree at the last look: its work runs out of sight */
+  remote?: boolean;
   /** When the watchdog stopped it */
   killedAt?: number;
   /** The KILL after the grace went out */

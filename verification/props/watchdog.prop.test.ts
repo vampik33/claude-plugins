@@ -47,13 +47,16 @@ const shell = (o: Partial<ScanShell> = {}): ScanShell => ({
   serving: false,
   ageMs: 0,
   size: 0,
+  written: 0,
+  bounded: false,
+  remote: false,
   file: "/t/tasks/a.output",
   cmdline: "zsh -c eval './hang.sh'",
   ...o,
 });
 
 const record = (s: ScanShell) =>
-  `${s.pid}\t${s.pids.join(" ")}\t${s.ticks}\t${s.sleeping ? 1 : 0}\t${s.io}\t${s.serving ? 1 : 0}\t${s.ageMs}\t${s.size}\t${s.file}\t${s.cmdline}\0`;
+  `${s.pid}\t${s.pids.join(" ")}\t${s.ticks}\t${s.sleeping ? 1 : 0}\t${s.io}\t${s.serving ? 1 : 0}\t${s.ageMs}\t${s.size}\t${s.written}\t${s.bounded ? 1 : 0}\t${s.remote ? 1 : 0}\t${s.file}\t${s.cmdline}\0`;
 
 const arbShell = fc.record({
   pid: fc.integer({ min: 2, max: 4_000_000 }),
@@ -67,6 +70,9 @@ const arbShell = fc.record({
   serving: fc.boolean(),
   ageMs: fc.nat(),
   size: fc.nat(),
+  written: fc.nat(),
+  bounded: fc.boolean(),
+  remote: fc.boolean(),
   file: fc.stringMatching(/^\/[a-z/]{1,20}\.output$/),
   // a command line may hold tabs and newlines, never a NUL
   cmdline: fc.string().filter((s) => !s.includes("\0")),
@@ -163,15 +169,19 @@ describe("evalQuoted / matchShells", () => {
 
   test("the fallback takes a shell only if it started after the call (a second of slack)", () => {
     fc.assert(
-      fc.property(fc.nat({ max: 60 * MIN }), fc.nat({ max: 10 * MIN }), (ageMs, after) => {
-        const now = T0 + after;
-        const m = matchShells(
-          [run({ id: "A", command: "quoted differently" })],
-          [shell({ ageMs, cmdline: "?" })],
-          now,
-        );
-        expect(m.has("A")).toBe(now - ageMs >= T0 - 1_000);
-      }),
+      fc.property(
+        fc.nat({ max: 60 * MIN }),
+        fc.nat({ max: 10 * MIN }),
+        (ageMs, after) => {
+          const now = T0 + after;
+          const m = matchShells(
+            [run({ id: "A", command: "quoted differently" })],
+            [shell({ ageMs, cmdline: "?" })],
+            now,
+          );
+          expect(m.has("A")).toBe(now - ageMs >= T0 - 1_000);
+        },
+      ),
     );
   });
 
@@ -191,10 +201,18 @@ describe("evalQuoted / matchShells", () => {
 describe("applyScan", () => {
   test("output growth and CPU use move the quiet clock; idle ticks do not", () => {
     // the first look's ticks are a baseline, not work
-    const first = applyScan([run()], [shell({ size: 0, ticks: 100 })], T0 + 10_000).runs[0]!;
+    const first = applyScan(
+      [run()],
+      [shell({ size: 0, ticks: 100 })],
+      T0 + 10_000,
+    ).runs[0]!;
     expect(first.pid).toBe(10);
     expect(first.activeAt).toBeUndefined();
-    const printed = applyScan([first], [shell({ size: 5, ticks: 100 })], T0 + 20_000).runs[0]!;
+    const printed = applyScan(
+      [first],
+      [shell({ size: 5, ticks: 100 })],
+      T0 + 20_000,
+    ).runs[0]!;
     expect(printed.activeAt).toBe(T0 + 20_000);
     const idle = applyScan(
       [printed],
@@ -211,14 +229,24 @@ describe("applyScan", () => {
   });
 
   test("reading or writing a slow download's worth of data moves the quiet clock; less does not", () => {
-    const first = applyScan([run()], [shell({ io: 1_000_000 })], T0 + 10_000).runs[0]!;
+    const first = applyScan([run()], [shell({ io: 1_000_000 })], T0 + 10_000)
+      .runs[0]!;
     expect(first.activeAt).toBeUndefined();
-    const idle = applyScan([first], [shell({ io: 1_000_000 + ACTIVE_IO_BYTES - 1 })], T0 + 20_000).runs[0]!;
+    const idle = applyScan(
+      [first],
+      [shell({ io: 1_000_000 + ACTIVE_IO_BYTES - 1 })],
+      T0 + 20_000,
+    ).runs[0]!;
     expect(idle.activeAt).toBeUndefined();
-    const moving = applyScan([idle], [shell({ io: 1_000_000 + 2 * ACTIVE_IO_BYTES })], T0 + 30_000).runs[0]!;
+    const moving = applyScan(
+      [idle],
+      [shell({ io: 1_000_000 + 2 * ACTIVE_IO_BYTES })],
+      T0 + 30_000,
+    ).runs[0]!;
     expect(moving.activeAt).toBe(T0 + 30_000);
     // a tree whose processes exit sums less: never activity
-    const shrunk = applyScan([moving], [shell({ io: 0 })], T0 + 40_000).runs[0]!;
+    const shrunk = applyScan([moving], [shell({ io: 0 })], T0 + 40_000)
+      .runs[0]!;
     expect(shrunk.activeAt).toBe(T0 + 30_000);
   });
 
@@ -227,7 +255,8 @@ describe("applyScan", () => {
       fc.property(fc.integer({ min: 1, max: 400 }), (looks) => {
         let r = run();
         for (let i = 1; i <= looks; i++)
-          r = applyScan([r], [shell({ serving: true })], T0 + i * 10_000).runs[0]!;
+          r = applyScan([r], [shell({ serving: true })], T0 + i * 10_000)
+            .runs[0]!;
         expect(isStuck(r, T0 + looks * 10_000, LIMIT)).toBe(false);
         expect(summary([r], T0 + looks * 10_000, LIMIT)).toContain("· serving");
       }),
@@ -235,20 +264,59 @@ describe("applyScan", () => {
     );
   });
 
+  test("a tree under `timeout` is never stuck, however long it idles; what runs after it gets the whole limit", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 400 }), (looks) => {
+        let r = run();
+        for (let i = 1; i <= looks; i++)
+          r = applyScan([r], [shell({ bounded: true })], T0 + i * 10_000)
+            .runs[0]!;
+        const now = T0 + looks * 10_000;
+        expect(isStuck(r, now, LIMIT)).toBe(false);
+        expect(summary([r], now, LIMIT)).toContain("· bounded");
+        const after = applyScan([r], [shell()], now + 10_000).runs[0]!;
+        expect(isStuck(after, now + LIMIT - 1, LIMIT)).toBe(false);
+        expect(isStuck(after, now + LIMIT, LIMIT)).toBe(true);
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  test("a file the tree holds open that grows moves the quiet clock; the first look's files are a baseline", () => {
+    const first = applyScan([run()], [shell({ written: 5_000 })], T0 + 10_000)
+      .runs[0]!;
+    expect(first.activeAt).toBeUndefined();
+    const same = applyScan([first], [shell({ written: 5_000 })], T0 + 20_000)
+      .runs[0]!;
+    expect(same.activeAt).toBeUndefined();
+    // one log line is enough: a hung tree grows nothing
+    const logged = applyScan([same], [shell({ written: 5_001 })], T0 + 30_000)
+      .runs[0]!;
+    expect(logged.activeAt).toBe(T0 + 30_000);
+    // a file closed: the sum shrinks, never activity
+    const closed = applyScan([logged], [shell({ written: 10 })], T0 + 40_000)
+      .runs[0]!;
+    expect(closed.activeAt).toBe(T0 + 30_000);
+    expect(closed.written).toBe(10);
+  });
+
   test("a run whose file no shell holds has ended; a stopped one stays stopped", () => {
     fc.assert(
-      fc.property(
-        fc.boolean(),
-        (isKilled) => {
-          const r = applyScan(
-            [run({ outputFile: "/t/gone.output", pid: 3, ...(isKilled ? { killedAt: T0 } : {}) })],
-            [],
-            T0 + 5,
-          ).runs[0]!;
-          expect(r.endedAt).toBe(T0 + 5);
-          expect(statusOf(r)).toBe(isKilled ? "killed" : "done");
-        },
-      ),
+      fc.property(fc.boolean(), (isKilled) => {
+        const r = applyScan(
+          [
+            run({
+              outputFile: "/t/gone.output",
+              pid: 3,
+              ...(isKilled ? { killedAt: T0 } : {}),
+            }),
+          ],
+          [],
+          T0 + 5,
+        ).runs[0]!;
+        expect(r.endedAt).toBe(T0 + 5);
+        expect(statusOf(r)).toBe(isKilled ? "killed" : "done");
+      }),
     );
   });
 
@@ -272,16 +340,18 @@ describe("isStuck", () => {
           });
           const now = T0 + at;
           expect(quietMs(r, now)).toBe(now - T0 - (active ?? 0));
-          expect(isStuck(r, now, LIMIT)).toBe(hasPid && quietMs(r, now) >= LIMIT);
+          expect(isStuck(r, now, LIMIT)).toBe(
+            hasPid && quietMs(r, now) >= LIMIT,
+          );
         },
       ),
     );
   });
 
   test("never for a run already stopped or ended", () => {
-    expect(
-      isStuck(run({ pid: 9, killedAt: T0 }), T0 + 2 * LIMIT, LIMIT),
-    ).toBe(false);
+    expect(isStuck(run({ pid: 9, killedAt: T0 }), T0 + 2 * LIMIT, LIMIT)).toBe(
+      false,
+    );
     expect(
       isStuck(run({ pid: 9, endedAt: T0 + 1 }), T0 + 2 * LIMIT, LIMIT),
     ).toBe(false);
@@ -293,7 +363,8 @@ describe("isStuck", () => {
     expect(needsKill(r, T0 + 10_000)).toBe(true);
     expect(isWatched(r)).toBe(true);
     // the shell gone: the scan dropped its pids, the group still gets the KILL
-    const gone = applyScan([{ ...r, outputFile: "/t/a.output" }], [], T0 + 1).runs[0]!;
+    const gone = applyScan([{ ...r, outputFile: "/t/a.output" }], [], T0 + 1)
+      .runs[0]!;
     expect(gone.endedAt).toBe(T0 + 1);
     expect(isWatched(gone)).toBe(true);
     expect(needsKill(gone, T0 + 19_000)).toBe(true);
@@ -305,7 +376,8 @@ describe("isStuck", () => {
   });
 
   test("a sleep longer than the limit leaves what follows it the whole limit", () => {
-    let r = applyScan([run()], [shell({ sleeping: true })], T0 + 10_000).runs[0]!;
+    let r = applyScan([run()], [shell({ sleeping: true })], T0 + 10_000)
+      .runs[0]!;
     for (let t = 20_000; t <= 2 * LIMIT; t += 10_000)
       r = applyScan([r], [shell({ sleeping: true })], T0 + t).runs[0]!;
     // the sleep ended; the next step is quiet and idle
@@ -317,18 +389,40 @@ describe("isStuck", () => {
 });
 
 describe("killNote", () => {
+  test("a remote client's note says its work may still run there and asks for a check before any re-run", () => {
+    const remote = killNote(
+      run({ command: "ssh host 'until …'", remote: true, killedAt: T0 }),
+      T0 + MIN,
+      LIMIT,
+    );
+    expect(remote).toContain("leaves the remote command running");
+    expect(remote).toContain("so it does not run twice");
+    expect(remote).toContain("setsid nohup");
+    expect(remote).toContain("timeout <duration>");
+    expect(remote).not.toContain("re-run it, fixed");
+    const local = killNote(run({ killedAt: T0 }), T0 + MIN, LIMIT);
+    expect(local).toContain("re-run it, fixed");
+    expect(local).toContain("timeout <duration>");
+    expect(local).not.toContain("remote");
+  });
+
   test("the output line stays inside one <output> block, whatever it holds", () => {
     fc.assert(
       // a last line is one line; tag pieces make nested spellings likely
       fc.property(
         fc
-          .array(fc.constantFrom("<", "/", "output", ">", "OUTPUT", "x", " "), { minLength: 1, maxLength: 30 })
+          .array(fc.constantFrom("<", "/", "output", ">", "OUTPUT", "x", " "), {
+            minLength: 1,
+            maxLength: 30,
+          })
           .map((a) => a.join("")),
         (line) => {
-        const note = killNote(run({ line, killedAt: T0 }), T0 + MIN, LIMIT);
-        expect(note.match(/<output>/gi)).toHaveLength(1);
-        expect(note.match(/<\/output>/gi)).toHaveLength(1);
-        expect(note.trimEnd().split("\n").at(-2)).toMatch(/^<output>[\s\S]*<\/output>$/);
+          const note = killNote(run({ line, killedAt: T0 }), T0 + MIN, LIMIT);
+          expect(note.match(/<output>/gi)).toHaveLength(1);
+          expect(note.match(/<\/output>/gi)).toHaveLength(1);
+          expect(note.trimEnd().split("\n").at(-3)).toMatch(
+            /^<output>[\s\S]*<\/output>$/,
+          );
         },
       ),
     );
@@ -372,7 +466,9 @@ describe("trim / words", () => {
   test("the summary has one line per run under its head", () => {
     fc.assert(
       fc.property(
-        fc.array(fc.constantFrom({}, { endedAt: T0 }, { killedAt: T0 }), { maxLength: 10 }),
+        fc.array(fc.constantFrom({}, { endedAt: T0 }, { killedAt: T0 }), {
+          maxLength: 10,
+        }),
         (states) => {
           const runs = states.map((st, i) => run({ id: `r${i}`, ...st }));
           const lines = summary(runs, T0 + MIN, LIMIT).split("\n");
@@ -386,7 +482,13 @@ describe("trim / words", () => {
 describe("SCAN_SCRIPT on this machine", () => {
   /** Scans this process's children; answers the shell writing to `file`. */
   const scanFor = (file: string) => {
-    const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)]);
+    const p = Bun.spawnSync([
+      "bash",
+      "-c",
+      SCAN_SCRIPT,
+      "scan",
+      String(process.pid),
+    ]);
     expect(p.exitCode).toBe(0);
     return parseScan(p.stdout.toString()).find((s) => s.file === file);
   };
@@ -432,7 +534,9 @@ describe("SCAN_SCRIPT on this machine", () => {
       copy: "sleep 0.5; head -c 10000000 /dev/zero > /dev/null; sleep 30; true",
     };
     const children = Object.entries(kids).map(([name, cmd]) =>
-      Bun.spawn(["bash", "-c", cmd], { stdout: Bun.file(`${dir}/${name}.output`) }),
+      Bun.spawn(["bash", "-c", cmd], {
+        stdout: Bun.file(`${dir}/${name}.output`),
+      }),
     );
     try {
       const scan = (name: string) => scanFor(`${dir}/${name}.output`)!;
@@ -444,7 +548,9 @@ describe("SCAN_SCRIPT on this machine", () => {
       expect(after("watcher").serving).toBe(true);
       expect(after("idle").serving).toBe(false);
       // head has exited and been reaped: its reads stay in its parent's count
-      expect(after("copy").io - before.copy.io).toBeGreaterThanOrEqual(10_000_000);
+      expect(after("copy").io - before.copy.io).toBeGreaterThanOrEqual(
+        10_000_000,
+      );
       expect(after("idle").io - before.idle.io).toBeLessThan(ACTIVE_IO_BYTES);
       // started about 2 s before the second scan
       expect(after("idle").ageMs).toBeGreaterThanOrEqual(1_500);
@@ -467,12 +573,18 @@ describe("SCAN_SCRIPT on this machine", () => {
     );
     await Bun.$`chmod +x ${dir}/../bin/ss`;
     const file = `${dir}/busy.output`;
-    const child = Bun.spawn(["bash", "-c", "timeout 1 yes >/dev/null; sleep 30; true"], {
-      stdout: Bun.file(file),
-    });
+    const child = Bun.spawn(
+      ["bash", "-c", "timeout 1 yes >/dev/null; sleep 30; true"],
+      {
+        stdout: Bun.file(file),
+      },
+    );
     const env = { ...process.env, PATH: `${dir}/../bin:${process.env.PATH}` };
     const scan = () => {
-      const p = Bun.spawnSync(["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)], { env });
+      const p = Bun.spawnSync(
+        ["bash", "-c", SCAN_SCRIPT, "scan", String(process.pid)],
+        { env },
+      );
       expect(p.exitCode).toBe(0);
       return parseScan(p.stdout.toString()).find((s) => s.file === file)!;
     };
@@ -494,14 +606,17 @@ describe("SCAN_SCRIPT on this machine", () => {
     const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-tcp-${process.pid}/tasks`;
     await Bun.$`mkdir -p ${dir}`;
     // the server's stdout is a pipe, not a task file: no shell of the scan's
-    const server = Bun.spawn([
-      "python3",
-      "-c",
-      `import socket, time
+    const server = Bun.spawn(
+      [
+        "python3",
+        "-c",
+        `import socket, time
 l = socket.socket(); l.bind(("127.0.0.1", 0)); l.listen(1)
 print(l.getsockname()[1], flush=True)
 c, _ = l.accept(); c.sendall(b"x" * 10_000_000); time.sleep(30)`,
-    ], { stdout: "pipe" });
+      ],
+      { stdout: "pipe" },
+    );
     let child: ReturnType<typeof Bun.spawn> | undefined;
     try {
       const { value } = await server.stdout.getReader().read();
@@ -514,9 +629,12 @@ while n < 10_000_000:
     if not b: break
     n += len(b)
 time.sleep(30)`;
-      child = Bun.spawn(["bash", "-c", `sleep 0.5; python3 -c '${client}' ${port}; true`], {
-        stdout: Bun.file(`${dir}/client.output`),
-      });
+      child = Bun.spawn(
+        ["bash", "-c", `sleep 0.5; python3 -c '${client}' ${port}; true`],
+        {
+          stdout: Bun.file(`${dir}/client.output`),
+        },
+      );
       const scan = () => scanFor(`${dir}/client.output`)!;
       await Bun.sleep(200);
       const before = scan();
@@ -528,6 +646,100 @@ time.sleep(30)`;
       if (child) Bun.spawnSync(["pkill", "-P", String(child.pid)]);
       child?.kill();
       server.kill();
+      await Bun.$`rm -rf ${dir}/..`;
+    }
+  });
+
+  test("a timeout and a remote client are seen by name; a log the tree holds open is summed as it grows", async () => {
+    const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-bound-${process.pid}/tasks`;
+    await Bun.$`mkdir -p ${dir}/../bin`;
+    // a process named ssh: comm is the name it was run by, so a link to sleep will do
+    await Bun.$`ln -s ${Bun.which("sleep")!} ${dir}/../bin/ssh`;
+    const log = `${dir}/../job.log`;
+    // each `; true` keeps bash from exec-ing into its last command
+    const kids = {
+      bounded: "timeout 30 sleep 30; true",
+      // timeout 0 sets no deadline: within the grace too, it bounds nothing
+      zero: "timeout 0 sleep 30; true",
+      remote: `${dir}/../bin/ssh 30; true`,
+      logging: `exec 3>${log}; for i in 1 2 3 4 5 6 7 8 9 10; do echo line $i >&3; sleep 0.2; done; sleep 30; true`,
+      idle: "sleep 30; true",
+    };
+    const children = Object.entries(kids).map(([name, cmd]) =>
+      Bun.spawn(["bash", "-c", cmd], {
+        stdout: Bun.file(`${dir}/${name}.output`),
+      }),
+    );
+    try {
+      const scan = (name: string) => scanFor(`${dir}/${name}.output`)!;
+      await Bun.sleep(300);
+      const before = scan("logging");
+      await Bun.sleep(1_200);
+      expect(scan("bounded").bounded).toBe(true);
+      expect(scan("bounded").remote).toBe(false);
+      expect(scan("zero").bounded).toBe(false);
+      expect(scan("remote").remote).toBe(true);
+      expect(scan("remote").bounded).toBe(false);
+      expect(scan("idle").bounded).toBe(false);
+      expect(scan("idle").remote).toBe(false);
+      // the log grew while nothing went to the output file
+      expect(scan("logging").written).toBeGreaterThan(before.written);
+      expect(scan("logging").size).toBe(0);
+    } finally {
+      // the shells' children first: an orphan would hold the test's output open
+      for (const c of children) Bun.spawnSync(["pkill", "-P", String(c.pid)]);
+      for (const c of children) c.kill();
+      await Bun.$`rm -rf ${dir}/..`;
+    }
+  });
+
+  test("a timeout bounds its tree only until its deadline: not under timeout 0, nor once a command that ignores the TERM outlives it", async () => {
+    const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-deadline-${process.pid}/tasks`;
+    await Bun.$`mkdir -p ${dir}`;
+    const stubborn = `python3 -c 'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'`;
+    // each `; true` keeps bash from exec-ing into its last command
+    const kids = {
+      long: "timeout 30 sleep 30; true",
+      longOpts: "timeout --signal=KILL -v 1m sleep 30; true",
+      zero: "timeout 0 sleep 30; true",
+      ignored: `timeout 0.3 ${stubborn}; true`,
+      killAfter: `timeout -k 20 0.3 ${stubborn}; true`,
+    };
+    const children = Object.entries(kids).map(([name, cmd]) =>
+      Bun.spawn(["bash", "-c", cmd], {
+        stdout: Bun.file(`${dir}/${name}.output`),
+      }),
+    );
+    // no grace: the deadline alone decides
+    const scan = (name: string) => {
+      const p = Bun.spawnSync([
+        "bash",
+        "-c",
+        SCAN_SCRIPT,
+        "scan",
+        String(process.pid),
+        "0",
+      ]);
+      expect(p.exitCode).toBe(0);
+      return parseScan(p.stdout.toString()).find(
+        (s) => s.file === `${dir}/${name}.output`,
+      )!;
+    };
+    try {
+      await Bun.sleep(1_500);
+      expect(scan("long").bounded).toBe(true);
+      expect(scan("longOpts").bounded).toBe(true);
+      expect(scan("zero").bounded).toBe(false);
+      // past its 0.3 s, the TERM ignored: timeout and its command both still stand
+      const ignored = scan("ignored");
+      expect(ignored.pids.length).toBeGreaterThanOrEqual(3);
+      expect(ignored.bounded).toBe(false);
+      expect(scan("killAfter").bounded).toBe(true);
+    } finally {
+      // the shells' children first: an orphan would hold the test's output open
+      for (const c of children)
+        Bun.spawnSync(["pkill", "-KILL", "-P", String(c.pid)]);
+      for (const c of children) c.kill();
       await Bun.$`rm -rf ${dir}/..`;
     }
   });

@@ -38,7 +38,7 @@ const SLACK = 1_000; // SPAWN_SLACK_MS, documented in core.ts
 const GRACE = 10_000; // KILL_GRACE_MS, documented in core.ts
 
 const record = (s: ScanShell) =>
-  `${s.pid}\t${s.pids.join(" ")}\t${s.ticks}\t${s.sleeping ? 1 : 0}\t${s.io}\t${s.serving ? 1 : 0}\t${s.ageMs}\t${s.size}\t${s.file}\t${s.cmdline}\0`;
+  `${s.pid}\t${s.pids.join(" ")}\t${s.ticks}\t${s.sleeping ? 1 : 0}\t${s.io}\t${s.serving ? 1 : 0}\t${s.ageMs}\t${s.size}\t${s.written}\t${s.bounded ? 1 : 0}\t${s.remote ? 1 : 0}\t${s.file}\t${s.cmdline}\0`;
 
 const PID = fc.integer({ min: 1, max: 2 ** 22 });
 const BIG = fc.integer({ min: 0, max: Number.MAX_SAFE_INTEGER });
@@ -51,6 +51,9 @@ const arbShell = fc.record({
   serving: fc.boolean(),
   ageMs: BIG,
   size: BIG,
+  written: BIG,
+  bounded: fc.boolean(),
+  remote: fc.boolean(),
   file: fc.stringMatching(/^\/[a-z0-9/]{1,30}\/tasks\/[a-z0-9]{1,8}\.output$/),
   // Q2: the command line is untrusted: any characters but NUL (the scan's record end)
   cmdline: fc
@@ -158,7 +161,10 @@ describe("P4 parseScan", () => {
     5: ["2", "x", ""],
     6: ["-1", "x", "", "NaN", "Infinity", "1.5"],
     7: ["x", "", "NaN", "Infinity", "-1", "1.5"],
-    8: [""],
+    8: ["x", "", "NaN", "Infinity", "-1", "1.5"],
+    9: ["2", "x", ""],
+    10: ["2", "x", ""],
+    11: [""],
   };
   const arbBad = fc
     .constantFrom(...Object.keys(BAD).map(Number))
@@ -189,7 +195,7 @@ describe("P4 parseScan", () => {
   });
 
   // P4 (Q5: "never throws"; any record it keeps has a positive pid and positive tree pids, H5)
-  // mutant: core.ts:131 `pids.some(...)` -> `false`   input: corpus "1\t-1\t0\t0\t0\t0\t0\t0\t/f\tc"
+  // mutant: core.ts:131 `pids.some(...)` -> `false`   input: corpus "1\t-1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t/f\tc"
   test("never throws on junk; anything kept has positive integer pids", () => {
     const junk = fc
       .array(
@@ -212,7 +218,7 @@ describe("P4 parseScan", () => {
           expect(sh.ageMs).toBeGreaterThanOrEqual(0);
         }
       }),
-      opts({ examples: [["1\t-1\t0\t0\t0\t0\t0\t0\t/f\tc\0"]] }),
+      opts({ examples: [["1\t-1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t/f\tc\0"]] }),
     );
   });
 });
@@ -226,6 +232,9 @@ const fcShell0: ScanShell = {
   serving: false,
   ageMs: 0,
   size: 0,
+  written: 0,
+  bounded: false,
+  remote: false,
   file: "/t/tasks/a.output",
   cmdline: "c",
 };
@@ -235,7 +244,8 @@ const fcShell0: ScanShell = {
  * word of the engine's shell line, not the start of a longer one. The engine's line puts a space
  * after it (`… && eval '<cmd>' < /dev/null && …`; listed under Assumptions).
  */
-const holdsCommand = (cmdline: string, command: string) => ` ${cmdline} `.includes(` ${evalQuoted(command)} `);
+const holdsCommand = (cmdline: string, command: string) =>
+  ` ${cmdline} `.includes(` ${evalQuoted(command)} `);
 
 describe("P1/P2 matchShells", () => {
   const arbRuns = fc.array(
@@ -294,58 +304,70 @@ describe("P1/P2 matchShells", () => {
   // mutant: core.ts:189 `>= r.startedAt - SPAWN_SLACK_MS` -> `>= r.startedAt - 2 * SPAWN_SLACK_MS`
   /** P1/P2's checks for one draw. */
   const checkMatch = (rs: any[], ss: any[], dt: number) => {
-        const { runs, shells } = build(rs, ss);
-        const now = T0 + dt;
-        const m = matchShells(runs, shells, now);
-        const owned = new Set(runs.map((r) => r.outputFile).filter(Boolean));
-        const files = [...m.values()].map((s) => s.file);
-        expect(new Set(files).size).toBe(files.length);
-        for (const f of files) expect(owned.has(f)).toBe(false);
-        const waiting = runs.filter(
-          (r) => r.endedAt === undefined && !r.taskId && !r.outputFile,
-        );
-        for (const id of m.keys())
-          expect(waiting.some((r) => r.id === id)).toBe(true);
-        // the twin rule (user, F2 fix): calls waiting with the same command get no shell
-        const twin = (r: WatchRun) => waiting.some((o) => o !== r && o.command === r.command);
-        for (const r of waiting) if (twin(r)) expect(m.has(r.id)).toBe(false);
-        const entries = [...m];
-        const byCmd = entries.filter(([id, s]) => holdsCommand(s.cmdline, runs.find((r) => r.id === id)!.command));
-        const other = entries.filter((e) => !byCmd.includes(e));
-        expect(other.length).toBeLessThanOrEqual(1);
-        if (other.length === 1) {
-          const [id, s] = other[0]!;
-          const r = runs.find((x) => x.id === id)!;
-          expect(
-            waiting.filter((x) => !byCmd.some(([i]) => i === x.id)).length,
-          ).toBe(1);
-          expect(now - s.ageMs).toBeGreaterThanOrEqual(r.startedAt - SLACK);
-          const eligible = shells.filter(
-            (x) =>
-              !owned.has(x.file) &&
-              !byCmd.some(([, y]) => y.file === x.file) &&
-              now - x.ageMs >= r.startedAt - SLACK,
-          );
-          expect(eligible.length).toBe(1);
-        }
-        // the fallback's other half (core.ts docstring: "else, when exactly one call and one new
-        // shell started since that call are left, each other"): such a pair is never left apart
-        // the command half (docstring: "the one whose command line holds the call's command"): a call
-        // not matched by its command finds no free shell, untaken, that holds it
-        for (const r of waiting) {
-          if (twin(r) || holdsCommand(m.get(r.id)?.cmdline ?? "", r.command)) continue;
-          const free = shells.filter((x) => !owned.has(x.file) && !files.includes(x.file) && holdsCommand(x.cmdline, r.command));
-          expect(free.map((x) => x.file)).toEqual([]);
-        }
-        const unmatched = waiting.filter((r) => !m.has(r.id));
-        if (other.length === 0 && unmatched.length === 1) {
-          const r = unmatched[0]!;
-          const left = shells.filter(
-            (x) => !owned.has(x.file) && !files.includes(x.file) && now - x.ageMs >= r.startedAt - SLACK,
-          );
-          if (left.length === 1) expect(m.has(r.id)).toBe(true);
-        }
-};
+    const { runs, shells } = build(rs, ss);
+    const now = T0 + dt;
+    const m = matchShells(runs, shells, now);
+    const owned = new Set(runs.map((r) => r.outputFile).filter(Boolean));
+    const files = [...m.values()].map((s) => s.file);
+    expect(new Set(files).size).toBe(files.length);
+    for (const f of files) expect(owned.has(f)).toBe(false);
+    const waiting = runs.filter(
+      (r) => r.endedAt === undefined && !r.taskId && !r.outputFile,
+    );
+    for (const id of m.keys())
+      expect(waiting.some((r) => r.id === id)).toBe(true);
+    // the twin rule (user, F2 fix): calls waiting with the same command get no shell
+    const twin = (r: WatchRun) =>
+      waiting.some((o) => o !== r && o.command === r.command);
+    for (const r of waiting) if (twin(r)) expect(m.has(r.id)).toBe(false);
+    const entries = [...m];
+    const byCmd = entries.filter(([id, s]) =>
+      holdsCommand(s.cmdline, runs.find((r) => r.id === id)!.command),
+    );
+    const other = entries.filter((e) => !byCmd.includes(e));
+    expect(other.length).toBeLessThanOrEqual(1);
+    if (other.length === 1) {
+      const [id, s] = other[0]!;
+      const r = runs.find((x) => x.id === id)!;
+      expect(
+        waiting.filter((x) => !byCmd.some(([i]) => i === x.id)).length,
+      ).toBe(1);
+      expect(now - s.ageMs).toBeGreaterThanOrEqual(r.startedAt - SLACK);
+      const eligible = shells.filter(
+        (x) =>
+          !owned.has(x.file) &&
+          !byCmd.some(([, y]) => y.file === x.file) &&
+          now - x.ageMs >= r.startedAt - SLACK,
+      );
+      expect(eligible.length).toBe(1);
+    }
+    // the fallback's other half (core.ts docstring: "else, when exactly one call and one new
+    // shell started since that call are left, each other"): such a pair is never left apart
+    // the command half (docstring: "the one whose command line holds the call's command"): a call
+    // not matched by its command finds no free shell, untaken, that holds it
+    for (const r of waiting) {
+      if (twin(r) || holdsCommand(m.get(r.id)?.cmdline ?? "", r.command))
+        continue;
+      const free = shells.filter(
+        (x) =>
+          !owned.has(x.file) &&
+          !files.includes(x.file) &&
+          holdsCommand(x.cmdline, r.command),
+      );
+      expect(free.map((x) => x.file)).toEqual([]);
+    }
+    const unmatched = waiting.filter((r) => !m.has(r.id));
+    if (other.length === 0 && unmatched.length === 1) {
+      const r = unmatched[0]!;
+      const left = shells.filter(
+        (x) =>
+          !owned.has(x.file) &&
+          !files.includes(x.file) &&
+          now - x.ageMs >= r.startedAt - SLACK,
+      );
+      if (left.length === 1) expect(m.has(r.id)).toBe(true);
+    }
+  };
   test("injective, never an owned shell, each match by command or by the documented fallback", () => {
     fc.assert(
       fc.property(arbRuns, arbShells, fc.nat({ max: 20_000 }), checkMatch),
@@ -353,12 +375,22 @@ describe("P1/P2 matchShells", () => {
         numRuns: RUNS * 3,
         examples: [
           [
-            [{ command: "a", startedAt: T0, kind: "waiting" }, { command: "a", startedAt: T0, kind: "waiting" }],
-            [{ cmd: "a", quoted: true, ageMs: 0, fileOf: 0 }, { cmd: "a", quoted: true, ageMs: 0, fileOf: 1 }],
+            [
+              { command: "a", startedAt: T0, kind: "waiting" },
+              { command: "a", startedAt: T0, kind: "waiting" },
+            ],
+            [
+              { cmd: "a", quoted: true, ageMs: 0, fileOf: 0 },
+              { cmd: "a", quoted: true, ageMs: 0, fileOf: 1 },
+            ],
             0,
           ],
           // the fallback's age boundary exactly: started SPAWN_SLACK_MS before the call
-          [[{ command: "a", startedAt: T0, kind: "waiting" }], [{ cmd: "b", quoted: false, ageMs: SLACK, fileOf: 0 }], 0],
+          [
+            [{ command: "a", startedAt: T0, kind: "waiting" }],
+            [{ cmd: "b", quoted: false, ageMs: SLACK, fileOf: 0 }],
+            0,
+          ],
         ],
       }),
     );
@@ -368,10 +400,18 @@ describe("P1/P2 matchShells", () => {
   // whole word: a sub-case kept so they still bite while F1 is open
   // mutant: core.ts:178 `!taken.has(x.file) &&` -> `` (dropped)   input: examples[0]
   test("no partial command matches: injective, by command or by the fallback", () => {
-    const clean = fc.tuple(arbRuns, arbShells, fc.nat({ max: 20_000 })).filter(([rs, ss]) => {
-      const { runs, shells } = build(rs, ss);
-      return runs.every((r) => shells.every((x) => x.cmdline.includes(evalQuoted(r.command)) === holdsCommand(x.cmdline, r.command)));
-    });
+    const clean = fc
+      .tuple(arbRuns, arbShells, fc.nat({ max: 20_000 }))
+      .filter(([rs, ss]) => {
+        const { runs, shells } = build(rs, ss);
+        return runs.every((r) =>
+          shells.every(
+            (x) =>
+              x.cmdline.includes(evalQuoted(r.command)) ===
+              holdsCommand(x.cmdline, r.command),
+          ),
+        );
+      });
     fc.assert(
       fc.property(clean, ([rs, ss, dt]) => checkMatch(rs, ss, dt)),
       opts({
@@ -379,12 +419,24 @@ describe("P1/P2 matchShells", () => {
         examples: [
           [
             [
-              [{ command: "a", startedAt: T0, kind: "waiting" }, { command: "a", startedAt: T0, kind: "waiting" }],
-              [{ cmd: "a", quoted: true, ageMs: 0, fileOf: 0 }, { cmd: "a", quoted: true, ageMs: 0, fileOf: 1 }],
+              [
+                { command: "a", startedAt: T0, kind: "waiting" },
+                { command: "a", startedAt: T0, kind: "waiting" },
+              ],
+              [
+                { cmd: "a", quoted: true, ageMs: 0, fileOf: 0 },
+                { cmd: "a", quoted: true, ageMs: 0, fileOf: 1 },
+              ],
               0,
             ],
           ],
-          [[[{ command: "a", startedAt: T0, kind: "waiting" }], [{ cmd: "b", quoted: false, ageMs: SLACK, fileOf: 0 }], 0]],
+          [
+            [
+              [{ command: "a", startedAt: T0, kind: "waiting" }],
+              [{ cmd: "b", quoted: false, ageMs: SLACK, fileOf: 0 }],
+              0,
+            ],
+          ],
         ],
       }),
     );
@@ -458,6 +510,9 @@ describe("P5 applyScan", () => {
       killSent: fc.boolean(),
       sleeping: fc.boolean(),
       serving: fc.boolean(),
+      written: fc.nat(3),
+      bounded: fc.boolean(),
+      remote: fc.boolean(),
     },
     { requiredKeys: ["command", "startedAt"] },
   );
@@ -473,6 +528,9 @@ describe("P5 applyScan", () => {
     serving: fc.boolean(),
     ageMs: fc.nat(MIN),
     size: fc.nat(4),
+    written: fc.nat(4),
+    bounded: fc.boolean(),
+    remote: fc.boolean(),
     file: fc.constantFrom(
       ...[0, 1, 2, 3, 4, 5].map((i) => `/t/tasks/${i}.output`),
     ),
@@ -518,8 +576,12 @@ describe("P5 applyScan", () => {
                 expect(n).toEqual({ ...rest, endedAt: now });
                 expect("pids" in n).toBe(false);
               } else {
-                const waiting = runs.filter((x) => x.endedAt === undefined && !x.taskId && !x.outputFile);
-                const twin = waiting.includes(r) && waiting.some((o) => o !== r && o.command === r.command);
+                const waiting = runs.filter(
+                  (x) => x.endedAt === undefined && !x.taskId && !x.outputFile,
+                );
+                const twin =
+                  waiting.includes(r) &&
+                  waiting.some((o) => o !== r && o.command === r.command);
                 expect(n).toEqual(twin ? { ...r, activeAt: now } : r);
               }
               expect(out.grew.has(r.id)).toBe(false);
@@ -532,8 +594,10 @@ describe("P5 applyScan", () => {
               grown ||
               (!first && s.ticks - (r.ticks ?? 0) >= ACTIVE_TICKS) ||
               (!first && s.io - (r.io ?? 0) >= ACTIVE_IO_BYTES) ||
+              (!first && s.written > (r.written ?? 0)) ||
               s.sleeping ||
-              s.serving;
+              s.serving ||
+              s.bounded;
             expect(out.grew.has(r.id)).toBe(grown);
             // docstring: the run "takes its pids, sizes and ticks"; nothing else of it changes
             expect(n).toEqual({
@@ -544,8 +608,11 @@ describe("P5 applyScan", () => {
               size: s.size,
               ticks: s.ticks,
               io: s.io,
+              written: s.written,
               sleeping: s.sleeping,
               serving: s.serving,
+              bounded: s.bounded,
+              remote: s.remote,
               ...(active ? { activeAt: now } : {}),
             });
           });
@@ -555,14 +622,78 @@ describe("P5 applyScan", () => {
         numRuns: RUNS * 3,
         // thresholds exactly: CPU and I/O deltas at ACTIVE_TICKS and ACTIVE_IO_BYTES, same pid
         examples: [
-          [[{ command: "a", startedAt: T0, pid: 100, ticks: 0, io: 0, size: 0, outputFile: "/t/tasks/0.output" }], [{ ...fcShell0, pid: 100, pids: [100], ticks: ACTIVE_TICKS, file: "/t/tasks/0.output", cmdline: "?" }], 0],
-          [[{ command: "a", startedAt: T0, pid: 100, ticks: 0, io: 0, size: 0, outputFile: "/t/tasks/0.output" }], [{ ...fcShell0, pid: 100, pids: [100], io: ACTIVE_IO_BYTES, file: "/t/tasks/0.output", cmdline: "?" }], 0],
+          [
+            [
+              {
+                command: "a",
+                startedAt: T0,
+                pid: 100,
+                ticks: 0,
+                io: 0,
+                size: 0,
+                outputFile: "/t/tasks/0.output",
+              },
+            ],
+            [
+              {
+                ...fcShell0,
+                pid: 100,
+                pids: [100],
+                ticks: ACTIVE_TICKS,
+                file: "/t/tasks/0.output",
+                cmdline: "?",
+              },
+            ],
+            0,
+          ],
+          [
+            [
+              {
+                command: "a",
+                startedAt: T0,
+                pid: 100,
+                ticks: 0,
+                io: 0,
+                size: 0,
+                outputFile: "/t/tasks/0.output",
+              },
+            ],
+            [
+              {
+                ...fcShell0,
+                pid: 100,
+                pids: [100],
+                io: ACTIVE_IO_BYTES,
+                file: "/t/tasks/0.output",
+                cmdline: "?",
+              },
+            ],
+            0,
+          ],
           // the twin rule: two waiting twins held, a third call of that command already answered is not
           // mutant: core.ts `? { ...r, activeAt: now } : r` -> `r`; isTwin's `waiting.includes(r) &&` dropped
-          [[{ command: "a", startedAt: T0 }, { command: "a", startedAt: T0 }, { command: "a", startedAt: T0, taskId: "t" }], [], 0],
+          [
+            [
+              { command: "a", startedAt: T0 },
+              { command: "a", startedAt: T0 },
+              { command: "a", startedAt: T0, taskId: "t" },
+            ],
+            [],
+            0,
+          ],
           // a held twin's first shell: active at that look, its CPU so far a baseline
           // mutant: core.ts `const wasHeld = …` -> `false`
-          [[{ command: "a", startedAt: T0, activeAt: T0 }], [{ ...fcShell0, file: "/t/tasks/0.output", cmdline: `zsh -c ${evalQuoted("a")}` }], 1_000],
+          [
+            [{ command: "a", startedAt: T0, activeAt: T0 }],
+            [
+              {
+                ...fcShell0,
+                file: "/t/tasks/0.output",
+                cmdline: `zsh -c ${evalQuoted("a")}`,
+              },
+            ],
+            1_000,
+          ],
         ],
       }),
     );
@@ -581,7 +712,9 @@ describe("P5 applyScan, shells from the runs", () => {
         ticks: fc.nat(1_000),
         io: fc.nat(10 * ACTIVE_IO_BYTES),
         size: fc.nat(1_000),
-        activeAt: fc.option(fc.integer({ min: T0 - 5 * MIN, max: T0 }), { nil: undefined }),
+        activeAt: fc.option(fc.integer({ min: T0 - 5 * MIN, max: T0 }), {
+          nil: undefined,
+        }),
         dTicks: fc.integer({ min: -2, max: 2 * ACTIVE_TICKS }),
         dIo: fc.integer({ min: -2, max: 2 * ACTIVE_IO_BYTES }),
         dSize: fc.integer({ min: -1, max: 2 }),
@@ -613,18 +746,23 @@ describe("P5 applyScan, shells from the runs", () => {
         }));
         const shells: ScanShell[] = ws.flatMap((w, i) =>
           w.up
-            ? [{
-                pid: w.samePid ? w.pid : w.pid + 10,
-                pids: [w.samePid ? w.pid : w.pid + 10],
-                ticks: Math.max(0, w.ticks + w.dTicks),
-                sleeping: w.sleeping,
-                io: Math.max(0, w.io + w.dIo),
-                serving: w.serving,
-                ageMs: 0,
-                size: Math.max(0, w.size + w.dSize),
-                file: `/t/tasks/${i}.output`,
-                cmdline: "?",
-              }]
+            ? [
+                {
+                  pid: w.samePid ? w.pid : w.pid + 10,
+                  pids: [w.samePid ? w.pid : w.pid + 10],
+                  ticks: Math.max(0, w.ticks + w.dTicks),
+                  sleeping: w.sleeping,
+                  io: Math.max(0, w.io + w.dIo),
+                  serving: w.serving,
+                  ageMs: 0,
+                  size: Math.max(0, w.size + w.dSize),
+                  written: 0,
+                  bounded: false,
+                  remote: false,
+                  file: `/t/tasks/${i}.output`,
+                  cmdline: "?",
+                },
+              ]
             : [],
         );
         const out = applyScan(runs, shells, now);
@@ -654,8 +792,11 @@ describe("P5 applyScan, shells from the runs", () => {
             size: s.size,
             ticks: s.ticks,
             io: s.io,
+            written: s.written,
             sleeping: s.sleeping,
             serving: s.serving,
+            bounded: s.bounded,
+            remote: s.remote,
             ...(active ? { activeAt: now } : {}),
           });
         });
@@ -685,7 +826,9 @@ describe("P7 rules (copies of watchdog.prop.test.ts, exact)", () => {
             ...(isEnded ? { endedAt: T0 } : {}),
           });
           const now = T0 + at;
-          expect(isStuck(r, now, LIMIT)).toBe(!killed && !isEnded && hasPid && now - T0 - (active ?? 0) >= LIMIT);
+          expect(isStuck(r, now, LIMIT)).toBe(
+            !killed && !isEnded && hasPid && now - T0 - (active ?? 0) >= LIMIT,
+          );
         },
       ),
       opts({ examples: [[undefined, LIMIT, true, false, false]] }),
@@ -711,8 +854,12 @@ describe("P7 rules (copies of watchdog.prop.test.ts, exact)", () => {
             ...(isEnded ? { endedAt: T0 } : {}),
           });
           const now = T0 + at;
-          expect(needsKill(r, now)).toBe(killedAt !== undefined && !sent && hasPid && at - killedAt >= GRACE);
-          expect(isWatched(r)).toBe(!isEnded || (killedAt !== undefined && !sent));
+          expect(needsKill(r, now)).toBe(
+            killedAt !== undefined && !sent && hasPid && at - killedAt >= GRACE,
+          );
+          expect(isWatched(r)).toBe(
+            !isEnded || (killedAt !== undefined && !sent),
+          );
         },
       ),
       opts({ examples: [[0, false, true, true, GRACE]] }),
@@ -762,29 +909,60 @@ describe("P6 killTargets, from any scan output", () => {
   // mutant: core.ts:134 `pids.some((p) => !Number.isInteger(p))` -> `false`   input: examples[0]
   test("no target but '--' starts with a dash other than the group, all positive integers", () => {
     const junk = fc
-      .array(fc.oneof(fc.constantFrom("\t", "\0", " ", "-", "0", "1", "-1", "/t/tasks/a.output", "x"), fc.string({ maxLength: 6 })), { maxLength: 60 })
+      .array(
+        fc.oneof(
+          fc.constantFrom(
+            "\t",
+            "\0",
+            " ",
+            "-",
+            "0",
+            "1",
+            "-1",
+            "/t/tasks/a.output",
+            "x",
+          ),
+          fc.string({ maxLength: 6 }),
+        ),
+        { maxLength: 60 },
+      )
       .map((a) => a.join(""));
     fc.assert(
       fc.property(junk, (out) => {
         const parsed = parseScan(out);
-        const runs = parsed.map((s, i) => run({ id: `r${i}`, outputFile: s.file, taskId: `t${i}` }));
+        const runs = parsed.map((s, i) =>
+          run({ id: `r${i}`, outputFile: s.file, taskId: `t${i}` }),
+        );
         for (const r of applyScan(runs, parsed, T0 + 1).runs)
-          for (const x of killTargets(r).slice(1)) expect(x).toMatch(/^-?[1-9][0-9]*$/);
+          for (const x of killTargets(r).slice(1))
+            expect(x).toMatch(/^-?[1-9][0-9]*$/);
         for (const r of applyScan(runs, parsed, T0 + 1).runs)
-          expect(killTargets(r).slice(2).every((x) => /^[1-9][0-9]*$/.test(x))).toBe(true);
+          expect(
+            killTargets(r)
+              .slice(2)
+              .every((x) => /^[1-9][0-9]*$/.test(x)),
+          ).toBe(true);
       }),
-      opts({ examples: [["1\t1 -1\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0"]] }),
+      opts({
+        examples: [
+          ["1\t1 -1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0"],
+        ],
+      }),
     );
   });
 });
 
 describe("P4 parseScan, short records", () => {
   // P4 (Q4: "a malformed scan record is skipped"): a record without its command-line field
-  // mutant: core.ts:127 `f.length < 10` -> `f.length < 9`   input: examples[0]
-  test("a record of nine fields is skipped", () => {
+  // mutant: core.ts `f.length < 13` -> `f.length < 12`   input: examples[0]
+  test("a record of twelve fields (no command line) is skipped", () => {
     fc.assert(
       fc.property(arbShell, (sh) => {
-        const nine = record(sh).slice(0, -1).split("\t").slice(0, 9).join("\t");
+        const nine = record(sh)
+          .slice(0, -1)
+          .split("\t")
+          .slice(0, 12)
+          .join("\t");
         expect(parseScan(`${nine}\0`)).toEqual([]);
       }),
       opts({ examples: [[fcShell0]] }),
@@ -871,7 +1049,8 @@ type Sig = {
 };
 
 /** Look times: irregular gaps, since a reload re-arms the poll and a slow look skips one. */
-const lookTimes = (gaps: number[]) => gaps.reduce<number[]>((ts, g) => [...ts, (ts.at(-1) ?? T0) + g], []);
+const lookTimes = (gaps: number[]) =>
+  gaps.reduce<number[]>((ts, g) => [...ts, (ts.at(-1) ?? T0) + g], []);
 
 function simulate(calls: Call[], pids: number[], gaps: number[]) {
   const looks = lookTimes(gaps);
@@ -975,7 +1154,8 @@ function simulate(calls: Call[], pids: number[], gaps: number[]) {
       if (act === "c") s.cpu += 2 * ACTIVE_TICKS;
       if (act === "i") s.io += 2 * ACTIVE_IO_BYTES;
       // CPU and I/O on a shell's first look are a baseline, as documented
-      if (act !== "q" && !(s.looks === 0 && (act === "c" || act === "i"))) s.lastAct = now;
+      if (act !== "q" && !(s.looks === 0 && (act === "c" || act === "i")))
+        s.lastAct = now;
       s.looks++;
       shells.push({
         pid: s.pid,
@@ -986,6 +1166,9 @@ function simulate(calls: Call[], pids: number[], gaps: number[]) {
         serving: act === "v",
         ageMs: now - s.spawn,
         size: s.size,
+        written: 0,
+        bounded: false,
+        remote: false,
         file: s.file,
         cmdline: `zsh -c source snap && ${evalQuoted(calls[s.i]!.command)} < /dev/null`,
       });
@@ -1039,59 +1222,62 @@ const arbWorld = fc
           maxLength: calls.length,
         },
       ),
-      fc.array(fc.integer({ min: 1_000, max: 20_000 }), { minLength: 30, maxLength: 30 }),
+      fc.array(fc.integer({ min: 1_000, max: 20_000 }), {
+        minLength: 30,
+        maxLength: 30,
+      }),
     ),
   );
 
 const EVEN = Array(30).fill(TICK);
 const P7_EXAMPLES: [[Call[], number[], number[]]][] = [
-          [
-            [
-              [
-                {
-                  command: "x",
-                  bg: false,
-                  callAt: 1,
-                  spawnDelay: 0,
-                  lifeMs: Infinity,
-                  ignoresTerm: true,
-                  taskStopOk: false,
-                  acts: Array(30).fill("q"),
-                },
-              ],
-              [100],
-              EVEN,
-            ],
-          ],
-          [
-            [
-              [
-                {
-                  command: "a",
-                  bg: false,
-                  callAt: 1,
-                  spawnDelay: 12_000,
-                  lifeMs: Infinity,
-                  ignoresTerm: false,
-                  taskStopOk: false,
-                  acts: Array(30).fill("v"),
-                },
-                {
-                  command: "a' b",
-                  bg: false,
-                  callAt: 1_001,
-                  spawnDelay: 0,
-                  lifeMs: Infinity,
-                  ignoresTerm: false,
-                  taskStopOk: false,
-                  acts: Array(30).fill("q"),
-                },
-              ],
-              [200, 100],
-              EVEN,
-            ],
-          ],
-        ];
+  [
+    [
+      [
+        {
+          command: "x",
+          bg: false,
+          callAt: 1,
+          spawnDelay: 0,
+          lifeMs: Infinity,
+          ignoresTerm: true,
+          taskStopOk: false,
+          acts: Array(30).fill("q"),
+        },
+      ],
+      [100],
+      EVEN,
+    ],
+  ],
+  [
+    [
+      [
+        {
+          command: "a",
+          bg: false,
+          callAt: 1,
+          spawnDelay: 12_000,
+          lifeMs: Infinity,
+          ignoresTerm: false,
+          taskStopOk: false,
+          acts: Array(30).fill("v"),
+        },
+        {
+          command: "a' b",
+          bg: false,
+          callAt: 1_001,
+          spawnDelay: 0,
+          lifeMs: Infinity,
+          ignoresTerm: false,
+          taskStopOk: false,
+          acts: Array(30).fill("q"),
+        },
+      ],
+      [200, 100],
+      EVEN,
+    ],
+  ],
+];
 
 describe("P7 the look loop", () => {
   // P7a (Q5: "never signal a non-stuck run"; Q7 Critical: "signals an unrelated process": a
@@ -1164,7 +1350,9 @@ describe("P7 the look loop", () => {
           // the twin rule (user, F2 fix): a call sharing its command with another may be held back
           if (quiet.some((o, j) => j !== i && o.command === c.command)) return;
           // the first look its shell is up and its quiet time reached, then one look more
-          const at = looks.findIndex((t) => t >= Math.max(T0 + c.callAt + LIMIT, real[i]!.spawn));
+          const at = looks.findIndex(
+            (t) => t >= Math.max(T0 + c.callAt + LIMIT, real[i]!.spawn),
+          );
           const due = at < 0 ? undefined : looks[at + 1];
           if (due === undefined) return;
           expect(

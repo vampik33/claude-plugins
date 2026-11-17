@@ -4,6 +4,13 @@ All notable changes to the watchdog plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-11-17
+
+### Changed
+- A `timeout` running in a command's tree bounds it, so the watchdog never stops it: a wait the model means to be quiet (`timeout 3h ssh host 'until …; do sleep 60; done'`) runs to its own deadline. Before, `timeout 1800 ssh …` was stopped at 10 minutes. `/watchdog` shows such a command as `bounded`. The exemption ends a minute after the timeout's deadline (plus its `--kill-after`): a command that ignores the TERM is then judged like any other, and `timeout 0` bounds nothing
+- A regular file the tree holds open that grows counts as output: a job writing to its own log (`job > job.log`, a watcher logging events) is no longer quiet when its output file is
+- When an `ssh`, `docker`, `kubectl` or `podman` client was in the stopped tree, the note says the remote command may still be running, asks the model to check on the host before re-running it (so a backfill does not run twice), and suggests starting long work detached there and polling its log, or a `timeout`. Every other note tells the model it can wrap a command that is quiet by design in `timeout`
+
 ## [0.3.7] - 2026-11-13
 
 ### Fixed

@@ -57,13 +57,31 @@ type StartRequest = {
   byTool: boolean;
 };
 
+/** Runs a command; when it did not run (refused, could not start, timed out), why. */
+async function tryRun(
+  $: EngineInterface,
+  argv: string[],
+  cwd?: string,
+  timeoutMs?: number,
+): Promise<ProcessRunResult | string> {
+  return $.process
+    .run(argv, { cwd, timeoutMs })
+    .catch((err: unknown) =>
+      err instanceof Error ? err.message : String(err),
+    );
+}
+
+/** Runs a command; undefined when it did not run, the reason going to the debug log. */
 async function run(
   $: EngineInterface,
   argv: string[],
   cwd?: string,
   timeoutMs?: number,
 ): Promise<ProcessRunResult | undefined> {
-  return $.process.run(argv, { cwd, timeoutMs }).catch(() => undefined);
+  const r = await tryRun($, argv, cwd, timeoutMs);
+  if (typeof r !== "string") return r;
+  $.ui.log(`${argv[0]} did not run: ${r}`, { to: "debug" });
+  return undefined;
 }
 
 async function findCompanion(
@@ -159,7 +177,7 @@ async function startJob(
   const focus =
     req.mode === "adversarial" && req.focus ? ["--", req.focus] : [];
   // read-only: never --write; detached so the review outlives this call and a reload
-  const started = await run($, [
+  const started = await tryRun($, [
     "sh",
     "-c",
     'cd "$1" || exit 1; out="$2"; err="$3"; shift 3; nohup "$@" > "$out" 2> "$err" < /dev/null & echo $!',
@@ -176,9 +194,10 @@ async function startJob(
       : ["--base", base]),
     ...focus,
   ]);
-  const pid = Number(started?.stdout.trim());
-  if (!started || started.exitCode !== 0 || !Number.isInteger(pid) || pid <= 0)
-    return `Codex did not start: ${started?.stderr.trim() || "no pid"}`;
+  if (typeof started === "string") return `Codex did not start: ${started}`;
+  const pid = Number(started.stdout.trim());
+  if (started.exitCode !== 0 || !Number.isInteger(pid) || pid <= 0)
+    return `Codex did not start: ${started.stderr.trim() || "no pid"}`;
 
   const job: CxJob = {
     id,

@@ -4,6 +4,12 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.11] - 2026-11-17
+
+### Fixed
+- When Codex cannot start, the reason is given instead of "no pid": `Codex did not start: <why>`, e.g. when Claude Code's permission check refuses the detached launch
+- A command the mod runs that fails to run (refused, could not start, timed out) logs why to the debug log instead of failing silently
+
 ## [0.3.10] - 2026-11-13
 
 ### Fixed

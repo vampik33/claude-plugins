@@ -370,6 +370,10 @@ function engine(
     ahead?: string;
     /** `git status --porcelain` */
     status?: string;
+    /** Refuse the detached launch with this reason, as a permission hook does */
+    launchDenied?: string;
+    /** Refuse every git command with this reason */
+    gitDenied?: string;
   } = {},
 ) {
   const seen = {
@@ -381,6 +385,7 @@ function engine(
     asked: 0,
     launch: [] as string[],
     revList: [] as string[],
+    logs: [] as { text: string; to?: string }[],
   };
   const clock = mock.clock(on, { now: Date.now() });
   mock.env(on, { HOME: "/h" });
@@ -420,6 +425,7 @@ function engine(
         isStderrTruncated: false,
       },
     });
+    if (cmd === "git" && opts.gitDenied) return { deny: opts.gitDenied };
     if (cmd === "git" && rest[0] === "rev-parse")
       return opts.repo === false
         ? fail()
@@ -435,6 +441,8 @@ function engine(
     if (cmd === "gh") return fail();
     if (cmd === "mkdir") return ok();
     // the detached launch answers its pid; the wait loop answers that Codex exited
+    if (cmd === "sh" && rest[1]?.startsWith("cd ") && opts.launchDenied)
+      return { deny: opts.launchDenied };
     if (cmd === "sh" && rest[1]?.startsWith("cd "))
       return (seen.started++, (seen.launch = rest.slice(10)), ok("4242\n"));
     if (cmd === "sh") return ok();
@@ -467,6 +475,13 @@ function engine(
     },
   );
   on("ui.close", () => ({ value: undefined }));
+  on(
+    "ui.log",
+    (_$: unknown, e: { text: string; to?: string }) => (
+      seen.logs.push({ text: e.text, to: e.to }),
+      { value: undefined }
+    ),
+  );
   on(
     "prompt.submit",
     (_$: unknown, e: { text: string }) => (
@@ -903,6 +918,28 @@ describe("session", () => {
     const parsed = JSON.parse(r.result!);
     expect(parsed.codexRan).toBe(true);
     expect(parsed.findings[0].severity).toBe("high");
+  });
+
+  test("a refused launch says why Codex did not start", async ($, on) => {
+    engine(on, "", { launchDenied: "Bash command not allowed" });
+    const r = (await $.tool.call({
+      tool: "mcp__codex-review__CodexReview",
+    } as never)) as {
+      result?: string;
+      isError?: boolean;
+    };
+    expect(r.isError).toBe(true);
+    expect(r.result).toMatch(/Codex did not start: .*Bash command not allowed/);
+    expect(r.result).not.toContain("no pid");
+  });
+
+  test("a command that does not run logs why to the debug log", async ($, on) => {
+    const { seen } = engine(on, "", { gitDenied: "refused" });
+    await $.tool.call({ tool: "mcp__codex-review__CodexReview" } as never);
+    expect(seen.logs).toContainEqual({
+      text: expect.stringMatching(/^git did not run: .*refused/),
+      to: "debug",
+    });
   });
 
   test("the tool never passes off a failed run as a review", async ($, on) => {

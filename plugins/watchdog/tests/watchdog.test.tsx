@@ -14,6 +14,10 @@ type Proc = {
   /** Bytes read and written */
   io?: number;
   serving?: boolean;
+  /** Summed sizes of the files the tree holds open */
+  written?: number;
+  bounded?: boolean;
+  remote?: boolean;
   /** When the shell started, on the mock clock */
   born?: number;
   out: string;
@@ -51,7 +55,7 @@ function engine(on: any, { holdBackground = false, scanDelay = 0 } = {}) {
         [...procs.entries()]
           .map(
             ([file, p]) =>
-              `${p.pid}\t${p.pids.join(" ")}\t${p.ticks}\t${p.sleeping ? 1 : 0}\t${p.io ?? 0}\t${p.serving ? 1 : 0}\t${t - (p.born ?? t)}\t${p.out.length}\t${file}\t/usr/bin/zsh -c source snap && ${evalQuoted(p.command)} && pwd -P \0`,
+              `${p.pid}\t${p.pids.join(" ")}\t${p.ticks}\t${p.sleeping ? 1 : 0}\t${p.io ?? 0}\t${p.serving ? 1 : 0}\t${t - (p.born ?? t)}\t${p.out.length}\t${p.written ?? 0}\t${p.bounded ? 1 : 0}\t${p.remote ? 1 : 0}\t${file}\t/usr/bin/zsh -c source snap && ${evalQuoted(p.command)} && pwd -P \0`,
           )
           .join(""),
       );
@@ -346,6 +350,75 @@ describe("foreground", () => {
     expect(text).toMatch(/▶ bg serve\.sh · 20s · serving/);
     release();
     await fg;
+  });
+});
+
+describe("bounded, logging and remote", () => {
+  test("a command under timeout or writing to its own log is never stopped; an idle one beside them is", async ($, on) => {
+    const { procs, seen, clock } = engine(on);
+    await start($);
+    await bash(
+      $,
+      "timeout 3h ssh host 'until test -f done; do sleep 60; done'",
+      true,
+    );
+    await bash($, "python3 watch.py > seen.log", true);
+    await bash($, "./hang.sh", true);
+    procs.set("/t/tasks/b1.output", {
+      pid: 1601,
+      pids: [1601, 1602, 1603],
+      ticks: 0,
+      bounded: true,
+      remote: true,
+      out: "",
+      command: "timeout 3h ssh host 'until test -f done; do sleep 60; done'",
+    });
+    procs.set("/t/tasks/b2.output", {
+      pid: 1701,
+      pids: [1701, 1702],
+      ticks: 0,
+      written: 0,
+      out: "",
+      command: "python3 watch.py > seen.log",
+    });
+    procs.set("/t/tasks/b3.output", {
+      pid: 1801,
+      pids: [1801],
+      ticks: 0,
+      out: "",
+      command: "./hang.sh",
+    });
+    for (let i = 0; i < 180; i++) {
+      // a line a minute to its log: far under the I/O threshold
+      if (i % 6 === 0) procs.get("/t/tasks/b2.output")!.written! += 40;
+      await clock.advance(10_000);
+    }
+    expect(seen.stops).toEqual(["b3"]);
+    const text = await status($);
+    expect(text).toMatch(/▶ bg timeout 3h · \S+ · bounded/);
+  });
+
+  test("a stopped remote client's note asks for a check on the host before any re-run", async ($, on) => {
+    const { procs, seen, clock } = engine(on);
+    await start($);
+    await bash(
+      $,
+      "ssh contabo 'until grep -q done job.log; do sleep 60; done'",
+      true,
+    );
+    procs.set("/t/tasks/b1.output", {
+      pid: 1901,
+      pids: [1901, 1902],
+      ticks: 0,
+      remote: true,
+      out: "",
+      command: "ssh contabo 'until grep -q done job.log; do sleep 60; done'",
+    });
+    await clock.advance(11 * MIN);
+    expect(seen.stops).toEqual(["b1"]);
+    expect(seen.prompts[0]).toContain("leaves the remote command running");
+    expect(seen.prompts[0]).toContain("so it does not run twice");
+    expect(seen.prompts[0]).not.toContain("re-run it, fixed");
   });
 });
 

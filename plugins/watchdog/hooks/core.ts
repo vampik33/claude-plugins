@@ -26,12 +26,18 @@ const KILL_GRACE_MS = 10_000;
  * pid, the tree's pids, the tree's CPU ticks, whether a `sleep` is in it,
  * the bytes the tree read and wrote (TCP bytes sent and received included),
  * whether it serves (a listening TCP socket or an inotify watch), the
- * shell's age in ms (-1 once it is gone), the output file's size, its path,
- * then the shell's command line.
+ * shell's age in ms (-1 once it is gone), the output file's size, the summed
+ * sizes of the regular files the tree holds open, whether a `timeout` in it
+ * still bounds it (its deadline, its --kill-after and a grace not yet past:
+ * 60 s, or the seconds given as the second argument), whether a remote client (ssh, docker, kubectl, podman) is in it, the
+ * output file's path, then the shell's command line.
  */
 export const SCAN_SCRIPT = String.raw`
 set -f
 root=$1
+# how long past its deadline a timeout still bounds its tree, in seconds
+grace=$2
+[ -n "$grace" ] || grace=60
 tab=$(printf '\t')
 trees=$(ps -e -o pid=,ppid= | awk -v root="$root" '
 { kids[$2] = kids[$2] " " $1 }
@@ -92,14 +98,55 @@ while IFS="$tab" read -r f tree; do
     $0 == "anon_inode:inotify" || (($0 in net) && net[$0] == "L") { serving = 1; next }
     ($0 in net) { if (!seen[$0]++) io += net[$0]; next }
     $0 == "sleep" { s = 1 }
+    $0 == "timeout" { b = 1 }
+    $0 == "ssh" || $0 == "docker" || $0 == "kubectl" || $0 == "podman" { rm = 1 }
     END {
       age = -1
       if (start != "") { age = int((up - start / hz) * 1000); if (age < 0) age = 0 }
-      printf "%.0f %d %.0f %d %d\n", t, s, io, serving, age
+      printf "%.0f %d %.0f %d %d %d %d\n", t, s, io, serving, age, b, rm
     }')
-  ticks=$1 sleeping=$2 io=$3 serving=$4 age=$5
+  ticks=$1 sleeping=$2 io=$3 serving=$4 age=$5 timed=$6 remote=$7
+  # a timeout bounds the tree only until its deadline (and its --kill-after) and the grace are past: a
+  # command that ignores the TERM, or one under timeout 0, which sets no deadline, is judged like any other
+  bounded=0
+  if [ "$timed" = 1 ]; then
+    for p in $tree; do
+      c= st=
+      { read -r c < "/proc/$p/comm"; read -r st < "/proc/$p/stat"; } 2>/dev/null
+      [ "$c" = timeout ] && [ -n "$st" ] || continue
+      # its argv one per line: options, the duration, the command; the start is field 22 of its stat
+      if { tr '\0' '\n' < "/proc/$p/cmdline"; } 2>/dev/null | awk -v st="$st" -v up="$up" -v hz="$hz" -v grace="$grace" '
+        function secs(s,  n, u) {
+          if (s !~ /^([0-9]+\.?[0-9]*|\.[0-9]+)[smhd]?$/) return -1
+          n = s + 0; u = substr(s, length(s))
+          return u == "m" ? n * 60 : u == "h" ? n * 3600 : u == "d" ? n * 86400 : n
+        }
+        BEGIN { sub(/^.*\) /, "", st); split(st, a, " "); start = a[20] }
+        NR == 1 || dur != "" { next }
+        opt != "" { if (opt == "k") ka = $0; opt = ""; next }
+        !dd && $0 == "--" { dd = 1; next }
+        !dd && /^--k[a-z-]*=/ { ka = substr($0, index($0, "=") + 1); next }
+        !dd && /^--k/ { opt = "k"; next }
+        !dd && /^--s[a-z-]*=/ { next }
+        !dd && /^--s/ { opt = "s"; next }
+        !dd && $0 == "-k" { opt = "k"; next }
+        !dd && /^-k./ { ka = substr($0, 3); next }
+        !dd && $0 == "-s" { opt = "s"; next }
+        !dd && /^-./ { next }
+        { dur = $0 }
+        END {
+          d = secs(dur); k = ka == "" ? 0 : secs(ka)
+          if (d <= 0 || start == "") exit 1
+          if (k < 0) k = 0
+          exit !(up - start / hz < d + k + grace)
+        }'; then bounded=1; break; fi
+    done
+  fi
   size=$(stat -c %s "$f" 2>/dev/null || echo 0)
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t' "$shell" "$tree" "$ticks" "$sleeping" "$io" "$serving" "$age" "$size" "$f"
+  # every regular file the tree holds open, by size, each once however many pids hold it (a child inherits
+  # its parent's fds, so the sum would rise and fall with its children): a log written instead of the output grows here
+  written=$(find -L $fds -mindepth 1 -maxdepth 1 -type f -printf '%D:%i %s\n' 2>/dev/null | awk '!seen[$1]++ { n += $2 } END { printf "%.0f", n }')
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t' "$shell" "$tree" "$ticks" "$sleeping" "$io" "$serving" "$age" "$size" "$written" "$bounded" "$remote" "$f"
   tr '\0' ' ' < "/proc/$shell/cmdline" 2>/dev/null
   printf '\0'
 done
@@ -115,6 +162,9 @@ export type ScanShell = {
   serving: boolean;
   ageMs: number;
   size: number;
+  written: number;
+  bounded: boolean;
+  remote: boolean;
   file: string;
   cmdline: string;
 };
@@ -127,7 +177,7 @@ export function parseScan(stdout: string): ScanShell[] {
   const shells: ScanShell[] = [];
   for (const rec of stdout.split("\0")) {
     const f = rec.split("\t");
-    if (f.length < 10) continue;
+    if (f.length < 13) continue;
     const pid = Number(f[0]);
     const tree = f[1]!.split(" ").filter(Boolean);
     const pids = tree.map(Number);
@@ -135,14 +185,16 @@ export function parseScan(stdout: string): ScanShell[] {
     const io = Number(f[4]);
     const ageMs = Number(f[6]);
     const size = Number(f[7]);
+    const written = Number(f[8]);
     // every number the scan prints is a whole count; a pid of 0 or -1 would make kill signal a whole group
     if (
-      ![f[0], ...tree, f[2], f[4], f[7]].every((n) => COUNT.test(n!)) ||
+      ![f[0], ...tree, f[2], f[4], f[7], f[8]].every((n) => COUNT.test(n!)) ||
       pid <= 0 ||
       pids.some((p) => p <= 0)
     )
       continue;
-    if (!FLAG.test(f[3]!) || !FLAG.test(f[5]!) || !f[8]) continue;
+    if (![f[3], f[5], f[9], f[10]].every((x) => FLAG.test(x!)) || !f[11])
+      continue;
     // a shell gone mid-scan has no age (-1): skipped, so it is never taken for a new one
     if (!COUNT.test(f[6]!)) continue;
     shells.push({
@@ -154,8 +206,11 @@ export function parseScan(stdout: string): ScanShell[] {
       serving: f[5] === "1",
       ageMs,
       size,
-      file: f[8],
-      cmdline: f.slice(9).join("\t"),
+      written,
+      bounded: f[9] === "1",
+      remote: f[10] === "1",
+      file: f[11],
+      cmdline: f.slice(12).join("\t"),
     });
   }
   return shells;
@@ -216,8 +271,9 @@ export function matchShells(
 
 /**
  * Applies one scan: each live run with a shell takes its pids, sizes and
- * ticks, and is active now when its output grew, it used CPU, it read or
- * wrote data, a sleep runs in it or it serves; a live run whose output file
+ * ticks, and is active now when its output or a file it holds open grew, it
+ * used CPU, it read or wrote data, a sleep or a `timeout` runs in it or it
+ * serves; a live run whose output file
  * no shell holds any more has ended.
  * Answers the runs and the ids whose output grew (their last line wants
  * reading).
@@ -247,6 +303,8 @@ export function applyScan(
     const isGrown = s.size > (r.size ?? 0);
     const isWorking = !first && s.ticks - (r.ticks ?? 0) >= ACTIVE_TICKS;
     const isMoving = !first && s.io - (r.io ?? 0) >= ACTIVE_IO_BYTES;
+    // a log it writes instead of its output; the first look's files are a baseline
+    const isLogging = !first && s.written > (r.written ?? 0);
     if (isGrown) grew.add(r.id);
     return {
       ...r,
@@ -256,10 +314,21 @@ export function applyScan(
       size: s.size,
       ticks: s.ticks,
       io: s.io,
+      written: s.written,
       sleeping: s.sleeping,
       serving: s.serving,
-      // a sleep counts as active: what runs after it gets the whole limit; a server or watcher waits by design
-      ...(wasHeld || isGrown || isWorking || isMoving || s.sleeping || s.serving
+      bounded: s.bounded,
+      remote: s.remote,
+      // a sleep counts as active: what runs after it gets the whole limit; a server or watcher waits by design;
+      // a `timeout` bounds the command itself
+      ...(wasHeld ||
+      isGrown ||
+      isWorking ||
+      isMoving ||
+      isLogging ||
+      s.sleeping ||
+      s.serving ||
+      s.bounded
         ? { activeAt: now }
         : {}),
     };
@@ -284,7 +353,7 @@ export function ended(r: WatchRun, now: number): WatchRun {
   return { ...rest, endedAt: now };
 }
 
-/** How long a run has printed nothing, used no CPU, moved no data, run no sleep and served nothing. */
+/** How long a run has printed nothing, grown no file, used no CPU, moved no data, run no sleep or timeout and served nothing. */
 export const quietMs = (r: WatchRun, now: number) =>
   now - (r.activeAt ?? r.startedAt);
 
@@ -414,6 +483,10 @@ function unwrap(line: string): string {
   return line;
 }
 
+/** How the model keeps a command that is quiet by design from being stopped. */
+const BOUND_HINT =
+  "A command quiet by design (a wait, a watcher) is never stopped while it runs under `timeout <duration>`: wrap it in one to bound it yourself.";
+
 /** What the model reads once a command was stopped: why, and that re-running is its call. */
 export function killNote(r: WatchRun, now: number, limitMs: number): string {
   const kind = r.taskId ? `background task ${r.taskId}` : "foreground";
@@ -427,7 +500,16 @@ export function killNote(r: WatchRun, now: number, limitMs: number): string {
           `<output>${unwrap(clip(r.line, 200))}</output>`,
         ]
       : []),
-    "If its result is still needed, find out why it hung (a prompt waiting for input, a lock, a dead connection) and re-run it, fixed; if not, carry on.",
+    ...(r.remote
+      ? [
+          "It ran a remote client (ssh, docker, kubectl or podman), and the watchdog cannot see work on the other end: stopping the client often leaves the remote command running.",
+          "Before re-running it, check on the host whether it is still running or already finished, so it does not run twice.",
+          "For long quiet remote work, start it detached on the host (`setsid nohup … > job.log 2>&1 < /dev/null &`) and poll its log, or wrap the wait in `timeout <duration>`, which the watchdog leaves alone.",
+        ]
+      : [
+          "If its result is still needed, find out why it hung (a prompt waiting for input, a lock, a dead connection) and re-run it, fixed; if not, carry on.",
+          BOUND_HINT,
+        ]),
   ].join("\n");
 }
 
@@ -469,6 +551,7 @@ function runNote(r: WatchRun, now: number): string {
   if (r.pid === undefined) return "starting";
   if (r.sleeping) return "sleeping";
   if (r.serving) return "serving";
+  if (r.bounded) return "bounded";
   return `quiet ${fmtLeft(quietMs(r, now))}`;
 }
 

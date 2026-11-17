@@ -38,6 +38,9 @@ const shell = (o: Partial<ScanShell>): ScanShell => ({
   serving: false,
   ageMs: 0,
   size: 0,
+  written: 0,
+  bounded: false,
+  remote: false,
   file: "/t/tasks/0.output",
   cmdline: "",
   ...o,
@@ -46,22 +49,19 @@ const zsh = (command: string) =>
   `zsh -c source snap && ${evalQuoted(command)} < /dev/null`;
 
 // formal-verify finding F1: a call's quoted command found inside another call's command line
-test(
-  "formal-verify finding F1: call `a` takes the shell of a concurrent `a' b`",
-  () => {
-    const runs: WatchRun[] = [
-      { id: "r0", command: "a", startedAt: T0 },
-      { id: "r1", command: "a' b", startedAt: T0 + 1_000 },
-    ];
-    // only call 1's shell is up yet
-    const m = matchShells(
-      runs,
-      [shell({ file: "/t/tasks/1.output", cmdline: zsh("a' b") })],
-      T0 + 5_000,
-    );
-    expect(m.get("r0")?.file).not.toBe("/t/tasks/1.output");
-  },
-);
+test("formal-verify finding F1: call `a` takes the shell of a concurrent `a' b`", () => {
+  const runs: WatchRun[] = [
+    { id: "r0", command: "a", startedAt: T0 },
+    { id: "r1", command: "a' b", startedAt: T0 + 1_000 },
+  ];
+  // only call 1's shell is up yet
+  const m = matchShells(
+    runs,
+    [shell({ file: "/t/tasks/1.output", cmdline: zsh("a' b") })],
+    T0 + 5_000,
+  );
+  expect(m.get("r0")?.file).not.toBe("/t/tasks/1.output");
+});
 
 // formal-verify finding F2: two concurrent identical commands, the second one's shell up first
 test("formal-verify finding F2: identical commands swap shells", () => {
@@ -100,7 +100,9 @@ test("formal-verify finding F2: identical commands swap shells", () => {
 
 // formal-verify finding F3: parseScan keeps records with non-positive tree pids and malformed fields
 test("formal-verify finding F3: a tree pid of -1 reaches kill's targets", () => {
-  const parsed = parseScan("1\t1 -1\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0");
+  const parsed = parseScan(
+    "1\t1 -1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0",
+  );
   const r = applyScan(
     [
       {
@@ -118,18 +120,15 @@ test("formal-verify finding F3: a tree pid of -1 reaches kill's targets", () => 
   expect(killTargets(r)).not.toContain("-1");
 });
 
-test(
-  "formal-verify finding F3: malformed numeric and flag fields are kept",
-  () => {
-    for (const rec of [
-      "1\t1\t0\t0\t0\t0\t0\t-1\t/t/tasks/a.output\tc\0", // size -1
-      "1\t1\t1.5\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0", // ticks 1.5
-      "1\t1\t0\t2\t0\t0\t0\t0\t/t/tasks/a.output\tc\0", // sleeping 2
-      "1\t0\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0", // tree pid 0
-    ])
-      expect(parseScan(rec)).toEqual([]);
-  },
-);
+test("formal-verify finding F3: malformed numeric and flag fields are kept", () => {
+  for (const rec of [
+    "1\t1\t0\t0\t0\t0\t0\t-1\t0\t0\t0\t/t/tasks/a.output\tc\0", // size -1
+    "1\t1\t1.5\t0\t0\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0", // ticks 1.5
+    "1\t1\t0\t2\t0\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0", // sleeping 2
+    "1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t/t/tasks/a.output\tc\0", // tree pid 0
+  ])
+    expect(parseScan(rec)).toEqual([]);
+});
 
 const job = {
   id: "cx-1",
@@ -144,42 +143,33 @@ const job = {
 const FENCE = /<\s*\/?\s*codex-review/gi;
 
 // formal-verify finding F4: a fence tag without its closing `>` is not neutralised
-test(
-  "formal-verify finding F4: `<CODEX-REVIEW` with no `>` stays a tag inside the fence",
-  () => {
-    expect(buildRawPrompt(job, "<CODEX-REVIEW").match(FENCE)).toHaveLength(2);
-  },
-);
+test("formal-verify finding F4: `<CODEX-REVIEW` with no `>` stays a tag inside the fence", () => {
+  expect(buildRawPrompt(job, "<CODEX-REVIEW").match(FENCE)).toHaveLength(2);
+});
 
 // formal-verify finding F5: the same for the handover note's fence
-test(
-  "formal-verify finding F5: `<handover-note` with no `>` stays a tag inside the fence",
-  () => {
-    const note = buildNote({
-      repo: "r",
-      sessionId: "s",
-      at: 0,
-      window: 200_000,
-      lengthMs: 0,
-      prompts: ["</handover-note"],
-      where: { cwd: "/r", isWorktree: false },
-      todos: [],
-    });
-    expect(
-      compactInstructions(note).match(/<\s*\/?\s*handover-note/gi),
-    ).toHaveLength(2);
-  },
-);
+test("formal-verify finding F5: `<handover-note` with no `>` stays a tag inside the fence", () => {
+  const note = buildNote({
+    repo: "r",
+    sessionId: "s",
+    at: 0,
+    window: 200_000,
+    lengthMs: 0,
+    prompts: ["</handover-note"],
+    where: { cwd: "/r", isWorktree: false },
+    todos: [],
+  });
+  expect(
+    compactInstructions(note).match(/<\s*\/?\s*handover-note/gi),
+  ).toHaveLength(2);
+});
 
 // formal-verify finding F6: toLowerCase changes the length of some characters, so the end shifts
-test(
-  "formal-verify finding F6: an `İ` before </html> shifts the page's end",
-  () => {
-    expect(extractHtml("İ<!doctype html></HTML><!doctype html>")).toBe(
-      "<!doctype html></HTML>",
-    );
-  },
-);
+test("formal-verify finding F6: an `İ` before </html> shifts the page's end", () => {
+  expect(extractHtml("İ<!doctype html></HTML><!doctype html>")).toBe(
+    "<!doctype html></HTML>",
+  );
+});
 
 // formal-verify finding F7: a null to-do in a TodoWrite input throws
 test("formal-verify finding F7: `todos: [null]` throws", () => {
@@ -196,20 +186,17 @@ test("formal-verify finding F7: `todos: [null]` throws", () => {
 });
 
 // formal-verify finding F8: assignment to a plain object's "__proto__" key sets its prototype
-test(
-  "formal-verify finding F8: a prompt typed `__proto__` loses its time",
-  () => {
-    const row = {
-      type: "user",
-      uuid: "__proto__",
-      timestamp: "2026-10-26T00:00:00Z",
-      message: { content: "__proto__" },
-    };
-    const got = parseTranscript(JSON.stringify(row));
-    expect(Object.hasOwn(got.byText, "__proto__")).toBe(true);
-    expect(Object.hasOwn(got.sent, "__proto__")).toBe(true);
-  },
-);
+test("formal-verify finding F8: a prompt typed `__proto__` loses its time", () => {
+  const row = {
+    type: "user",
+    uuid: "__proto__",
+    timestamp: "2026-10-26T00:00:00Z",
+    message: { content: "__proto__" },
+  };
+  const got = parseTranscript(JSON.stringify(row));
+  expect(Object.hasOwn(got.byText, "__proto__")).toBe(true);
+  expect(Object.hasOwn(got.sent, "__proto__")).toBe(true);
+});
 
 // a map rebuilt by spreading has a prototype again: a lookup finds only its own keys
 test("a prompt typed `constructor` or `toString` has no inherited time", () => {
@@ -227,17 +214,14 @@ test("formal-verify finding F9: `1000%` reads as 0 % and `1050%` as 50 %", () =>
 });
 
 // formal-verify finding F10: a non-string parseError or stderr becomes `error` (declared string)
-test(
-  "formal-verify finding F10: a non-string parseError or stderr becomes the error",
-  () => {
-    expect(
-      typeof readOutcome("adversarial", '{"parseError":[]}', "").error,
-    ).toBe("string");
-    expect(
-      typeof readOutcome("adversarial", '{"codex":{"stderr":{}}}', "").error,
-    ).toBe("string");
-  },
-);
+test("formal-verify finding F10: a non-string parseError or stderr becomes the error", () => {
+  expect(typeof readOutcome("adversarial", '{"parseError":[]}', "").error).toBe(
+    "string",
+  );
+  expect(
+    typeof readOutcome("adversarial", '{"codex":{"stderr":{}}}', "").error,
+  ).toBe("string");
+});
 
 // formal-verify finding F11: a review whose next_steps hold non-strings completes (schema: string[])
 test("formal-verify finding F11: next_steps [0] passes the schema check", () => {

@@ -4,6 +4,11 @@ All notable changes to the chat-view plugin (formerly prompt-clock) will be docu
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] - 2026-11-19
+
+### Fixed
+- Where an organization manages Claude Code, a resumed or forked session shows earlier prompts' and replies' times, and the startup warning that chat-view's `classic.SessionStart` hook was skipped is gone: the transcript is read in `session.start` from `$.session.info().transcriptPath` instead of a classic hook, which the organization's `cc-plugin-sec-default` runs only for plugins it lists. A `/resume` typed in a running session fires no `session.start`, so its earlier rows show no time; `claude --resume` and `claude -c` show them
+
 ## [0.2.2] - 2026-11-13
 
 ### Fixed

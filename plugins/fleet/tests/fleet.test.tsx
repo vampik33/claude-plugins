@@ -9,10 +9,10 @@ import {
   fmtClock,
   fmtElapsed,
   fmtLeft,
+  heldArgv,
   isWaiter,
   lastLine,
   loseShells,
-  mayNotify,
   nextProgress,
   outputFileOf,
   parseNotification,
@@ -222,17 +222,6 @@ describe("transitions", () => {
     ).toEqual({ id: "bjl2", status: "failed" });
     expect(parseNotification("just text")).toBeUndefined();
   });
-
-  test("a notification comes as a user row, or an attachment a running turn absorbed", () => {
-    expect(mayNotify({ type: "user" })).toBe(true);
-    expect(mayNotify({ type: "attachment", name: "queued_command" })).toBe(
-      true,
-    );
-    expect(mayNotify({ type: "attachment", name: "nested_memory" })).toBe(
-      false,
-    );
-    expect(mayNotify({ type: "assistant" })).toBe(false);
-  });
 });
 
 describe("shell output", () => {
@@ -244,6 +233,17 @@ describe("shell output", () => {
     ).toBe("/tmp/x/tasks/b1.output");
     expect(outputFileOf("done")).toBeUndefined();
     expect(outputFileOf(undefined)).toBeUndefined();
+  });
+
+  test("the held-file look: one sh over every file, lsof first, then fuser", () => {
+    const argv = heldArgv(["/tmp/a b.output", "/tmp/c.output"]);
+    expect(argv.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(argv.slice(3)).toEqual(["sh", "/tmp/a b.output", "/tmp/c.output"]);
+    const script = argv[2]!;
+    expect(script).toContain('lsof -w -t "$1"');
+    expect(script).toContain('fuser -s "$1"');
+    expect(script.indexOf("lsof")).toBeLessThan(script.indexOf("fuser"));
+    expect(script).toContain("else exit 2; fi");
   });
 
   test("the last line: a redrawn bar's last frame, no colours, no blanks", () => {
@@ -397,6 +397,8 @@ function engine(
   const clock = mock.clock(on, { now: Date.now() });
   /** Output files by path: what `tail` and `fs.stat` read. */
   const files: Record<string, string> = {};
+  /** What the held-file look answers: the files no process holds, its exit code, how often it ran. */
+  const holders = { free: new Set<string>(), exitCode: 0, looks: 0 };
   mock.env(on, env);
   on("http.fetch", (_$: unknown, e: { init: { body: string } }) => {
     seen.telegram.push(JSON.parse(e.init.body).text);
@@ -406,6 +408,20 @@ function engine(
   on("command.register", () => ({ value: undefined }));
   on("session.cwd", () => ({ value: "/r/deployer" }));
   on("process.run", (_$: unknown, e: { argv: string[] }) => {
+    if (e.argv[0] === "sh") {
+      // heldArgv's look: the files after `sh -c SCRIPT sh` no process holds
+      holders.looks++;
+      const free = e.argv.slice(4).filter((f) => holders.free.has(f));
+      return {
+        value: {
+          exitCode: holders.exitCode,
+          stdout: holders.exitCode === 0 ? free.map((f) => `${f}\n`).join("") : "",
+          stderr: "",
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      };
+    }
     const file = e.argv[0] === "tail" ? files[e.argv.at(-1)!] : undefined;
     return {
       value: {
@@ -478,7 +494,7 @@ function engine(
   on("turn.complete", (_$: unknown, e: { answer: string }) => ({
     text: e.answer,
   }));
-  return { seen, clock, files };
+  return { seen, clock, files, holders };
 }
 
 const BAND = {
@@ -495,6 +511,18 @@ const BAND = {
 
 const spawn = ($: any, description: string) =>
   $.agent.spawn({ prompt: "go", description, subagentType: "Explore" });
+
+/** The band's text line, drawn once. */
+const bandLine = async ($: any, surface: "terminal" | "desktop") => {
+  const ui = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
+  const text = (await ui.find({ type: "Text" }))?.text;
+  await ui.unmount();
+  return text;
+};
+
+/** A background task's notification as the engine words it. */
+const notification = (id: string, status: string) =>
+  `<task-notification>\n<task-id>${id}</task-id>\n<status>${status}</status>\n<summary>Background command "x" ${status}</summary>\n</task-notification>`;
 
 /** Draws the band once, so the mod learns whether the surface docks a pane. */
 const drawBand = async (
@@ -561,49 +589,80 @@ describe("session", () => {
 
   for (const surface of ["terminal", "desktop"] as const)
     test(
-      `a turn's end marks lost the shells no longer in flight (${surface})`,
+      `a task notification ends its shell, delivered into a running turn or idle (${surface})`,
       { options: { sound: false, telegram: false } },
       async ($, on) => {
         const { seen, clock } = engine(on, []);
         let n = 0;
         on("tool.call", () => ({ result: { backgroundTaskId: `b${++n}` } }));
-        on("classic.Stop", () => ({}));
-        const task = (id: string) => ({
-          id,
-          type: "shell",
-          status: "running",
-          description: "",
-        });
-        const stop = (ids: string[]) =>
-          $.classic.Stop({
-            stop_hook_active: false,
-            background_tasks: ids.map(task),
-          } as never);
-        const line = async () => {
-          const ui = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
-          const text = (await ui.find({ type: "Text" }))?.text;
-          await ui.unmount();
-          return text;
-        };
+        on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+          text: e.text,
+        }));
 
         await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
         await $.tool.call({ tool: "Bash", command: "cargo bench" } as never);
-        expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
 
-        await $.classic.Stop({ stop_hook_active: false } as never); // no list: nothing known
-        expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
-        await stop(["b2"]);
-        expect(await line()).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
-        await stop([]);
-        expect(await line()).toBe("fleet"); // nothing live: the batch closed
-        // no toast of its own for a lost shell; the batch's all-done counts it
-        expect(seen.toasts).toEqual([]);
+        await $.prompt.submit({
+          text: notification("b1", "completed"),
+          origin: { kind: "task-notification" },
+          turnId: "t1",
+          wait: false,
+        } as never);
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+        expect(seen.toasts).toEqual(["✓ shell · cargo test · 0s"]);
+
+        await $.prompt.submit({
+          text: notification("b2", "failed"),
+          origin: { kind: "task-notification" },
+          wait: false,
+        } as never);
+        expect(await bandLine($, surface)).toBe("fleet");
+        expect(seen.toasts.at(-1)).toBe("✗ shell failed · cargo bench · 0s");
         await clock.advance(2_100);
-        expect(seen.toasts).toEqual([
-          "All done in 0s · Background shells: ✓ 0   ? 2",
-        ]);
+        expect(seen.toasts.at(-1)).toMatch(/^All done in 0s/);
       },
     );
+
+  test(
+    "a task notification ends a background agent",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const list = [{ id: "a1", status: "running" }];
+      const { seen } = engine(on, list);
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
+      await spawn($, "review plan");
+      list[0]!.status = "completed";
+      await $.prompt.submit({
+        text: notification("a1", "completed"),
+        origin: { kind: "task-notification" },
+        wait: false,
+      } as never);
+      expect(seen.toasts).toEqual(["✓ Explore · review plan · 0s"]);
+    },
+  );
+
+  test(
+    "a typed prompt that quotes a notification ends nothing",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { seen } = engine(on, []);
+      on("tool.call", () => ({ result: { backgroundTaskId: "b1" } }));
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
+      await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
+      await $.prompt.submit({
+        text: notification("b1", "completed"),
+        origin: { kind: "composer" },
+        wait: false,
+      } as never);
+      expect(await bandLine($, "terminal")).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+      expect(seen.toasts).toEqual([]);
+    },
+  );
 
   test(
     "agents that end together raise one toast",
@@ -1031,6 +1090,194 @@ describe("shell progress", () => {
         "fleet 0▶ 0✓ 0✗ · bg 1 · python sim.py 50%",
       );
       await band.unmount();
+    },
+  );
+});
+
+describe("shells that end unseen", () => {
+  const bgResult = (id: string) => ({
+    result: { backgroundTaskId: id },
+    text: `Command running in background with ID: ${id}. Output is being written to: /tmp/t/${id}.output. You will be notified when it completes.`,
+  });
+  const file = (id: string) => `/tmp/t/${id}.output`;
+  /** Background shells b1, b2, … with empty output files. */
+  async function start($: any, on: any, files: Record<string, string>, commands: string[]) {
+    let n = 0;
+    on("tool.call", () => bgResult(`b${++n}`));
+    for (const command of commands) {
+      await $.tool.call({ tool: "Bash", command } as never);
+      files[file(`b${n}`)] = "";
+    }
+  }
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `a shell no process holds at two looks in a row is lost; the batch closes (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { seen, clock, files, holders } = engine(on, []);
+        await start($, on, files, ["cargo test", "cargo bench"]);
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+
+        holders.free.add(file("b2"));
+        await clock.advance(5_000); // free once: its notification may still come
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+        await clock.advance(5_000);
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+
+        holders.free.add(file("b1"));
+        await clock.advance(10_000);
+        expect(await bandLine($, surface)).toBe("fleet"); // nothing live: the batch closed
+        // no toast of its own for a lost shell; the batch's all-done counts it
+        expect(seen.toasts).toEqual([]);
+        await clock.advance(2_100);
+        expect(seen.toasts).toHaveLength(1);
+        expect(seen.toasts[0]).toMatch(
+          /^All done in \d+s · Background shells: ✓ 0 {3}\? 2$/,
+        );
+      },
+    );
+
+  test(
+    "after a shell ended unseen, a later batch still says all done",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const list = [
+        { id: "a1", status: "running" },
+        { id: "a2", status: "running" },
+      ];
+      const { seen, clock, files, holders } = engine(on, list);
+      await start($, on, files, ["cargo test"]);
+      holders.free.add(file("b1"));
+      await clock.advance(10_000);
+      await clock.advance(2_100);
+
+      await spawn($, "review plan");
+      await spawn($, "review apply");
+      list[0]!.status = "completed";
+      list[1]!.status = "completed";
+      await clock.advance(2_000);
+      await clock.advance(2_100);
+      expect(
+        seen.toasts.some((t) => t.startsWith("All 2 agents done in")),
+      ).toBe(true);
+    },
+  );
+
+  test(
+    "free at one look and held at the next is not lost; the count starts over",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { clock, files, holders } = engine(on, []);
+      await start($, on, files, ["cargo test"]);
+      holders.free.add(file("b1"));
+      await clock.advance(5_000);
+      holders.free.clear();
+      await clock.advance(5_000);
+      holders.free.add(file("b1"));
+      await clock.advance(5_000);
+      expect(await bandLine($, "terminal")).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+      await clock.advance(5_000);
+      expect(await bandLine($, "terminal")).toBe("fleet");
+    },
+  );
+
+  test(
+    "a look that tells nothing (no lsof or fuser, an error) loses nothing and starts the count over",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { clock, files, holders } = engine(on, []);
+      await start($, on, files, ["cargo test"]);
+      holders.free.add(file("b1"));
+      await clock.advance(5_000); // free once
+      holders.exitCode = 2;
+      await clock.advance(20_000);
+      expect(await bandLine($, "terminal")).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+      holders.exitCode = 0;
+      await clock.advance(5_000); // free once again, not twice
+      expect(await bandLine($, "terminal")).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+      await clock.advance(5_000);
+      expect(await bandLine($, "terminal")).toBe("fleet");
+    },
+  );
+
+  test(
+    "a lost shell's late notification sets its real status",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { seen, clock, files, holders } = engine(on, []);
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
+      await start($, on, files, ["cargo test"]);
+      holders.free.add(file("b1"));
+      await clock.advance(10_000);
+      expect(await bandLine($, "terminal")).toBe("fleet"); // lost
+      expect(seen.toasts).toEqual([]);
+      await $.prompt.submit({
+        text: notification("b1", "failed"),
+        origin: { kind: "task-notification" },
+        wait: false,
+      } as never);
+      expect(seen.toasts).toHaveLength(1);
+      expect(seen.toasts[0]).toMatch(/^✗ shell failed · cargo test · \d+s$/);
+    },
+  );
+
+  test(
+    "a shell its notification ended is left alone by a free look",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { seen, clock, files, holders } = engine(on, []);
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
+      await start($, on, files, ["cargo test", "cargo bench"]);
+      await $.prompt.submit({
+        text: notification("b1", "completed"),
+        origin: { kind: "task-notification" },
+        wait: false,
+      } as never);
+      holders.free.add(file("b1"));
+      await clock.advance(10_000);
+      await $.prompt.submit({
+        text: notification("b2", "completed"),
+        origin: { kind: "task-notification" },
+        wait: false,
+      } as never);
+      await clock.advance(2_100);
+      expect(seen.toasts.at(-1)).toMatch(
+        /^All done in \d+s · Background shells: ✓ 2$/,
+      );
+    },
+  );
+
+  test(
+    "a stalled shell no process holds is lost and its stall note goes",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { seen, clock, files, holders } = engine(on, []);
+      await start($, on, files, ["./retrain.sh d57"]);
+      files[file("b1")] = "fitting\n";
+      await clock.advance(5_000);
+      await clock.advance(5 * 60_000);
+      expect(seen.toasts).toEqual(["⚠ retrain.sh d57 · no output for 5m"]);
+      holders.free.add(file("b1"));
+      await clock.advance(10_000);
+      expect(await bandLine($, "terminal")).toBe("fleet");
+    },
+  );
+
+  test(
+    "a shell with no output file is never looked at or lost",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { clock, holders } = engine(on, []);
+      on("tool.call", () => ({ result: { backgroundTaskId: "b1" } }));
+      await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
+      await clock.advance(60_000);
+      expect(holders.looks).toBe(0);
+      expect(await bandLine($, "terminal")).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
     },
   );
 });

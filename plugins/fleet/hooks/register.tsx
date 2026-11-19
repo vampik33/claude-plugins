@@ -8,13 +8,13 @@ import {
   endShell,
   endToast,
   fmtLeft,
+  heldArgv,
   isFailed,
   isLive,
   isWaiter,
   lastLine,
   liveCount,
   loseShells,
-  mayNotify,
   nextProgress,
   outputFileOf,
   parseNotification,
@@ -58,6 +58,8 @@ type Tracker = {
   shellPoll: { cancel: () => void } | undefined;
   /** When the band was last redrawn for a stalled shell's quiet time. */
   quietDrawnAt: number;
+  /** Live shells whose output file no process held at the last look. */
+  freeOnce: Set<string>;
 };
 
 function chime($: EngineInterface, sound: "complete" | "dialog-error") {
@@ -189,7 +191,7 @@ function ensurePoll($: EngineInterface, t: Tracker) {
   if (!t.poll) t.poll = $.clock.every(2000, () => void tick($, t));
 }
 
-/** One look at each live shell's output: its last line, progress, or a stall. */
+/** One look at each live shell's output: its last line, progress, a stall, or an end unseen. */
 async function watchShells($: EngineInterface, t: Tracker): Promise<void> {
   const live = (await read($, fleet)).shells.filter(
     (s) => isLive(s.status) && s.outputFile,
@@ -241,6 +243,46 @@ async function watchShells($: EngineInterface, t: Tracker): Promise<void> {
     t.quietDrawnAt = now;
     $.ui.invalidate("ui.render");
   }
+  await loseVanished($, t, live, now);
+}
+
+/**
+ * A live shell whose output file no process has held at two looks in a row
+ * ended without fleet seeing its notification (one sent while the hooks
+ * reloaded, or one a plugin above dropped): it is lost, so the batch can
+ * close. The second look gives the notification time to arrive first; a
+ * later one still sets the real status. A look that tells nothing (no lsof
+ * or fuser, an error) loses nothing and starts the count over.
+ */
+async function loseVanished(
+  $: EngineInterface,
+  t: Tracker,
+  live: FleetShell[],
+  now: number,
+): Promise<void> {
+  const look = await $.process
+    .run(heldArgv(live.map((s) => s.outputFile!)))
+    .catch(() => undefined);
+  if (look?.exitCode !== 0) {
+    t.freeOnce = new Set();
+    return;
+  }
+  const free = new Set(look.stdout.split("\n").filter(Boolean));
+  const freeNow = new Set(
+    live.filter((s) => free.has(s.outputFile!)).map((s) => s.id),
+  );
+  const gone = [...freeNow].filter((id) => t.freeOnce.has(id));
+  t.freeOnce = freeNow;
+  if (gone.length === 0) return;
+  await update($, fleet, (f) => ({
+    ...f,
+    shells: loseShells(
+      f.shells,
+      new Set(f.shells.map((s) => s.id).filter((id) => !gone.includes(id))),
+      now,
+    ),
+  }));
+  await settle($, t);
 }
 
 function ensureShellPoll($: EngineInterface, t: Tracker) {
@@ -294,16 +336,6 @@ async function togglePane($: EngineInterface, t: Tracker) {
   return openPane($, t);
 }
 
-const textOf = (content: unknown): string =>
-  typeof content === "string"
-    ? content
-    : Array.isArray(content)
-      ? content
-          .filter((b) => b?.type === "text" && typeof b.text === "string")
-          .map((b) => b.text as string)
-          .join("\n")
-      : "";
-
 export const register: Register = (on, options) => {
   const t: Tracker = {
     autoOpen: options.autoOpen !== false,
@@ -319,6 +351,7 @@ export const register: Register = (on, options) => {
     poll: undefined,
     shellPoll: undefined,
     quietDrawnAt: 0,
+    freeOnce: new Set(),
   };
 
   on("session.start", async ($, e, next) => {
@@ -363,6 +396,7 @@ export const register: Register = (on, options) => {
       t.poll = undefined;
       t.shellPoll?.cancel();
       t.shellPoll = undefined;
+      t.freeOnce = new Set();
       await update($, fleet, (f) => ({ ...emptyFleet(), trees: f.trees }));
     }
     return next(e);
@@ -384,7 +418,13 @@ export const register: Register = (on, options) => {
       const at = await $.clock.now();
       await update($, lastPrompt, () => at);
     }
-    return next(e);
+    if (e.origin.kind !== "task-notification") return next(e);
+    // a background task's notification, idle or delivered into a running
+    // turn: a shell or an agent finished
+    const r = await next(e);
+    const note = parseNotification(e.text);
+    if (note) await endTask($, t, note.id, note.status);
+    return r;
   });
 
   on("agent.spawn", async ($, e, next) => {
@@ -453,29 +493,6 @@ export const register: Register = (on, options) => {
       batchStart: f.batchStart ?? shell.startedAt,
     }));
     if (outputFile) ensureShellPoll($, t);
-    return r;
-  });
-
-  // a background task's notification: a shell or an agent finished
-  on("session.append", async ($, e, next) => {
-    const r = await next(e);
-    if (!mayNotify(e.message)) return r;
-    const note = parseNotification(textOf(e.message.content));
-    if (note) await endTask($, t, note.id, note.status);
-    return r;
-  });
-
-  // a main turn's end lists the tasks still in flight: a live shell missing
-  // from it ended with no notification (a restart, a kill), so it is lost
-  on("classic.Stop", async ($, e, next) => {
-    const r = await next(e);
-    if (!e.background_tasks) return r;
-    const inFlight = new Set(e.background_tasks.map((b) => b.id));
-    await update($, fleet, (f) => ({
-      ...f,
-      shells: loseShells(f.shells, inFlight, Date.now()),
-    }));
-    await settle($, t);
     return r;
   });
 

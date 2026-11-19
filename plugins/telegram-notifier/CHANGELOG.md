@@ -5,6 +5,11 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.5] - 2026-11-19
+
+### Fixed
+- Without `jq`, the SessionStart hook exited 127 while reading the session ID, before its dependency check, so the "Install jq" message never showed; it now reads the session ID only when `jq` is present and reports `jq` as a missing dependency
+
 ## [1.9.4] - 2026-11-19
 
 ### Fixed

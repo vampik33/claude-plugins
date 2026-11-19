@@ -19,12 +19,17 @@ HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
-extract_session_id "$HOOK_INPUT"
 
 # Clean up stale session files from previous force-quit sessions
 cleanup_stale_session_files
-SESSION_FILE=$(get_session_file_path)
-rm -f "$SESSION_FILE" 2>/dev/null || true
+
+# Reading the session ID needs jq; without it, fall through to the dependency
+# check below (and don't remove the shared "unknown" fallback session file)
+if command -v jq &> /dev/null; then
+  extract_session_id "$HOOK_INPUT"
+  SESSION_FILE=$(get_session_file_path)
+  rm -f "$SESSION_FILE" 2>/dev/null || true
+fi
 
 # Check if plugin is enabled (opt-in behavior with dual-scope support)
 # User config: ~/.claude/telegram-notifier.local.md (global defaults)

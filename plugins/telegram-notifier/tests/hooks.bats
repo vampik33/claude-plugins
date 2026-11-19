@@ -32,6 +32,18 @@ CURL
   export TELEGRAM_CHAT_ID="test-chat-456"
 }
 
+# Print a dir to use as PATH: every system tool except the named ones
+path_without() {
+  local dir="$BATS_TEST_TMPDIR/path-without-${*// /-}"
+  mkdir -p "$dir"
+  local f
+  for f in /usr/bin/* /bin/*; do
+    [[ " $* " == *" $(basename "$f") "* ]] && continue
+    ln -sf "$f" "$dir/" 2>/dev/null || true
+  done
+  echo "$dir"
+}
+
 # =========================================================
 # check-credentials.sh
 # =========================================================
@@ -115,20 +127,63 @@ EOF
 enabled: true
 ---
 EOF
-  # PATH with every system tool except curl (jq is needed before the check)
-  local nocurl="$BATS_TEST_TMPDIR/nocurl"
-  mkdir -p "$nocurl"
-  local f
-  for f in /usr/bin/* /bin/*; do
-    [[ "$(basename "$f")" == curl ]] && continue
-    ln -sf "$f" "$nocurl/" 2>/dev/null || true
-  done
-  run --separate-stderr env PATH="$nocurl" bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
+  run --separate-stderr env PATH="$(path_without curl)" bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
   [ "$status" -eq 2 ]
   [ "$output" = "" ]
   [ "${#stderr_lines[@]}" -eq 1 ]
   [ "$(jq -r .error <<< "$stderr")" = "Missing dependencies: curl" ]
   [[ "$(jq -r .systemMessage <<< "$stderr")" == *$'\n\n- jq:'* ]]
+}
+
+@test "check-credentials: reports missing jq instead of exiting 127" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  run --separate-stderr env PATH="$(path_without jq)" bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
+  [ "$status" -eq 2 ]
+  [ "$output" = "" ]
+  [ "${#stderr_lines[@]}" -eq 1 ]
+  [ "$(jq -r .error <<< "$stderr")" = "Missing dependencies: jq" ]
+  [[ "$(jq -r .systemMessage <<< "$stderr")" == *"https://jqlang.github.io/jq/download/"* ]]
+}
+
+@test "check-credentials: reports both jq and curl missing" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  run --separate-stderr env PATH="$(path_without jq curl)" bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
+  [ "$status" -eq 2 ]
+  [ "$(jq -r .error <<< "$stderr")" = "Missing dependencies: jq,curl" ]
+}
+
+@test "check-credentials: without jq, still reports unconfigured" {
+  rm -f "$HOME/.claude/telegram-notifier.local.md"
+  rm -f "$CLAUDE_PROJECT_DIR/.claude/telegram-notifier.local.md"
+  run --separate-stderr env PATH="$(path_without jq)" bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
+  [ "$status" -eq 0 ]
+  [ "$stderr" = "" ]
+  [[ "$output" == *"No config found"* ]]
+}
+
+@test "check-credentials: without jq, leaves the unknown session file alone" {
+  local sf="/tmp/claude-telegram-notifier-session-unknown"
+  [ ! -e "$sf" ] || skip "$sf belongs to a real session"
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  echo "12345" > "$sf"
+  run env PATH="$(path_without jq)" bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
+  local kept=no
+  [ -f "$sf" ] && kept=yes
+  rm -f "$sf"
+  [ "$status" -eq 2 ]
+  [ "$kept" = yes ]
 }
 
 @test "check-credentials: cleans up stale session files" {

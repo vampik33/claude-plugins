@@ -4,6 +4,15 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - 2026-11-19
+
+### Added
+- `lostShells` option (default off): marking lost a shell that ended with no notification is now opt-in
+
+### Changed
+- Task notifications are read from the `prompt.submit` the engine raises for each, idle or delivered into a running turn, instead of from `session.append`: where an organization manages Claude Code, its security plugin sends some `session.append` rows past user plugins, and each skip put `fleet: its session.append hook was skipped` in the transcript
+- The classic `Stop` hook is registered only with `lostShells` on: where an organization manages Claude Code it never runs, and each skip put `fleet: its classic.Stop hook was skipped` in the transcript
+
 ## [0.5.6] - 2026-11-13
 
 ### Fixed

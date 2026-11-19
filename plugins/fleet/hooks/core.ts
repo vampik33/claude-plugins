@@ -92,13 +92,6 @@ export function toolLabel(tool: string, input: unknown): string {
   return label.length > 40 ? `${label.slice(0, 39)}…` : label;
 }
 
-/**
- * Whether a kept row may carry a task notification: a user row when the
- * session is idle, a queued_command attachment when a running turn absorbs it.
- */
-export const mayNotify = (m: { type: string; name?: string }) =>
-  m.type === "user" || (m.type === "attachment" && m.name === "queued_command");
-
 /** A task notification's id and status, from the row's text. */
 export function parseNotification(
   text: string,

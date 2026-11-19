@@ -8,6 +8,7 @@ import {
   endShell,
   endToast,
   fmtLeft,
+  heldArgv,
   isFailed,
   isLive,
   isWaiter,
@@ -48,8 +49,6 @@ type Tracker = {
   sound: boolean;
   telegram: boolean;
   idleMs: number;
-  /** Whether a classic `Stop` hook marks lost the shells gone with no notification. */
-  lostShells: boolean;
   repo: string;
   root: string | undefined;
   /** Whether the surface docks a pane beside the transcript, as the band last drew; unknown until then. */
@@ -59,6 +58,8 @@ type Tracker = {
   shellPoll: { cancel: () => void } | undefined;
   /** When the band was last redrawn for a stalled shell's quiet time. */
   quietDrawnAt: number;
+  /** Live shells whose output file no process held at the last look. */
+  freeOnce: Set<string>;
 };
 
 function chime($: EngineInterface, sound: "complete" | "dialog-error") {
@@ -190,7 +191,7 @@ function ensurePoll($: EngineInterface, t: Tracker) {
   if (!t.poll) t.poll = $.clock.every(2000, () => void tick($, t));
 }
 
-/** One look at each live shell's output: its last line, progress, or a stall. */
+/** One look at each live shell's output: its last line, progress, a stall, or an end unseen. */
 async function watchShells($: EngineInterface, t: Tracker): Promise<void> {
   const live = (await read($, fleet)).shells.filter(
     (s) => isLive(s.status) && s.outputFile,
@@ -242,6 +243,46 @@ async function watchShells($: EngineInterface, t: Tracker): Promise<void> {
     t.quietDrawnAt = now;
     $.ui.invalidate("ui.render");
   }
+  await loseVanished($, t, live, now);
+}
+
+/**
+ * A live shell whose output file no process has held at two looks in a row
+ * ended without fleet seeing its notification (one sent while the hooks
+ * reloaded, or one a plugin above dropped): it is lost, so the batch can
+ * close. The second look gives the notification time to arrive first; a
+ * later one still sets the real status. A look that tells nothing (no lsof
+ * or fuser, an error) loses nothing and starts the count over.
+ */
+async function loseVanished(
+  $: EngineInterface,
+  t: Tracker,
+  live: FleetShell[],
+  now: number,
+): Promise<void> {
+  const look = await $.process
+    .run(heldArgv(live.map((s) => s.outputFile!)))
+    .catch(() => undefined);
+  if (look?.exitCode !== 0) {
+    t.freeOnce = new Set();
+    return;
+  }
+  const free = new Set(look.stdout.split("\n").filter(Boolean));
+  const freeNow = new Set(
+    live.filter((s) => free.has(s.outputFile!)).map((s) => s.id),
+  );
+  const gone = [...freeNow].filter((id) => t.freeOnce.has(id));
+  t.freeOnce = freeNow;
+  if (gone.length === 0) return;
+  await update($, fleet, (f) => ({
+    ...f,
+    shells: loseShells(
+      f.shells,
+      new Set(f.shells.map((s) => s.id).filter((id) => !gone.includes(id))),
+      now,
+    ),
+  }));
+  await settle($, t);
 }
 
 function ensureShellPoll($: EngineInterface, t: Tracker) {
@@ -304,13 +345,13 @@ export const register: Register = (on, options) => {
       (typeof options.idleMinutes === "number" && options.idleMinutes >= 0
         ? options.idleMinutes
         : 5) * 60_000,
-    lostShells: options.lostShells === true,
     repo: "",
     root: undefined,
     docks: undefined,
     poll: undefined,
     shellPoll: undefined,
     quietDrawnAt: 0,
+    freeOnce: new Set(),
   };
 
   on("session.start", async ($, e, next) => {
@@ -355,6 +396,7 @@ export const register: Register = (on, options) => {
       t.poll = undefined;
       t.shellPoll?.cancel();
       t.shellPoll = undefined;
+      t.freeOnce = new Set();
       await update($, fleet, (f) => ({ ...emptyFleet(), trees: f.trees }));
     }
     return next(e);
@@ -453,23 +495,6 @@ export const register: Register = (on, options) => {
     if (outputFile) ensureShellPoll($, t);
     return r;
   });
-
-  // a main turn's end lists the tasks still in flight: a live shell missing
-  // from it ended with no notification (a restart, a kill), so it is lost.
-  // Opt-in: where an organization manages Claude Code the hook is skipped,
-  // and each skip puts a warning in the transcript
-  if (t.lostShells)
-    on("classic.Stop", async ($, e, next) => {
-      const r = await next(e);
-      if (!e.background_tasks) return r;
-      const inFlight = new Set(e.background_tasks.map((b) => b.id));
-      await update($, fleet, (f) => ({
-        ...f,
-        shells: loseShells(f.shells, inFlight, Date.now()),
-      }));
-      await settle($, t);
-      return r;
-    });
 
   on("turn.complete", async ($, e, next) => {
     const r = await next(e);

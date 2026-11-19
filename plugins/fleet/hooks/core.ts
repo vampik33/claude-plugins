@@ -92,13 +92,6 @@ export function toolLabel(tool: string, input: unknown): string {
   return label.length > 40 ? `${label.slice(0, 39)}…` : label;
 }
 
-/**
- * Whether a kept row may carry a task notification: a user row when the
- * session is idle, a queued_command attachment when a running turn absorbs it.
- */
-export const mayNotify = (m: { type: string; name?: string }) =>
-  m.type === "user" || (m.type === "attachment" && m.name === "queued_command");
-
 /** A task notification's id and status, from the row's text. */
 export function parseNotification(
   text: string,
@@ -156,7 +149,7 @@ export function endShell(
   return { shells: next, ended };
 }
 
-/** Marks lost each live shell the engine no longer has in flight. */
+/** Marks lost each live shell not in `inFlight`. */
 export function loseShells(
   shells: FleetShell[],
   inFlight: ReadonlySet<string>,
@@ -167,6 +160,31 @@ export function loseShells(
       ? { ...s, status: LOST, endedAt: now }
       : s,
   );
+}
+
+/**
+ * A look at which output files no process holds open: a background shell's
+ * file is held (stdout, stderr) only by the shell's own processes, never by
+ * Claude Code, so a free one is a shell that has ended. Prints each free file
+ * on a line. A file counts as free only when `lsof -w -t` (else `fuser -s`)
+ * exits 1 with nothing on stderr; a held file, a missing one or any error
+ * prints nothing. Exits 2 when neither tool is on PATH.
+ */
+export function heldArgv(files: readonly string[]): string[] {
+  return [
+    "sh",
+    "-c",
+    `if command -v lsof >/dev/null 2>&1; then look() { lsof -w -t "$1" >/dev/null; }
+elif command -v fuser >/dev/null 2>&1; then look() { fuser -s "$1"; }
+else exit 2; fi
+for f; do
+  err=$(look "$f" 2>&1 >/dev/null) && continue
+  [ $? -eq 1 ] && [ -z "$err" ] && printf '%s\\n' "$f"
+done
+exit 0`,
+    "sh",
+    ...files,
+  ];
 }
 
 export const liveCount = (f: FleetState) =>

@@ -4,6 +4,15 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - 2026-11-19
+
+### Changed
+- Task notifications are read from the `prompt.submit` the engine raises for each, idle or delivered into a running turn, instead of from `session.append`: where an organization manages Claude Code, its security plugin sends some `session.append` rows past user plugins, and each skip put `fleet: its session.append hook was skipped` in the transcript
+- A shell whose notification fleet never saw is found by the 5 s shell look instead of the classic `Stop` hook: once no process has held its output file (`lsof -w -t`, else `fuser -s`) at two looks in a row it is marked lost. The `Stop` hook is gone, with its warning (`fleet: its classic.Stop hook was skipped`) where an organization manages Claude Code
+
+### Fixed
+- Where an organization manages Claude Code, a shell that ended unseen no longer stays running for good, holding the batch open so that no later all-done toast, chime or Telegram summary came in the session
+
 ## [0.5.6] - 2026-11-13
 
 ### Fixed

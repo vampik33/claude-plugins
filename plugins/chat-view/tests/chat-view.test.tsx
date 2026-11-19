@@ -128,6 +128,12 @@ const tailOf = (on: any, out: (argv: readonly string[]) => string) =>
     },
   }));
 
+/** Core's `session.start`, and the transcript file `$.session.info()` names. */
+const startsWith = (on: any, transcriptPath: () => string) => {
+  on("session.start", (_$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }));
+  on("session.info", () => ({ value: { transcriptPath: transcriptPath() } }));
+};
+
 describe("rows", () => {
   test("a resumed session's typed prompt gets its send time; a notification's does not", async ($, on) => {
     mock.clock(on, { now: at(18, 0, 0) });
@@ -138,12 +144,9 @@ describe("rows", () => {
       message: { content: "run the tests" },
     };
     tailOf(on, () => JSON.stringify(row) + "\n");
-    on("classic.SessionStart", () => ({}));
+    startsWith(on, () => "/t.jsonl");
     echoText(on);
-    await $.classic.SessionStart({
-      source: "resume",
-      transcript_path: "/t.jsonl",
-    } as never);
+    await $.session.start({ cwd: "/r" } as never);
 
     for (const surface of ["terminal", "desktop"] as const) {
       const ui = await $.ui.mount({
@@ -228,12 +231,9 @@ describe("rows", () => {
       argv = a;
       return `"cut":"half a row"}\n${JSON.stringify(row)}\n`;
     });
-    on("classic.SessionStart", () => ({}));
+    startsWith(on, () => "/long.jsonl");
     echoText(on);
-    await $.classic.SessionStart({
-      source: "resume",
-      transcript_path: "/long.jsonl",
-    } as never);
+    await $.session.start({ cwd: "/r" } as never);
     expect(argv).toEqual(["tail", "-c", "4000000", "--", "/long.jsonl"]);
 
     const ui = await $.ui.mount({
@@ -251,25 +251,77 @@ describe("rows", () => {
     await ui.unmount();
   });
 
-  test("the transcript is read on resume and fork, not on a fresh start", async ($, on) => {
+  test("session.start reads the session's own transcript; a session that keeps none reads nothing", async ($, on) => {
     const reads: string[] = [];
     tailOf(on, (argv) => {
       reads.push(argv[argv.length - 1] ?? "");
       return "";
     });
-    on("classic.SessionStart", () => ({}));
-    for (const source of ["startup", "clear", "compact"] as const)
-      await $.classic.SessionStart({
-        source,
-        transcript_path: `/${source}.jsonl`,
-      } as never);
+    let path = "";
+    startsWith(on, () => path);
+    await $.session.start({ cwd: "/r" } as never);
     expect(reads).toEqual([]);
-    for (const source of ["resume", "fork"] as const)
-      await $.classic.SessionStart({
-        source,
-        transcript_path: `/${source}.jsonl`,
-      } as never);
-    expect(reads).toEqual(["/resume.jsonl", "/fork.jsonl"]);
+    path = "/s.jsonl";
+    await $.session.start({ cwd: "/r" } as never);
+    expect(reads).toEqual(["/s.jsonl"]);
+  });
+
+  test("a fresh session's missing file reads as nothing, and the session still stamps its own prompts", async ($, on) => {
+    mock.clock(on, { now: at(16, 42, 7) });
+    tailOf(on, () => ""); // tail prints nothing for a file not written yet
+    startsWith(on, () => "/new.jsonl");
+    echoText(on);
+    await $.session.start({ cwd: "/r" } as never);
+    await appendPrompt($, "row-n", "first prompt", "composer");
+    const ui = await $.ui.mount({
+      plugin: "chat-view",
+      surface: "desktop",
+      component: "UserMessage",
+      requestId: "row-n",
+      props: {
+        text: "first prompt",
+        origin: { kind: "composer" },
+        isExpanded: false,
+      },
+    } as never);
+    expect(
+      await ui.find({ type: "Text", text: "16:42:07 · first prompt" }),
+    ).toBeDefined();
+    await ui.unmount();
+  });
+
+  test("a reload reads the transcript again under the session's own stamps", async ($, on) => {
+    const row = {
+      type: "user",
+      uuid: "row-r",
+      timestamp: new Date(at(16, 40, 0)).toISOString(),
+      message: { content: "same prompt" },
+    };
+    let file = "";
+    tailOf(on, () => file);
+    startsWith(on, () => "/r.jsonl");
+    echoText(on);
+    mock.clock(on, { now: at(16, 42, 7) });
+    await $.session.start({ cwd: "/r" } as never);
+    await appendPrompt($, "row-r", "same prompt", "composer");
+    // the file now holds the row, written a little earlier than the stamp
+    file = JSON.stringify(row) + "\n";
+    await $.session.start({ cwd: "/r" } as never);
+    const ui = await $.ui.mount({
+      plugin: "chat-view",
+      surface: "desktop",
+      component: "UserMessage",
+      requestId: "row-r",
+      props: {
+        text: "same prompt",
+        origin: { kind: "composer" },
+        isExpanded: false,
+      },
+    } as never);
+    expect(
+      await ui.find({ type: "Text", text: "16:42:07 · same prompt" }),
+    ).toBeDefined();
+    await ui.unmount();
   });
 });
 

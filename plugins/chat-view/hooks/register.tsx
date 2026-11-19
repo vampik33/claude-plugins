@@ -55,11 +55,15 @@ export const register: Register = (on, options) => {
   const showRange = options.turnRange !== false;
   const bubbles = options.bubbles !== false;
 
-  // a resumed or forked session: earlier times come from its own transcript
-  on("classic.SessionStart", async ($, e, next) => {
+  // a resumed or forked session: earlier times come from its own transcript.
+  // Not classic.SessionStart: an organization-managed Claude Code skips the
+  // classic hooks of plugins it doesn't list. A fresh session has no file yet, so
+  // it reads nothing; a reload re-reads it under what the session stamped.
+  // An in-session /resume fires no session.start: its earlier rows get no time.
+  on("session.start", async ($, e, next) => {
     const r = await next(e);
-    if (e.source === "resume" || e.source === "fork")
-      await loadTranscript($, e.transcript_path);
+    const { transcriptPath } = await $.session.info();
+    if (transcriptPath) await loadTranscript($, transcriptPath);
     return r;
   });
 

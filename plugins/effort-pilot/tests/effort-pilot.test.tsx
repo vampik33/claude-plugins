@@ -54,6 +54,10 @@ type World = {
   settings?: Record<string, unknown>;
   /** One source's settings, as `$.settings.read({ source })` answers them. */
   sources?: Record<string, Record<string, unknown>>;
+  /** The name a Skill call resolves to, by the name asked for. */
+  resolves?: Record<string, string>;
+  /** `$.command.list()` fails: no command's source is known. */
+  noCommandList?: true;
 };
 
 function world(on: any, over: World = {}) {
@@ -74,7 +78,32 @@ function world(on: any, over: World = {}) {
   on("settings.read", (_$: unknown, e: { source?: string }) => ({
     value: e.source ? (over.sources?.[e.source] ?? {}) : (over.settings ?? {}),
   }));
-  on("skill.prompt", (_$: unknown, e: { text: string }) => ({ text: e.text }));
+  on("command.list", () => {
+    if (over.noCommandList) throw new Error("no list");
+    return {
+      value: [
+        { name: "effort", description: "", source: "builtin" },
+        { name: "quick", description: "", source: "user" },
+      ],
+    };
+  });
+  on("command.run", () => ({ ref: 1 }));
+  on("tool.call", { tool: "Skill" }, (_$: unknown, e: { skill: string }) =>
+    e.skill === "nope"
+      ? { deny: "not allowed" }
+      : e.skill === "gone"
+        ? {
+            isError: true,
+            result: "Unknown skill: gone",
+            text: "Unknown skill: gone",
+          }
+        : {
+            result: {
+              success: true,
+              commandName: over.resolves?.[e.skill] ?? e.skill,
+            },
+          },
+  );
   on("session.authorize", () => ({
     value: "auth" in over ? over.auth : { handle: "h", kind: "bearer" },
   }));
@@ -141,13 +170,16 @@ async function stepAt(
   return s.result;
 }
 
-/** The engine expanding the skill `skill`, its frontmatter naming `effort`. */
-const expandSkill = ($: any, skill: string, effort?: string) =>
-  $.skill.prompt({
-    skill,
-    text: "Do it.",
-    frontmatter: effort === undefined ? {} : { effort },
-  });
+/** The model calling the skill `skill` through the Skill tool (in subagent `agentId`). */
+const callSkill = ($: any, skill: string, agentId?: string) =>
+  $.tool.call({ tool: "Skill", skill, ...(agentId ? { agentId } : {}) });
+
+/** The person typing `/command`; one typed over a running turn runs once it ends. */
+const typeCommand = ($: any, command: string) =>
+  $.command.run({ command, args: "" });
+
+/** The text a typed `/quick`'s turn starts with. */
+const QUICK_TURN = "<command-message>quick</command-message>";
 
 const complete = ($: any, answer = "Done.", turnId = "t1") =>
   $.turn.complete({
@@ -665,100 +697,228 @@ describe("a session", () => {
     expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "medium"]);
   });
 
-  test("a skill's effort holds the rest of its turn", async ($, on) => {
+  test("a skill the model calls holds the rest of its turn once its effort shows", async ($, on) => {
     const { seen } = world(on);
     await startTurn($, "Refactor the auth flow across the services");
     await stepAt($, "medium");
-    await expandSkill($, "deep-review", "max");
+    await callSkill($, "deep-review");
     await stepAt($, "max", { index: 1 });
+    await stepAt($, "max", { index: 2 });
     expect((await complete($)).text).toBe(
       "opus-5-5 · effort max · Jev advises xhigh 80% (not applied: deep-review skill's effort)",
     );
     await startTurn($, "next", "t2");
     await stepAt($, "medium", { turnId: "t2" });
-    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "max", "xhigh"]);
+    expect(seen.steps.map((s) => s.effort)).toEqual([
+      "xhigh",
+      "max",
+      "max",
+      "xhigh",
+    ]);
   });
 
-  test("a skill expanded before its turn starts (a typed /name) holds that turn only", async ($, on) => {
-    const { seen } = world(on);
-    await expandSkill($, "quick", "low");
-    await startTurn($, "/quick fix the typo");
-    await stepAt($, "low");
-    await complete($);
-    await startTurn($, "next", "t2");
-    await stepAt($, "medium", { turnId: "t2" });
-    expect(seen.steps.map((s) => s.effort)).toEqual(["low", "xhigh"]);
-  });
-
-  /** A `/name` slash command typed over the running turn `t1`. */
-  const typeOver = ($: any, name: string) =>
-    $.prompt.submit({
-      text: `/${name} fix the typo`,
-      command: { name, args: "fix the typo" },
-      wait: true,
-      turnId: "t1",
-      origin: { kind: "composer" },
-    });
-
-  test("a /skill typed mid-turn and expanded at once holds its own turn, not the running one", async ($, on) => {
-    const { seen } = world(on);
-    await startTurn($, "Refactor the auth flow across the services");
+  test("a skill is named as it resolved", async ($, on) => {
+    world(on, { resolves: { "deep-review": "plugin:deep-review" } });
+    await startTurn($, "go");
     await stepAt($, "medium");
-    await typeOver($, "quick");
-    await expandSkill($, "quick", "low");
-    await stepAt($, "medium", { index: 1 });
-    expect((await complete($)).text).toBe(
-      "opus-5-5 · effort xhigh · Jev: medium → xhigh 80%",
+    await callSkill($, "deep-review");
+    await stepAt($, "max", { index: 1 });
+    expect((await complete($)).text).toContain(
+      "(not applied: plugin:deep-review skill's effort)",
     );
-    await startTurn($, "/quick fix the typo", "t2");
-    await stepAt($, "low", { turnId: "t2" });
-    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh", "low"]);
   });
 
-  test("a /skill typed mid-turn and expanded once its turn started holds that turn", async ($, on) => {
-    const { seen } = world(on);
-    await startTurn($, "Refactor the auth flow across the services");
+  test("a Skill result with no name names the skill asked for", async ($, on) => {
+    world(on, { resolves: { "deep-review": "" } });
+    await startTurn($, "go");
     await stepAt($, "medium");
-    await typeOver($, "quick");
-    await complete($);
-    await startTurn($, "/quick fix the typo", "t2");
-    await expandSkill($, "quick", "low");
-    await stepAt($, "low", { turnId: "t2" });
-    await complete($, "Done.", "t2");
-    await startTurn($, "next", "t3");
-    await stepAt($, "medium", { turnId: "t3" });
-    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "low", "xhigh"]);
-  });
-
-  test("a queued skill's hold keeps the running turn's own hold", async ($, on) => {
-    const { seen } = world(on, { level: 0 });
-    await startTurn($, "ultrathink: why does the cache miss?");
-    await stepAt($, "xhigh");
-    await typeOver($, "quick");
-    await expandSkill($, "quick", "low");
-    await stepAt($, "xhigh", { index: 1 });
-    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh"]);
+    await callSkill($, "deep-review");
+    await stepAt($, "max", { index: 1 });
+    expect((await complete($)).text).toContain(
+      "(not applied: deep-review skill's effort)",
+    );
   });
 
   test("a skill with no effort level holds nothing", async ($, on) => {
     const { seen } = world(on);
     await startTurn($, "go");
-    await expandSkill($, "commit");
-    await expandSkill($, "odd", "ultracode");
     await stepAt($, "medium");
-    expect(seen.steps[0].effort).toBe("xhigh");
+    await callSkill($, "commit");
+    await stepAt($, "medium", { index: 1 });
+    await stepAt($, "medium", { index: 2 });
+    expect(seen.steps.map((s) => s.effort)).toEqual([
+      "xhigh",
+      "xhigh",
+      "xhigh",
+    ]);
   });
 
-  test("/clear drops a hold waiting for the next turn", async ($, on) => {
+  test("a refused or failed Skill call holds nothing", async ($, on) => {
     const { seen } = world(on);
-    await expandSkill($, "quick", "low");
+    await startTurn($, "go");
+    await stepAt($, "medium");
+    await callSkill($, "nope");
+    await callSkill($, "gone");
+    await stepAt($, "low", { index: 1 });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh"]);
+  });
+
+  test("a subagent's skill leaves the main loop's level to Jev", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "go");
+    await stepAt($, "medium");
+    await callSkill($, "deep-review", "a1");
+    await stepAt($, "max", { agentId: "a1" });
+    await stepAt($, "medium", { index: 1 });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "max", "xhigh"]);
+    expect((await complete($)).text).toBe(
+      "opus-5-5 · effort xhigh · Jev: medium → xhigh 80%",
+    );
+  });
+
+  test("a skill from an earlier turn holds nothing later", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "go");
+    await stepAt($, "medium");
+    await callSkill($, "commit");
+    await complete($);
+    await startTurn($, "next", "t2");
+    await stepAt($, "low", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh"]);
+  });
+
+  test("an ultrathink turn stays held by ultrathink when a skill runs in it", async ($, on) => {
+    const { seen } = world(on, { level: 0 });
+    await startTurn($, "ultrathink: why does the cache miss?");
+    await stepAt($, "xhigh");
+    await callSkill($, "deep-review");
+    await stepAt($, "max", { index: 1 });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "max"]);
+    expect((await complete($)).text).toContain("(not applied: ultrathink)");
+  });
+
+  test("a typed /skill holds its own turn from its first request", async ($, on) => {
+    const { seen } = world(on);
+    await typeCommand($, "quick");
+    await startTurn($, QUICK_TURN);
+    // no earlier request: the level before it is the configured one (medium)
+    await stepAt($, "low");
+    await stepAt($, "low", { index: 1 });
+    expect((await complete($)).text).toBe(
+      "opus-5-5 · effort low · Jev advises xhigh 80% (not applied: quick skill's effort)",
+    );
+    await startTurn($, "next", "t2");
+    await stepAt($, "medium", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["low", "low", "xhigh"]);
+  });
+
+  test("a /skill typed over a running turn holds its own turn, not the running one", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "Refactor the auth flow across the services");
+    await stepAt($, "medium");
+    await stepAt($, "medium", { index: 1 });
+    // a queued command runs once the running turn has ended
+    await complete($);
+    await typeCommand($, "quick");
+    await startTurn($, QUICK_TURN, "t2");
+    await stepAt($, "low", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh", "low"]);
+  });
+
+  test("the level before a skill is the last unheld request's, not a held one's", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "go");
+    await stepAt($, "high");
+    await callSkill($, "quick");
+    await stepAt($, "low", { index: 1 });
+    await complete($);
+    // back at high: a skill with no effort, though the last request ran at low
+    await typeCommand($, "plain");
+    await startTurn($, "<command-message>plain</command-message>", "t2");
+    await stepAt($, "high", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "low", "xhigh"]);
+  });
+
+  test("on another model the level before a skill is that model's configured one", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "go");
+    await stepAt($, "high");
+    await complete($);
+    await typeCommand($, "plain");
+    await startTurn($, "<command-message>plain</command-message>", "t2");
+    // Sonnet 5.5's own default: no skill's level
+    await stepAt($, "medium", { turnId: "t2", model: "claude-sonnet-5-5" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh"]);
+  });
+
+  test("a built-in command holds nothing: /effort sets the session's level", async ($, on) => {
+    const { seen } = world(on);
+    await startTurn($, "go");
+    await stepAt($, "medium");
+    await complete($);
+    await typeCommand($, "effort");
+    await startTurn($, "next", "t2");
+    await stepAt($, "low", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh"]);
+    expect((await complete($, "Done.", "t2")).text).toBe(
+      "opus-5-5 · effort xhigh · Jev: low → xhigh 80%",
+    );
+  });
+
+  /** `/effort low` as saved: Opus 5.5's level in the settings. */
+  const EFFORT_LOW = {
+    settings: { modelSettings: { [OPUS55]: { effortLevel: "low" } } },
+  };
+
+  test("right after /effort low, a skill with effort medium holds its turn", async ($, on) => {
+    const { seen } = world(on, EFFORT_LOW);
+    await startTurn($, "go");
+    await stepAt($, "medium");
+    await complete($);
+    await typeCommand($, "effort");
+    await typeCommand($, "quick");
+    await startTurn($, QUICK_TURN, "t2");
+    // the last request ran at medium, but the session's level is now low
+    await stepAt($, "medium", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "medium"]);
+    expect((await complete($, "Done.", "t2")).text).toContain(
+      "(not applied: quick skill's effort)",
+    );
+  });
+
+  test("right after /effort low, a skill with no effort holds nothing", async ($, on) => {
+    const { seen } = world(on, EFFORT_LOW);
+    await startTurn($, "go");
+    await stepAt($, "medium");
+    await complete($);
+    await typeCommand($, "effort");
+    await typeCommand($, "quick");
+    await startTurn($, QUICK_TURN, "t2");
+    await stepAt($, "low", { turnId: "t2" });
+    expect(seen.steps.map((s) => s.effort)).toEqual(["xhigh", "xhigh"]);
+    expect((await complete($, "Done.", "t2")).text).toBe(
+      "opus-5-5 · effort xhigh · Jev: low → xhigh 80%",
+    );
+  });
+
+  test("a command whose source is unknown counts as a skill", async ($, on) => {
+    const { seen } = world(on, { noCommandList: true });
+    await typeCommand($, "quick");
+    await startTurn($, QUICK_TURN);
+    await stepAt($, "low");
+    expect(seen.steps.map((s) => s.effort)).toEqual(["low"]);
+  });
+
+  test("/clear drops a skill waiting for the next turn", async ($, on) => {
+    const { seen } = world(on);
+    await typeCommand($, "quick");
     await $.session.end({
       reason: "clear",
       sessionId: "s1",
       resume: {},
     } as never);
     await startTurn($, "go");
-    await stepAt($, "medium");
+    await stepAt($, "low");
     expect(seen.steps[0].effort).toBe("xhigh");
   });
 

@@ -35,10 +35,14 @@ export type Holds = {
   running: string | null;
   /** The held turn and why. */
   held: { turnId: string; by: string } | null;
-  /** Why the next turn to start is held: a skill expanded for it before it started (a typed `/name`). */
-  pending: string | null;
-  /** Slash commands typed over the running turn, waiting for their own turns. */
-  queued: string[];
+  /**
+   * The last skill that ran, whose `effort` may set its turn's level: the turn
+   * (null: the next to start, as a typed `/name` runs before its turn) and why
+   * the turn would be held.
+   */
+  skill: { turnId: string | null; by: string } | null;
+  /** The engine's own level on the last main-loop request nothing held, on its model: what a skill's level is told apart from. */
+  base: { model: string; effort?: EffortLevel | number } | null;
 };
 
 declare module "claude-code" {

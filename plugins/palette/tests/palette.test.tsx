@@ -552,3 +552,105 @@ describe("pane", () => {
     });
   }
 });
+
+describe("counting skills the model calls", () => {
+  /** Core's Skill tool: `nope` is refused by a hook beneath, `gone` errors. */
+  const skillTool = (on: any) =>
+    on("tool.call", { tool: "Skill" }, (_$: unknown, e: { skill: string }) =>
+      e.skill === "nope"
+        ? { deny: "not allowed" }
+        : e.skill === "gone"
+          ? {
+              isError: true,
+              result: "Unknown skill: gone",
+              text: "Unknown skill: gone",
+            }
+          : { result: { success: true, commandName: e.skill } },
+    );
+  const skillCall = (skill: string, agentId?: string) =>
+    ({ tool: "Skill", skill, ...(agentId ? { agentId } : {}) }) as never;
+
+  test("a Skill call counts command:<skill>", async ($, on) => {
+    const { store, counted } = engine(on);
+    skillTool(on);
+    const r = await $.tool.call(skillCall("deploy"));
+    expect(r).toMatchObject({
+      result: { success: true, commandName: "deploy" },
+    });
+    await counted((u) => u?.["command:deploy"]?.count === 1);
+    expect(store.get("usage")).toEqual({
+      "command:deploy": { count: 1, last: expect.any(Number) },
+    });
+  });
+
+  test("a Skill call counts under the name it resolved to", async ($, on) => {
+    const { store, counted } = engine(on);
+    on("tool.call", { tool: "Skill" }, () => ({
+      result: { success: true, commandName: "plugin:deploy" },
+    }));
+    await $.tool.call(skillCall("deploy"));
+    await counted((u) => u?.["command:plugin:deploy"]?.count === 1);
+    expect(Object.keys(store.get("usage") as object)).toEqual([
+      "command:plugin:deploy",
+    ]);
+  });
+
+  test("a Skill result with no name counts the name asked for", async ($, on) => {
+    const { store, counted } = engine(on);
+    on("tool.call", { tool: "Skill" }, () => ({ result: "loaded" }));
+    await $.tool.call(skillCall("deploy"));
+    await counted((u) => u?.["command:deploy"]?.count === 1);
+    expect(Object.keys(store.get("usage") as object)).toEqual([
+      "command:deploy",
+    ]);
+  });
+
+  test("a refused or failed Skill call is not counted", async ($, on) => {
+    const { store, counted } = engine(on);
+    skillTool(on);
+    expect(await $.tool.call(skillCall("nope"))).toMatchObject({
+      deny: "not allowed",
+    });
+    expect(await $.tool.call(skillCall("gone"))).toMatchObject({
+      isError: true,
+    });
+    // counts run one after another: once a later one is stored, those before it are too
+    await $.tool.call(skillCall("deploy"));
+    await counted((u) => u?.["command:deploy"]?.count === 1);
+    expect(Object.keys(store.get("usage") as object)).toEqual([
+      "command:deploy",
+    ]);
+  });
+
+  test("a Skill call from inside a subagent counts", async ($, on) => {
+    const { store, counted } = engine(on);
+    let agentSeen: string | undefined;
+    on(
+      "tool.call",
+      { tool: "Skill" },
+      (_$: unknown, e: { agentId?: string }) => {
+        agentSeen = e.agentId;
+        return { result: { success: true, commandName: "deploy" } };
+      },
+    );
+    await $.tool.call(skillCall("deploy", "a1"));
+    expect(agentSeen).toBe("a1");
+    await counted((u) => u?.["command:deploy"]?.count === 1);
+    expect(store.get("usage")).toMatchObject({
+      "command:deploy": { count: 1 },
+    });
+  });
+
+  test("a typed /skill still counts, once", async ($, on) => {
+    const { store, counted } = engine(on);
+    skillTool(on);
+    on("command.run", { command: "deploy" }, () => ({ text: "" }));
+    await $.command.run({ command: "deploy", args: "" } as never);
+    await $.tool.call(skillCall("other"));
+    await counted((u) => u?.["command:other"]?.count === 1);
+    expect(store.get("usage")).toMatchObject({
+      "command:deploy": { count: 1 },
+      "command:other": { count: 1 },
+    });
+  });
+});

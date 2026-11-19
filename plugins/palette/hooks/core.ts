@@ -90,7 +90,7 @@ export function buildGroups(
 export const useKey = (item: Pick<PaletteItem, "kind" | "name">) =>
   `${item.kind}:${item.name}`;
 
-/** A typed skill is reported twice (`command.run`, `skill.prompt`): once counts. */
+/** A second use of one item this soon after the last is taken as the same use. */
 export const REPEAT_MS = 5_000;
 
 /** `usage` with one more use of `key` at `now`; unchanged within REPEAT_MS of the last. */

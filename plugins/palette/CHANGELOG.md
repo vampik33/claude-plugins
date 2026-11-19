@@ -4,6 +4,11 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.1] - 2026-11-19
+
+### Fixed
+- A skill the model calls is counted from the Skill tool's `tool.call`, not `skill.prompt`, so an organization-managed Claude Code no longer skips the hook (and no longer warns that it did), and such skills count there too. A call counts under the skill it resolved to (`deploy` running `plugin:deploy` counts `plugin:deploy`). A refused Skill call is not counted, and neither is a skill preloaded into a subagent
+
 ## [0.5.0] - 2026-11-11
 
 ### Removed

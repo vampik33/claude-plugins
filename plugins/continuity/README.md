@@ -20,8 +20,8 @@ claude plugin install continuity@vampik-plugins
 - The gauge turns yellow 15 points before the threshold and red at it; the session length ticks live.
 - When an answered main-loop turn ends at or past the threshold, a toast gives 5 s to cancel (send a prompt, or `/continuity off`). Then it writes `~/.claude/handover/<session>.md`, compacts with instructions to keep the note's facts, and submits a prompt that continues from the note.
 - Guards: not after an interrupted or failed turn, not in subagents, at most once per 3 turns.
-- Every other compaction (`/compact`, the engine's automatic one) gets the note's facts too; after `/compact`, "Continue from the handover" is proposed in the prompt box.
-- When a turn stops at a usage limit, it waits for the reset (countdown in the band) and continues.
+- A `/compact` writes the note first, adds it to the context after the summary (your `/compact` line stays as you typed it), and proposes "Continue from the handover" in the prompt box. The engine's own automatic compaction gets no note; at the default threshold the handover compacts well before it.
+- When a turn stops at a usage limit (an API error while a limit is used up with its reset ahead), it waits for the reset (countdown in the band) and continues.
 
 ### Cache timer
 
@@ -69,4 +69,4 @@ The note holds: your first and latest prompts, cwd, branch and worktree, uncommi
 
 Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
 
-Where an organization manages Claude Code, the classic `StopFailure` hook and `session.compact` run only for plugins the organization lists, so there `resumeAfterLimit` does nothing and a compaction carries no handover note.
+`/compact` is caught with `command.run` and the usage limit with `turn.complete`, not with `session.compact` and the classic `StopFailure` hook, so both also work where an organization manages Claude Code (there those two run only for plugins the organization lists).

@@ -4,6 +4,16 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-11-19
+
+### Fixed
+- `/compact` keeps the handover note through `command.run`, not `session.compact`, and the usage-limit wait starts from `turn.complete` (an API error while a limit is used up with its reset ahead), not the classic `StopFailure` hook, so an organization-managed Claude Code no longer skips either hook (and no longer warns that it did), and both work there too
+
+### Changed
+- After a `/compact`, the note joins the context after the summary, as written, rather than as instructions to the summarizer; the `/compact` line stays as typed
+- The engine's own automatic compaction no longer gets the note's facts; at the default threshold the handover compacts well before it
+- A usage-limit stop whose reset time is unknown no longer shows a toast: such a stop can't be told from any other API error
+
 ## [0.4.1] - 2026-11-19
 
 ### Fixed

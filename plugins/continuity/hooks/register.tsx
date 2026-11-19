@@ -14,6 +14,7 @@ import {
   blockingLimit,
   buildNote,
   compactInstructions,
+  compactedNote,
   continuePrompt,
   countDirty,
   fmtLength,
@@ -256,6 +257,24 @@ async function armResume($: EngineInterface, t: Tracker, resumeAt: number) {
   );
 }
 
+/**
+ * After a main-loop turn that died on an API error: at a usage limit, waits for
+ * the reset, then continues. Not classic.StopFailure: an organization-managed
+ * Claude Code skips the classic hooks of plugins it doesn't list. The error
+ * counts as the limit only while a limit is used up with its reset ahead.
+ */
+async function resumeAtLimit($: EngineInterface, t: Tracker): Promise<void> {
+  if (!t.resumeAfterLimit || (await read($, mode)).paused) return;
+  const usage = await $.session.usage().catch(() => undefined);
+  const limit = blockingLimit(usage?.rateLimits ?? [], await $.clock.now());
+  if (!limit) return;
+  const resumeAt = limit.resetsAt + RESET_SLACK_MS;
+  await armResume($, t, resumeAt);
+  $.ui.toast(
+    `Usage limit (${limit.kind}): continuing at ${new Date(resumeAt).toTimeString().slice(0, 5)}`,
+  );
+}
+
 function cancelTimers(t: Tracker) {
   t.grace?.cancel();
   t.grace = undefined;
@@ -477,6 +496,7 @@ export const register: Register = (on, options) => {
       );
       t.grace = $.clock.after(GRACE_MS, () => void handover($, t));
     }
+    if (e.reason === "error") await resumeAtLimit($, t);
     return r;
   });
 
@@ -493,43 +513,38 @@ export const register: Register = (on, options) => {
     return next(e);
   });
 
-  // every compaction keeps the note's facts; after a /compact, offer to continue
-  on("session.compact", async ($, e, next) => {
-    if (e.agentId || e.trigger === "plugin") return next(e);
-    const { path, note } = await writeNote($, e.messages);
-    const instructions = [e.instructions, compactInstructions(note)]
-      .filter(Boolean)
-      .join("\n\n");
-    const r = await next({ ...e, instructions });
-    // the box takes no suggestion until the compaction has finished drawing
-    if (e.trigger === "manual" && r.skip === undefined)
-      $.clock.after(SUGGEST_DELAY_MS, () => {
-        void $.prompt.suggest({
-          text: `Continue from the handover in ${path}`,
-        });
-      });
-    return r;
-  });
-
-  on("classic.StopFailure", async ($, e, next) => {
-    const r = await next(e);
-    if (e.error !== "rate_limit" || !t.resumeAfterLimit) return r;
-    const m = await read($, mode);
-    if (m.paused) return r;
-    const usage = await $.session.usage().catch(() => undefined);
-    const now = await $.clock.now();
-    const limit = blockingLimit(usage?.rateLimits ?? [], now);
-    if (!limit) {
-      $.ui.toast(
-        "Usage limit reached; its reset time is unknown, so continuity will not resume by itself",
-      );
-      return r;
+  // a /compact keeps the note: written before, it joins the context after the
+  // summary, then the box offers to continue. Not session.compact: an
+  // organization-managed Claude Code skips that hook for plugins it doesn't list.
+  // So the engine's own compaction, near a full context, gets no note; the
+  // handover at the threshold compacts well before it. Not in the command's args:
+  // the transcript would show the note as typed after /compact.
+  on("command.run", { command: "compact" }, async ($, e, next) => {
+    // a note that can't be written leaves the /compact as typed
+    let saved: { path: string; note: string } | undefined;
+    try {
+      const messages = await $.session.messages();
+      saved = await writeNote($, Array.isArray(messages) ? messages : []);
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      $.ui.toast(`No handover note saved for this /compact: ${why}`);
     }
-    const resumeAt = limit.resetsAt + RESET_SLACK_MS;
-    await armResume($, t, resumeAt);
-    $.ui.toast(
-      `Usage limit (${limit.kind}): continuing at ${new Date(resumeAt).toTimeString().slice(0, 5)}`,
-    );
+    const r = await next(e);
+    // one that didn't compact says why ("Not enough messages to compact."); a done one prints nothing
+    if (!saved || r.text) return r;
+    const { path, note } = saved;
+    await $.session.append({
+      message: {
+        type: "user",
+        content: [{ type: "text", text: compactedNote(path, note) }],
+      },
+    });
+    // the box takes no suggestion until the compaction has finished drawing
+    $.clock.after(SUGGEST_DELAY_MS, () => {
+      void $.prompt.suggest({
+        text: `Continue from the handover in ${path}`,
+      });
+    });
     return r;
   });
 

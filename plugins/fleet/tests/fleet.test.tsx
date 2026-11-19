@@ -12,7 +12,6 @@ import {
   isWaiter,
   lastLine,
   loseShells,
-  mayNotify,
   nextProgress,
   outputFileOf,
   parseNotification,
@@ -221,17 +220,6 @@ describe("transitions", () => {
       ),
     ).toEqual({ id: "bjl2", status: "failed" });
     expect(parseNotification("just text")).toBeUndefined();
-  });
-
-  test("a notification comes as a user row, or an attachment a running turn absorbed", () => {
-    expect(mayNotify({ type: "user" })).toBe(true);
-    expect(mayNotify({ type: "attachment", name: "queued_command" })).toBe(
-      true,
-    );
-    expect(mayNotify({ type: "attachment", name: "nested_memory" })).toBe(
-      false,
-    );
-    expect(mayNotify({ type: "assistant" })).toBe(false);
   });
 });
 
@@ -496,6 +484,18 @@ const BAND = {
 const spawn = ($: any, description: string) =>
   $.agent.spawn({ prompt: "go", description, subagentType: "Explore" });
 
+/** The band's text line, drawn once. */
+const bandLine = async ($: any, surface: "terminal" | "desktop") => {
+  const ui = await $.ui.mount({ plugin: "fleet", surface, ...BAND });
+  const text = (await ui.find({ type: "Text" }))?.text;
+  await ui.unmount();
+  return text;
+};
+
+/** A background task's notification as the engine words it. */
+const notification = (id: string, status: string) =>
+  `<task-notification>\n<task-id>${id}</task-id>\n<status>${status}</status>\n<summary>Background command "x" ${status}</summary>\n</task-notification>`;
+
 /** Draws the band once, so the mod learns whether the surface docks a pane. */
 const drawBand = async (
   $: any,
@@ -561,8 +561,8 @@ describe("session", () => {
 
   for (const surface of ["terminal", "desktop"] as const)
     test(
-      `a turn's end marks lost the shells no longer in flight (${surface})`,
-      { options: { sound: false, telegram: false } },
+      `with lostShells a turn's end marks lost the shells no longer in flight (${surface})`,
+      { options: { sound: false, telegram: false, lostShells: true } },
       async ($, on) => {
         const { seen, clock } = engine(on, []);
         let n = 0;
@@ -604,6 +604,104 @@ describe("session", () => {
         ]);
       },
     );
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `without lostShells a turn's end marks nothing lost (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { seen } = engine(on, []);
+        let n = 0;
+        on("tool.call", () => ({ result: { backgroundTaskId: `b${++n}` } }));
+        on("classic.Stop", () => ({}));
+
+        await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
+        await $.tool.call({ tool: "Bash", command: "cargo bench" } as never);
+        await $.classic.Stop({
+          stop_hook_active: false,
+          background_tasks: [],
+        } as never);
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+        expect(seen.toasts).toEqual([]);
+      },
+    );
+
+  for (const surface of ["terminal", "desktop"] as const)
+    test(
+      `a task notification ends its shell, delivered into a running turn or idle (${surface})`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { seen, clock } = engine(on, []);
+        let n = 0;
+        on("tool.call", () => ({ result: { backgroundTaskId: `b${++n}` } }));
+        on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+          text: e.text,
+        }));
+
+        await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
+        await $.tool.call({ tool: "Bash", command: "cargo bench" } as never);
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 2");
+
+        await $.prompt.submit({
+          text: notification("b1", "completed"),
+          origin: { kind: "task-notification" },
+          turnId: "t1",
+          wait: false,
+        } as never);
+        expect(await bandLine($, surface)).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+        expect(seen.toasts).toEqual(["✓ shell · cargo test · 0s"]);
+
+        await $.prompt.submit({
+          text: notification("b2", "failed"),
+          origin: { kind: "task-notification" },
+          wait: false,
+        } as never);
+        expect(await bandLine($, surface)).toBe("fleet");
+        expect(seen.toasts.at(-1)).toBe("✗ shell failed · cargo bench · 0s");
+        await clock.advance(2_100);
+        expect(seen.toasts.at(-1)).toMatch(/^All done in 0s/);
+      },
+    );
+
+  test(
+    "a task notification ends a background agent",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const list = [{ id: "a1", status: "running" }];
+      const { seen } = engine(on, list);
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
+      await spawn($, "review plan");
+      list[0]!.status = "completed";
+      await $.prompt.submit({
+        text: notification("a1", "completed"),
+        origin: { kind: "task-notification" },
+        wait: false,
+      } as never);
+      expect(seen.toasts).toEqual(["✓ Explore · review plan · 0s"]);
+    },
+  );
+
+  test(
+    "a typed prompt that quotes a notification ends nothing",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { seen } = engine(on, []);
+      on("tool.call", () => ({ result: { backgroundTaskId: "b1" } }));
+      on("prompt.submit", (_$: unknown, e: { text: string }) => ({
+        text: e.text,
+      }));
+      await $.tool.call({ tool: "Bash", command: "cargo test" } as never);
+      await $.prompt.submit({
+        text: notification("b1", "completed"),
+        origin: { kind: "composer" },
+        wait: false,
+      } as never);
+      expect(await bandLine($, "terminal")).toBe("fleet 0▶ 0✓ 0✗ · bg 1");
+      expect(seen.toasts).toEqual([]);
+    },
+  );
 
   test(
     "agents that end together raise one toast",

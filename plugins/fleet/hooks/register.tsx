@@ -14,7 +14,6 @@ import {
   lastLine,
   liveCount,
   loseShells,
-  mayNotify,
   nextProgress,
   outputFileOf,
   parseNotification,
@@ -49,6 +48,8 @@ type Tracker = {
   sound: boolean;
   telegram: boolean;
   idleMs: number;
+  /** Whether a classic `Stop` hook marks lost the shells gone with no notification. */
+  lostShells: boolean;
   repo: string;
   root: string | undefined;
   /** Whether the surface docks a pane beside the transcript, as the band last drew; unknown until then. */
@@ -294,16 +295,6 @@ async function togglePane($: EngineInterface, t: Tracker) {
   return openPane($, t);
 }
 
-const textOf = (content: unknown): string =>
-  typeof content === "string"
-    ? content
-    : Array.isArray(content)
-      ? content
-          .filter((b) => b?.type === "text" && typeof b.text === "string")
-          .map((b) => b.text as string)
-          .join("\n")
-      : "";
-
 export const register: Register = (on, options) => {
   const t: Tracker = {
     autoOpen: options.autoOpen !== false,
@@ -313,6 +304,7 @@ export const register: Register = (on, options) => {
       (typeof options.idleMinutes === "number" && options.idleMinutes >= 0
         ? options.idleMinutes
         : 5) * 60_000,
+    lostShells: options.lostShells === true,
     repo: "",
     root: undefined,
     docks: undefined,
@@ -384,7 +376,13 @@ export const register: Register = (on, options) => {
       const at = await $.clock.now();
       await update($, lastPrompt, () => at);
     }
-    return next(e);
+    if (e.origin.kind !== "task-notification") return next(e);
+    // a background task's notification, idle or delivered into a running
+    // turn: a shell or an agent finished
+    const r = await next(e);
+    const note = parseNotification(e.text);
+    if (note) await endTask($, t, note.id, note.status);
+    return r;
   });
 
   on("agent.spawn", async ($, e, next) => {
@@ -456,28 +454,22 @@ export const register: Register = (on, options) => {
     return r;
   });
 
-  // a background task's notification: a shell or an agent finished
-  on("session.append", async ($, e, next) => {
-    const r = await next(e);
-    if (!mayNotify(e.message)) return r;
-    const note = parseNotification(textOf(e.message.content));
-    if (note) await endTask($, t, note.id, note.status);
-    return r;
-  });
-
   // a main turn's end lists the tasks still in flight: a live shell missing
-  // from it ended with no notification (a restart, a kill), so it is lost
-  on("classic.Stop", async ($, e, next) => {
-    const r = await next(e);
-    if (!e.background_tasks) return r;
-    const inFlight = new Set(e.background_tasks.map((b) => b.id));
-    await update($, fleet, (f) => ({
-      ...f,
-      shells: loseShells(f.shells, inFlight, Date.now()),
-    }));
-    await settle($, t);
-    return r;
-  });
+  // from it ended with no notification (a restart, a kill), so it is lost.
+  // Opt-in: where an organization manages Claude Code the hook is skipped,
+  // and each skip puts a warning in the transcript
+  if (t.lostShells)
+    on("classic.Stop", async ($, e, next) => {
+      const r = await next(e);
+      if (!e.background_tasks) return r;
+      const inFlight = new Set(e.background_tasks.map((b) => b.id));
+      await update($, fleet, (f) => ({
+        ...f,
+        shells: loseShells(f.shells, inFlight, Date.now()),
+      }));
+      await settle($, t);
+      return r;
+    });
 
   on("turn.complete", async ($, e, next) => {
     const r = await next(e);

@@ -16,7 +16,7 @@ One target: `claude plugin test plugins/<mod>`; `(cd verification && bun test pr
 
 ## Repository Structure
 
-`plans/` = implementation plans from Claude sessions; `verification/` = Lean models and proofs, property tests, `run.sh`.
+`plans/` = implementation plans from Claude sessions; `verification/` = Lean models and proofs, property, differential and formal-verify (`*.fv.test.ts`) tests, `run.sh`.
 
 Mods (TypeScript function-hook plugins) and shell-hook conventions: see `plugins/CLAUDE.md`.
 
@@ -37,11 +37,11 @@ Use markdown files with YAML frontmatter for user-facing config:
 
 ## Adding a New Plugin
 
-Add `plugins/<name>/.claude-plugin/plugin.json` plus a `.claude-plugin/marketplace.json` entry (versions must match), plus `CHANGELOG.md`.
+Add `plugins/<name>/.claude-plugin/plugin.json` plus a `.claude-plugin/marketplace.json` entry (versions must match), plus `CHANGELOG.md` and `README.md`, and a row in the root `README.md` table (Mods or Commands and skills).
 
 ## Gotchas
 
-- **Only telegram-notifier has shell hooks**: the mods' `hooks/` hold a TypeScript module instead; the other plugins are command+skill only
+- **Only telegram-notifier has shell hooks**: the mods' `hooks/` hold a TypeScript module instead; claudemd-gen, explain-changes, gtr and plan-renamer are command+skill only (plan-renamer's ExitPlanMode hook was removed in v1.2.0)
 - **The `scripts/lib/` shared libraries are telegram-notifier-specific**: `config.sh`, `html.sh`, `session.sh`, `yaml.sh` live under telegram-notifier's hooks — they are not cross-plugin shared code
 - **gtr has no CHANGELOG.md**: Unlike other plugins, gtr is missing its changelog
 - **Daily-review issues and PRs** (`Daily review <date>` issue, branch `daily-review/<date>-main`) are made remotely without a checkout: before merging, rebase onto `main`, add a test, bump the version in both manifests and add the CHANGELOG entry. The repo doesn't delete merged branches.

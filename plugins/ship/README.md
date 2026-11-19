@@ -34,3 +34,5 @@ claude plugin install ship@vampik-plugins --scope local
 - At the session's start and each main turn's end: `git status --porcelain=v1 --branch`, the repo's `.claude-plugin/marketplace.json` and `~/.claude/plugins/installed_plugins.json`.
 - The versions installed when the session (re)loads its plugins are the baseline for `restart needed`.
 - Commands run with `GIT_TERMINAL_PROMPT=0`, so a push that needs a password fails instead of waiting.
+
+Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).

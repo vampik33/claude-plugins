@@ -6,16 +6,20 @@ Everything that checks the plugins beyond their own example tests. One command r
 verification/run.sh
 ```
 
+It stops at the first failing suite. One suite alone: `(cd verification && bun test props/<file>)`, `claude plugin test plugins/<mod>`, `bats plugins/telegram-notifier/tests`, or `lake build` in `lean/`.
+
 Needs `elan` (Lean), `bun`, `claude`, `shellcheck` and `bats` on `PATH` (`run.sh` adds `~/.elan/bin` and `~/.local/bin`).
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `lean/Plugins/*.lean` | Lean 4 models of the mods' invariant-heavy functions, with proofs (core Lean only, no Mathlib) |
+| `lean/Plugins/*.lean` | Lean 4 models of the mods' invariant-heavy functions, with proofs (core Lean only, no Mathlib): `Trim` (fleet, codex-review), `Fleet`, `Ttl` and `Continuity` (continuity), `PromptClock` (chat-view, named before the rename) |
 | `lean/Oracle.lean` | An executable that evaluates those models on JSON input |
 | `props/diff.lean.test.ts` | Differential tests: random inputs through the TypeScript and the Lean oracle, which must agree |
 | `props/*.prop.test.ts` | fast-check property tests for every exported pure function in the mods' `core.ts` / `ttl.ts` |
+| `props/*.fv.test.ts` | formal-verify harnesses: stronger properties and a model-based run for watchdog (T1), big-picture's sanitizers against parse5 (T2), codex-review's guards (T3), the parsers the Lean models leave out (T4), and one regression test per finding (`formal-verify-findings`). Seeded: `FV_SEED`, `FV_RUNS` (default 300). Their specs and reports live in `.formal-verify/`, which is gitignored |
+| `../plugins/<mod>/tests/` | each mod's own tests, run by `claude plugin test` |
 | `../plugins/telegram-notifier/tests/*.bats` | bats tests for telegram-notifier's shell hooks (curl stubbed, no network) |
 
 ## What is proven

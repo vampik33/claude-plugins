@@ -7,7 +7,7 @@ ctx ██████████░░░░░░ 61% 610k/1M   session 2h13m
 over 60%: handover + compact after this turn
 ```
 
-Its lines sit in a column right above the prompt; other plugins' bands (surveys, tips, codex-review, fleet) draw on their own lines above it, with no blank rows between them.
+Its lines sit in the band above the prompt; other plugins' lines (surveys, tips, fleet, then codex-review) draw above it, and effort-pilot's line, when installed, below it, with no blank rows between them.
 
 ## Installation
 

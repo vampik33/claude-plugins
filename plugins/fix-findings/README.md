@@ -34,3 +34,5 @@ A real defect the change did not introduce is marked `pre-existing`: reported, n
 If Claude tries to end a turn while `.fix-findings/ledger.json` in the session's working directory says `running`, the hook sends it back with what is still open. It does so once per turn and not while background work is in flight, so it cannot hold a session forever. A ledger whose `sessionId` names another session is ignored.
 
 `classic.*` hooks don't run where an organization manages Claude Code. There the skill still works, without the hook.
+
+The hook needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).

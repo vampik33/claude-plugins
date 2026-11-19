@@ -5,7 +5,7 @@ Writing effective CLAUDE.md files is the highest-leverage activity for Claude Co
 ## Installation
 
 ```bash
-claude plugin add vampik33/claude-plugins/claudemd-gen
+claude plugin install claudemd-gen@vampik-plugins
 ```
 
 ## Usage

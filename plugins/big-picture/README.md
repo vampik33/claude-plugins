@@ -34,8 +34,8 @@ Set a TypeSafe key for Jev, in `~/.claude/settings.json`:
 
 ## Behaviour
 
-- `/big-picture` opens the summary in the default browser (`xdg-open`, else `open` on macOS); so does `show` on the `summary` line above the prompt (hotkey `s`). The line appears once there is something to show: a summary being written, written, or failing; while Jev only judges work that has no summary yet, it stays hidden. Before there is a summary, `/big-picture` opens a placeholder that fills in later. The page never opens by itself, and is closed in the browser. When no browser opens it, the mod says so with the page's path.
-- `/big-picture update`, or `update` on the `summary` line (hotkey `u`), rewrites the summary now: no Jev question, even before the work was judged big (which it counts as from then on). A press while a check runs is run once after it; several presses meanwhile, once.
+- `/big-picture` opens the summary in the default browser (`xdg-open`, else `open` on macOS); so does `show` on the `summary` line above the prompt (hotkey `s` in the terminal). The line appears once there is something to show: a summary being written, written, or failing; while Jev only judges work that has no summary yet, it stays hidden. Before there is a summary, `/big-picture` opens a placeholder that fills in later. The page never opens by itself, and is closed in the browser. When no browser opens it, the mod says so with the page's path.
+- `/big-picture update`, or `update` on the `summary` line (hotkey `u` in the terminal), rewrites the summary now: no Jev question, even before the work was judged big (which it counts as from then on). A press while a check runs is run once after it; several presses meanwhile, once.
 - The page is `~/.claude/big-picture/<session-id>.html`. An open page reloads itself every 60 seconds, so a rewrite shows within a minute.
 
 ## How It Works

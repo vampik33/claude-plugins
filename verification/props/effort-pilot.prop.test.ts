@@ -13,9 +13,9 @@ import {
   MIN_CONFIDENCE,
   parseJev,
   RECENT_PROMPTS,
-  skillHolds,
   startTurnHolds,
   stepEffort,
+  stepHolds,
   withPrompt,
 } from "../../plugins/effort-pilot/hooks/core.ts";
 
@@ -116,43 +116,51 @@ describe("configuredEffort", () => {
 });
 
 describe("holds", () => {
-  const name = fc.constantFrom("quick", "deep", "commit");
+  const turn = fc.constantFrom("t1", "t2");
+  const effort = fc.oneof(level, fc.constant(undefined));
+  const model = fc.constantFrom("claude-opus-5-5", "claude-sonnet-5-5");
   const holds = fc.record({
-    running: fc.option(fc.constantFrom("t1", "t2"), { nil: null }),
-    held: fc.option(fc.record({ turnId: fc.constantFrom("t1", "t2"), by: fc.string() }), {
-      nil: null,
-    }),
-    pending: fc.option(fc.string(), { nil: null }),
-    queued: fc.array(name, { maxLength: 4 }),
+    running: fc.option(turn, { nil: null }),
+    held: fc.option(fc.record({ turnId: turn, by: fc.string() }), { nil: null }),
+    skill: fc.option(
+      fc.record({ turnId: fc.option(turn, { nil: null }), by: fc.string() }),
+      { nil: null },
+    ),
+    base: fc.option(fc.record({ model, effort }), { nil: null }),
   });
 
-  test("a turn's start runs it, takes the pending hold and empties the queue", () => {
+  test("a turn's start runs it and takes a skill run before it; one from an earlier turn is dropped", () => {
     fc.assert(
       fc.property(holds, fc.string(), (h, text) => {
         const r = startTurnHolds(h, text, "t3");
         expect(r.running).toBe("t3");
-        expect(r.pending).toBeNull();
-        expect(r.queued).toEqual([]);
-        if (h.pending !== null || /\bultrathink\b/i.test(text))
-          expect(r.held?.turnId).toBe("t3");
+        expect(r.base).toEqual(h.base);
+        expect(r.skill).toEqual(
+          h.skill?.turnId === null ? { turnId: "t3", by: h.skill.by } : null,
+        );
+        if (/\bultrathink\b/i.test(text))
+          expect(r.held).toEqual({ turnId: "t3", by: "ultrathink" });
         else expect(r.held).toEqual(h.held);
       }),
     );
   });
 
-  test("a skill holds the running turn, or waits for the next one and keeps the running turn's hold", () => {
+  test("a request holds its turn only after a skill in it changed the level; else it is the base", () => {
     fc.assert(
-      fc.property(holds, name, (h, skill) => {
-        const r = skillHolds(h, skill, "by");
+      fc.property(holds, turn, model, effort, effort, (h, t, m, e, before) => {
+        const r = stepHolds(h, t, m, e, before);
         expect(r.running).toBe(h.running);
-        if (h.running !== null && !h.queued.includes(skill)) {
-          expect(r.held).toEqual({ turnId: h.running, by: "by" });
-          expect(r.pending).toBe(h.pending);
-          expect(r.queued).toEqual(h.queued);
+        if (h.held?.turnId === t) expect(r).toBe(h);
+        else if (h.skill?.turnId === t && e !== before) {
+          expect(r.held).toEqual({ turnId: t, by: h.skill.by });
+          expect(r.skill).toBeNull();
+          expect(r.base).toEqual(h.base);
         } else {
           expect(r.held).toEqual(h.held);
-          expect(r.pending).toBe("by");
-          expect(r.queued.length).toBe(h.queued.length - (h.queued.includes(skill) ? 1 : 0));
+          expect(r.skill).toEqual(h.skill);
+          expect(r.base).toEqual({ model: m, effort: e });
+          // nothing changed: the same object, so no write
+          if (h.base?.model === m && h.base.effort === e) expect(r).toBe(h);
         }
       }),
     );

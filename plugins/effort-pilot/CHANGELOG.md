@@ -4,6 +4,16 @@ All notable changes to the effort-pilot plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-11-19
+
+### Fixed
+- A skill's `effort` holds its turn where an organization manages Claude Code too, with no warning that a hook was skipped: the mod notes a skill run with `tool.call` (the Skill tool) and `command.run` (a typed `/name`) instead of `skill.prompt`, which Claude Code skips there for plugins the organization doesn't list, and holds the turn once the level Claude Code sends differs from its own level before the skill
+
+### Changed
+- A skill whose `effort` is the session's own level is no longer held: Jev's level replaces it
+- A subagent's skill no longer holds the main turn
+- The hold names the skill as it resolved (`plugin:deploy` for `deploy`)
+
 ## [0.3.0] - 2026-11-16
 
 ### Changed

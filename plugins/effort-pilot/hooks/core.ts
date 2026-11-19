@@ -129,35 +129,45 @@ export const asksUltrathink = (prompt: string) =>
 export const NO_HOLDS: Holds = {
   running: null,
   held: null,
-  pending: null,
-  queued: [],
+  skill: null,
+  base: null,
 };
 
 /**
- * The holds once a main-loop turn starts: an ultrathink prompt holds it, as
- * does a skill's effort expanded for it before it started; queued commands
- * have their turns by now.
+ * The holds once a main-loop turn starts: an ultrathink prompt holds it; a
+ * skill run for it before it started (a typed `/name`) is now its, and one
+ * run in an earlier turn is no longer anyone's.
  */
 export function startTurnHolds(h: Holds, text: string, turnId: string): Holds {
-  const by = asksUltrathink(text) ? "ultrathink" : h.pending;
+  const skill = h.skill ?? null;
   return {
     running: turnId,
-    held: by === null ? h.held : { turnId, by },
-    pending: null,
-    queued: [],
+    held: asksUltrathink(text) ? { turnId, by: "ultrathink" } : h.held,
+    skill: skill?.turnId === null ? { turnId, by: skill.by } : null,
+    base: h.base ?? null,
   };
 }
 
 /**
- * The holds once a skill whose frontmatter sets `effort` expands: it holds
- * the running turn, or the next one when none runs or the skill is a command
- * typed over the running turn (`queued`), leaving the running turn's hold.
+ * The holds once a main-loop request of `turnId` is about to go out at the
+ * engine's `effort` on `model`. A skill that ran in the turn holds the rest
+ * of it once the engine's level differs from its own before the skill
+ * (`before`): no hook hands over a skill's `effort`, the engine applies it.
+ * A request nothing holds is the engine's own level, the next `before`.
+ * The same object when nothing changes.
  */
-export function skillHolds(h: Holds, skill: string, by: string): Holds {
-  const i = h.queued.indexOf(skill);
-  if (h.running !== null && i < 0)
-    return { ...h, held: { turnId: h.running, by } };
-  return { ...h, pending: by, queued: h.queued.filter((_, k) => k !== i) };
+export function stepHolds(
+  h: Holds,
+  turnId: string,
+  model: string,
+  effort: EffortLevel | number | undefined,
+  before: EffortLevel | number | undefined,
+): Holds {
+  if (h.held?.turnId === turnId) return h;
+  if (h.skill?.turnId === turnId && effort !== before)
+    return { ...h, held: { turnId, by: h.skill.by }, skill: null };
+  if (h.base?.model === model && h.base.effort === effort) return h;
+  return { ...h, base: { model, effort } };
 }
 
 /**

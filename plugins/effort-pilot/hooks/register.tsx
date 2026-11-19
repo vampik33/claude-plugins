@@ -14,9 +14,9 @@ import {
   NO_HOLDS,
   parseJev,
   shortModel,
-  skillHolds,
   startTurnHolds,
   stepEffort,
+  stepHolds,
   verdictWords,
   withAnswer,
   withPrompt,
@@ -188,18 +188,6 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  // A slash command typed over a running turn waits for a turn of its own:
-  // its skill's effort is that turn's, even if it expands before it starts.
-  on("prompt.submit", async ($, e, next) => {
-    const name = e.turnId !== undefined ? e.command?.name : undefined;
-    if (name !== undefined)
-      await update($, holds, (h = NO_HOLDS) => ({
-        ...h,
-        queued: [...h.queued, name],
-      }));
-    return next(e);
-  });
-
   // Each main-loop turn with a prompt: Jev picks its level before the turn's
   // first request. Asked at turn.start, not prompt.submit: a prompt typed
   // mid-turn is submitted while the running turn still has requests to send.
@@ -213,15 +201,48 @@ export const register: Register = (on) => {
     return next(e);
   }).catch(($, e, next) => next(e));
 
-  // A skill's `effort` lasts to the end of its turn: hold the running main
-  // turn, or the next one when none runs or the skill is a queued command's.
-  // A subagent's skill holds it too, which only leaves the session's level.
-  on("skill.prompt", async ($, e, next) => {
-    if (isLevel(e.frontmatter.effort))
-      await update($, holds, (h = NO_HOLDS) =>
-        skillHolds(h, e.skill, `${e.skill} skill's effort`),
-      );
-    return next(e);
+  // A skill's `effort` lasts to the end of its turn, and no hook hands it over
+  // (skill.prompt did, but an organization-managed Claude Code skips that hook
+  // for plugins it doesn't list): note that a skill ran, and turn.step holds
+  // the turn once the engine's level departs from its own. A skill the model
+  // calls runs in the running turn; a subagent's leaves the main loop's level.
+  on("tool.call", { tool: "Skill" }, async ($, e, next) => {
+    const r = await next(e);
+    // a refused or failed call (a hook's deny, isError) ran no skill
+    if ("deny" in r || r.isError) return r;
+    // the skill as resolved (`deploy` may run `plugin:deploy`)
+    const res: unknown = r.result;
+    const name =
+      typeof res === "object" &&
+      res !== null &&
+      "commandName" in res &&
+      typeof res.commandName === "string" &&
+      res.commandName !== ""
+        ? res.commandName
+        : e.skill;
+    await update($, holds, (h = NO_HOLDS) => ({
+      ...h,
+      skill: { turnId: h.running, by: `${name} skill's effort` },
+    }));
+    return r;
+  });
+
+  // A typed `/name` runs before its own turn starts (one typed over a running
+  // turn, once that turn has ended): its skill's level is that turn's.
+  on("command.run", async ($, e, next) => {
+    const r = await next(e);
+    // a built-in (/effort, /model) sets the session's own level, not a turn's
+    const commands = await $.command.list().catch(() => []);
+    if (!commands.some((c) => c.name === e.command && c.source === "builtin"))
+      await update($, holds, (h = NO_HOLDS) => ({
+        ...h,
+        skill: { turnId: null, by: `${e.command} skill's effort` },
+      }));
+    // the last request's level is no longer the session's: until a request
+    // shows the new one, a skill's level is told apart from the settings'
+    else if (e.command === "effort")
+      await update($, holds, (h = NO_HOLDS) => ({ ...h, base: null }));
+    return r;
   });
 
   // Each main-loop request goes out at Jev's level where a change keeps the
@@ -229,18 +250,31 @@ export const register: Register = (on) => {
   on("turn.step", async function* ($, e, next) {
     if (e.agentId !== undefined) return yield* next(e);
     // `last`: the previous main-loop request, whose level stays when Jev is unsure.
-    const [v, last, direct, h, envLevel] = await Promise.all([
+    const [v, last, direct, was, envLevel] = await Promise.all([
       verdictFor($, e.turnId),
       read($, step),
       isFirstParty($),
       read($, holds),
       effortEnvLevel($),
     ]);
+    // A skill ran in this turn: the engine's own level before it, from the
+    // last request nothing held on this model, else as the settings give it.
+    const before =
+      was.held?.turnId !== e.turnId && was.skill?.turnId === e.turnId
+        ? was.base?.model === e.model
+          ? was.base.effort
+          : await configuredLevel($, e.model)
+        : undefined;
+    const h = stepHolds(was, e.turnId, e.model, e.effort, before);
+    if (h !== was)
+      await update($, holds, (cur = NO_HOLDS) =>
+        stepHolds(cur, e.turnId, e.model, e.effort, before),
+      );
     // The env var outranks every other source; ultrathink and a skill's
     // effort outrank the session's level for their turn.
     const held = isLevel(envLevel)
       ? "CLAUDE_CODE_EFFORT_LEVEL is set"
-      : h?.held?.turnId === e.turnId
+      : h.held?.turnId === e.turnId
         ? h.held.by
         : undefined;
     const steers = keepsCacheOnChange(e.model, direct) && !held;

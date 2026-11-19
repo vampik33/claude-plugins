@@ -17,7 +17,7 @@ Verify installation: `git gtr --version`
 ## Installation
 
 ```bash
-claude plugin add vampik33/claude-plugins/gtr
+claude plugin install gtr@vampik-plugins
 ```
 
 ## Slash Commands

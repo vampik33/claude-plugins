@@ -63,7 +63,7 @@ export TELEGRAM_CHAT_ID="project-chat"
 ## Installation
 
 ```bash
-claude plugin add vampik33/claude-plugins/telegram-notifier
+claude plugin install telegram-notifier@vampik-plugins
 ```
 
 ## Usage

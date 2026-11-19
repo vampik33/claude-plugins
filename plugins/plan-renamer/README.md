@@ -8,27 +8,29 @@ Claude Code generates plan files with random three-word names like `scalable-mos
 
 ## Solution
 
-A PostToolUse hook on ExitPlanMode that automatically renames the plan file to match its content title.
+`/rename-plans` renames every randomly-named plan file to a slug of the title inside it.
 
 `scalable-moseying-papert.md` → `implement-auth-system.md`
 
 ## Installation
 
 ```bash
-claude plugin add vampik33/claude-plugins/plan-renamer
+claude plugin install plan-renamer@vampik-plugins
 ```
+
+## Usage
+
+- `/rename-plans` renames at once, without asking, and prints a table of old name, new name and title
+- The skill also triggers when you ask to rename or tidy plan files
 
 ## How It Works
 
-1. Hook fires after ExitPlanMode completes
-2. Finds the plans directory (checks settings, then `./plans`, then `~/.claude/plans`)
-3. Locates the most recently modified random-named `.md` file
-4. Extracts the title from the first `# Plan: ` heading
-5. Slugifies the title and renames the file
+1. Finds the plans directory: `plansDirectory` in `.claude/settings.local.json` or `.claude/settings.json`, then `./plans`, then `~/.claude/plans`
+2. Picks the `.md` files with Claude Code's random three-word names (`^[a-z]+-[a-z]+-[a-z]+\.md$`)
+3. Takes the title from the first `# Plan: ` or `# ` heading
+4. Slugifies it (lowercase, non-alphanumerics become hyphens) and renames with `mv`; a taken name gets `-2`, `-3`
 
-## Commands
-
-- `/rename-plans` — Batch-rename existing random-named plan files
+There is no automatic rename: the ExitPlanMode hook was removed in v1.2.0 because it broke the plan workflow.
 
 ## Configuration
 

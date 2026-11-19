@@ -49,7 +49,7 @@ A choice with nothing in it (no commits ahead, a clean tree) starts no review an
 
 ## The line
 
-Always drawn on its own line in the band above the prompt, between the watchdog and fleet lines: the running review with `cancel`, else the session's last finished review (`no review yet` before one) with `open` and `review`. `review` runs what `/cx adv` runs, dialog included. While the band is focused (ctrl+x tab), `x` presses `review`/`cancel` and `o` presses `open`. Reviews Claude ran through the tool count as the last result too.
+Always drawn on its own line in the band above the prompt, just above continuity's context gauge (and effort-pilot's line under that), whatever order the mods run in: the running review with `cancel`, else the session's last finished review (`no review yet` before one) with `open` and `review`. `review` runs what `/cx adv` runs, dialog included. In the terminal, while the band is focused (ctrl+x tab), `x` presses `review`/`cancel` and `o` presses `open`; in the desktop app the buttons sit at the row's far end, without hotkeys. Reviews Claude ran through the tool count as the last result too.
 
 ## CodexReview tool
 
@@ -57,7 +57,7 @@ Claude gets `mcp__codex-review__CodexReview({ mode, base, focus, cwd })`. It run
 
 ## How It Works
 
-The codex plugin's companion (`codex-companion.mjs`, found through `installed_plugins.json`) runs detached under `nohup`, writing its `--json` output to `~/.cache/codex-review/<job>/`. A 10 s poll follows it. Output that does not match Codex's review schema is shown as raw text, never guessed. Codex never gets `--write`.
+The codex plugin's companion (`codex-companion.mjs`, found through `installed_plugins.json`) runs detached under `nohup`, writing its `--json` output to `~/.cache/codex-review/<job>/`. A 10 s poll follows it. Output that does not match Codex's review schema is shown as raw text, never guessed. Codex never gets `--write`. When Codex cannot start (for example, Claude Code's permission check refuses the detached launch), the job says `Codex did not start: <why>`.
 
 ## Configuration
 

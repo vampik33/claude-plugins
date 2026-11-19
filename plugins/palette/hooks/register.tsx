@@ -145,10 +145,28 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  on("skill.prompt", async ($, e, next) => {
-    // counted aside: the store's read and write never hold up the call
-    void countUse($, `command:${e.skill}`);
-    return next(e);
+  // a skill the model calls. Not skill.prompt: an organization-managed Claude
+  // Code skips that hook for plugins it doesn't list. A typed /skill counts
+  // through command.run; a skill preloaded into a subagent counts nowhere.
+  on("tool.call", { tool: "Skill" }, async ($, e, next) => {
+    const r = await next(e);
+    // a refused or failed call (a hook's deny; a permission refusal or an unknown
+    // skill reads isError) ran no skill
+    if ("deny" in r || r.isError) return r;
+    // the skill as resolved (`deploy` may run `plugin:deploy`), as the pane lists it;
+    // a hook's own answer may leave the name out
+    const res: unknown = r.result;
+    const ran =
+      typeof res === "object" &&
+      res !== null &&
+      "commandName" in res &&
+      typeof res.commandName === "string" &&
+      res.commandName !== ""
+        ? res.commandName
+        : e.skill;
+    // counted aside: the store never holds up the call
+    void countUse($, `command:${ran}`);
+    return r;
   });
 
   on("agent.spawn", async ($, e, next) => {

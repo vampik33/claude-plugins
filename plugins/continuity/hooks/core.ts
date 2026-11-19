@@ -322,6 +322,16 @@ export const compactInstructions = (note: string) =>
     asRecord(note),
   ].join("\n");
 
+/**
+ * The row a /compact leaves after its summary: the note as it stood before. It
+ * opens with the note's tag, so a later note doesn't count it as a prompt.
+ */
+export const compactedNote = (path: string, note: string) =>
+  [
+    asRecord(note),
+    `It was written just before this compaction and is also saved at ${path}.`,
+  ].join("\n");
+
 /** The prompt that starts the turn after the handover. */
 export const continuePrompt = (path: string, note: string) =>
   [

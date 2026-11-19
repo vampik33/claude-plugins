@@ -4,6 +4,12 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.12] - 2026-11-19
+
+### Fixed
+- README: the codex line sits just above continuity's context gauge (effort-pilot's line under that), not between watchdog and fleet; the `x` and `o` hotkeys are terminal-only
+- README: says a job that cannot start reports `Codex did not start: <why>`
+
 ## [0.3.11] - 2026-11-17
 
 ### Fixed

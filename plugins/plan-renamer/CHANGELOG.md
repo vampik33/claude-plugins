@@ -4,6 +4,12 @@ All notable changes to the plan-renamer plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.5] - 2026-11-19
+
+### Fixed
+- README: install with `claude plugin install plan-renamer@vampik-plugins` instead of `claude plugin add …`, which is not a Claude Code command
+- README: describes `/rename-plans` and how it finds and names files instead of the ExitPlanMode hook removed in v1.2.0
+
 ## [1.2.4] - 2026-11-12
 
 ### Changed

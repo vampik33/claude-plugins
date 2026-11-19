@@ -43,7 +43,7 @@ Add `plugins/<name>/.claude-plugin/plugin.json` plus a `.claude-plugin/marketpla
 
 - **Only telegram-notifier has shell hooks**: the mods' `hooks/` hold a TypeScript module instead; claudemd-gen, explain-changes, gtr and plan-renamer are command+skill only (plan-renamer's ExitPlanMode hook was removed in v1.2.0)
 - **The `scripts/lib/` shared libraries are telegram-notifier-specific**: `config.sh`, `html.sh`, `session.sh`, `yaml.sh` live under telegram-notifier's hooks — they are not cross-plugin shared code
-- **gtr has no CHANGELOG.md**: Unlike other plugins, gtr is missing its changelog
+- **gtr's CHANGELOG.md starts at 1.0.1**: changes before it were not recorded
 - **Daily-review issues and PRs** (`Daily review <date>` issue, branch `daily-review/<date>-main`) are made remotely without a checkout: before merging, rebase onto `main`, add a test, bump the version in both manifests and add the CHANGELOG entry. The repo doesn't delete merged branches.
 
 ## Updating a Plugin

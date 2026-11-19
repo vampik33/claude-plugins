@@ -45,11 +45,11 @@ claude plugin install fleet@vampik-plugins
 
 Named agents (agent teams) go idle between turns: they show as done without a toast.
 
-A shell that ends without a notification (a restart, a kill) stays shown as running unless `lostShells` is on. That option marks it lost through the classic `Stop` hook, which does not run where an organization manages Claude Code (only plugins the organization lists run classic hooks there): there each skipped `Stop` puts a warning in the transcript, so leave it off.
+A shell whose notification fleet never sees (one sent while its hooks reloaded, or one another plugin dropped) is marked lost (`?`) once no process has held its output file for two looks in a row, about 10 s, so the batch still closes and its all-done alert comes; a notification that arrives later still sets its real status. This needs `lsof` or `fuser` on PATH; without either, such a shell stays shown as running. A command that closes its own stdout and stderr while it runs (`exec >/dev/null 2>&1`) reads as ended.
 
 ## How It Works
 
-`agent.spawn` and `tool.call` record agents and their last tool, and each background shell with the output file its result names; every 5 s while one runs, the file is checked and its last 4 KB read when it grew; `$.agent.list()` is polled every 2 s while any runs; a turn's end and task notifications (the `prompt.submit` the engine raises for each) report finishes at once; with `lostShells` on, at each turn's end a background shell no longer in the engine's in-flight list is marked lost (`?`), its exit unknown; worktrees come from `git worktree list` every 15 s while the pane is shown.
+`agent.spawn` and `tool.call` record agents and their last tool, and each background shell with the output file its result names; every 5 s while one runs, the file is checked and its last 4 KB read when it grew; `$.agent.list()` is polled every 2 s while any runs; a turn's end and task notifications (the `prompt.submit` the engine raises for each) report finishes at once; on the same 5 s look, `lsof -w -t` (else `fuser -s`) tells which live shells' output files no process holds, and a shell free at two looks in a row is marked lost (`?`), its exit unknown; worktrees come from `git worktree list` every 15 s while the pane is shown.
 
 ## Configuration
 
@@ -59,6 +59,4 @@ A shell that ends without a notification (a restart, a kill) stays shown as runn
 | `sound` | `true` | chime on failure and all done |
 | `telegram` | `true` | Telegram summary when away |
 | `idleMinutes` | `5` | away after this long since your last prompt |
-| `lostShells` | `false` | mark lost a shell that ended with no notification (classic `Stop` hook; leave off where an organization manages Claude Code) |
-
 Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).

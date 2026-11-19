@@ -2,6 +2,18 @@
  * Property tests for fleet/hooks/core.ts pure functions.
  */
 import { describe, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
+import {
+  chmodSync,
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import fc from "fast-check";
 
 import {
@@ -9,6 +21,7 @@ import {
   etaMs,
   fmtElapsed,
   fmtLeft,
+  heldArgv,
   lastLine,
   nextProgress,
   parseProgress,
@@ -391,4 +404,127 @@ describe("shell output", () => {
       { numRuns: 3000 },
     );
   });
+});
+
+/**
+ * heldArgv's script, run for real by sh on a PATH holding only `sh` and the
+ * tools a case names. A fake tool answers by the file's directory: `held`
+ * exits 0, `free` exits 1 quietly, `err` exits 1 with a message, `odd` exits 3.
+ */
+describe("heldArgv", () => {
+  const FAKE = `#!/bin/sh
+for a; do f=$a; done
+case $f in
+  */held/*) exit 0 ;;
+  */free/*) exit 1 ;;
+  */err/*) echo "no such file" >&2; exit 1 ;;
+  *) exit 3 ;;
+esac
+`;
+  /** Every file fake fuser is asked about is free: shows when lsof was skipped. */
+  const ALL_FREE = "#!/bin/sh\nexit 1\n";
+
+  function run(files: string[], tools: Record<string, string>) {
+    const dir = mkdtempSync(`${tmpdir()}/fleet-held-`);
+    symlinkSync(Bun.which("sh")!, `${dir}/sh`);
+    for (const [name, body] of Object.entries(tools)) {
+      if (body.startsWith("/")) symlinkSync(body, `${dir}/${name}`);
+      else {
+        writeFileSync(`${dir}/${name}`, body);
+        chmodSync(`${dir}/${name}`, 0o755);
+      }
+    }
+    const p = Bun.spawnSync(heldArgv(files), { env: { PATH: dir } });
+    rmSync(dir, { recursive: true });
+    return {
+      exitCode: p.exitCode,
+      stdout: p.stdout.toString(),
+      stderr: p.stderr.toString(),
+    };
+  }
+
+  const MIX = [
+    "/t/held/a.output",
+    "/t/free/b.output",
+    "/t/err/c.output",
+    "/t/odd/d.output",
+    "/t/free/e f.output",
+  ];
+  const FREE_OUT = "/t/free/b.output\n/t/free/e f.output\n";
+
+  test("with lsof: only the files it quietly finds no holder for, in order", () => {
+    expect(run(MIX, { lsof: FAKE })).toEqual({
+      exitCode: 0,
+      stdout: FREE_OUT,
+      stderr: "",
+    });
+  });
+
+  test("with fuser alone: the same", () => {
+    expect(run(MIX, { fuser: FAKE })).toEqual({
+      exitCode: 0,
+      stdout: FREE_OUT,
+      stderr: "",
+    });
+  });
+
+  test("with both, lsof answers", () => {
+    expect(run(MIX, { lsof: FAKE, fuser: ALL_FREE }).stdout).toBe(FREE_OUT);
+  });
+
+  test("with neither: exit 2, nothing printed", () => {
+    expect(run(MIX, {})).toEqual({ exitCode: 2, stdout: "", stderr: "" });
+  });
+
+  test("no files: exit 0, nothing printed", () => {
+    expect(run([], { lsof: FAKE })).toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+  });
+
+  test("any file name comes back verbatim, free ones only, in order", () => {
+    const name = fc
+      .string({ minLength: 1, maxLength: 24 })
+      .filter((s) => !/[\n\0/]/.test(s));
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.constantFrom("held", "free", "err", "odd"), name), {
+          maxLength: 6,
+        }),
+        (items) => {
+          const files = items.map(([kind, n]) => `/t/${kind}/${n}`);
+          const r = run(files, { lsof: FAKE });
+          expect(r.exitCode).toBe(0);
+          expect(r.stdout).toBe(
+            files.filter((f) => f.startsWith("/t/free/")).map((f) => `${f}\n`).join(""),
+          );
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  /** The system's tools: a file a live process writes to is held, one nobody opened is free. */
+  for (const tool of ["lsof", "fuser"] as const)
+    test.skipIf(!Bun.which(tool))(`the real ${tool}: held and free files`, async () => {
+      const dir = mkdtempSync(`${tmpdir()}/fleet-real-`);
+      mkdirSync(`${dir}/x`);
+      const held = `${dir}/x/held.output`;
+      const free = `${dir}/x/free.output`;
+      writeFileSync(free, "");
+      const fd = openSync(held, "w");
+      const child = spawn("sleep", ["30"], { stdio: ["ignore", fd, fd] });
+      closeSync(fd);
+      try {
+        const r = run([held, free, `${dir}/x/missing.output`], {
+          [tool]: Bun.which(tool)!,
+        });
+        expect(r).toEqual({ exitCode: 0, stdout: `${free}\n`, stderr: "" });
+      } finally {
+        child.kill();
+        rmSync(dir, { recursive: true });
+      }
+    });
 });

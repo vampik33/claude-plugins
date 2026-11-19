@@ -28,12 +28,6 @@
       "title": "Away after (minutes)",
       "description": "How long since your last prompt before the Telegram summary is sent",
       "default": 5
-    },
-    "lostShells": {
-      "type": "boolean",
-      "title": "Mark vanished shells lost",
-      "description": "At each turn's end, mark lost (?) a background shell that ended with no notification. Uses the classic Stop hook, which is skipped, with a warning in the transcript, where an organization manages Claude Code",
-      "default": false
     }
   }
 }

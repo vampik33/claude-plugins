@@ -4,6 +4,11 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.3] - 2026-11-19
+
+### Fixed
+- README: the `s` and `u` hotkeys are noted as terminal-only; the desktop app has no hotkey badges
+
 ## [0.5.2] - 2026-11-13
 
 ### Fixed

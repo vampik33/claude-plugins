@@ -4,6 +4,11 @@ All notable changes to the memory-watch plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.9] - 2026-11-19
+
+### Fixed
+- README: the `m` hotkey is noted as terminal-only; in the desktop app the button is clicked
+
 ## [0.1.8] - 2026-11-13
 
 ### Fixed

@@ -4,6 +4,11 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-11-19
+
+### Fixed
+- README: effort-pilot's line, when installed, sits below the gauge, and codex-review's just above it
+
 ## [0.4.0] - 2026-11-13
 
 ### Added

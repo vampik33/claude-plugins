@@ -4,6 +4,8 @@
 # check-credentials.sh, update-activity.sh, session-notification.sh,
 # send-telegram.sh, summarize-transcript.sh
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   PLUGIN_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   SCRIPTS="$PLUGIN_DIR/hooks/scripts"
@@ -88,6 +90,45 @@ EOF
   run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
   [ "$status" -eq 2 ]
   [[ "$output" == *"TELEGRAM_BOT_TOKEN"* ]]
+}
+
+# Claude Code shows only the first stderr line of a failing hook
+@test "check-credentials: missing-credentials error is one line of valid JSON" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  unset TELEGRAM_BOT_TOKEN
+  unset TELEGRAM_CHAT_ID
+  run --separate-stderr bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
+  [ "$status" -eq 2 ]
+  [ "$output" = "" ]
+  [ "${#stderr_lines[@]}" -eq 1 ]
+  [ "$(jq -r .error <<< "$stderr")" = "Missing Telegram credentials: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID" ]
+  [[ "$(jq -r .systemMessage <<< "$stderr")" == *"(TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID)"* ]]
+}
+
+@test "check-credentials: missing-dependency error is one line of valid JSON" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  # PATH with every system tool except curl (jq is needed before the check)
+  local nocurl="$BATS_TEST_TMPDIR/nocurl"
+  mkdir -p "$nocurl"
+  local f
+  for f in /usr/bin/* /bin/*; do
+    [[ "$(basename "$f")" == curl ]] && continue
+    ln -sf "$f" "$nocurl/" 2>/dev/null || true
+  done
+  run --separate-stderr env PATH="$nocurl" bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"s1"}'
+  [ "$status" -eq 2 ]
+  [ "$output" = "" ]
+  [ "${#stderr_lines[@]}" -eq 1 ]
+  [ "$(jq -r .error <<< "$stderr")" = "Missing dependencies: curl" ]
+  [[ "$(jq -r .systemMessage <<< "$stderr")" == *$'\n\n- jq:'* ]]
 }
 
 @test "check-credentials: cleans up stale session files" {

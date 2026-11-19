@@ -5,6 +5,11 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.4] - 2026-11-19
+
+### Fixed
+- SessionStart hook printed its missing-credentials and missing-dependency errors as multi-line JSON, and Claude Code shows only the first line of a failing hook's stderr, so the error read just `{`; each error is now one line
+
 ## [1.9.3] - 2026-11-19
 
 ### Fixed

@@ -51,12 +51,8 @@ command -v curl &> /dev/null || MISSING_DEPS+=("curl")
 
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
   DEPS_LIST=$(IFS=", "; echo "${MISSING_DEPS[*]}")
-  cat >&2 <<EOF
-{
-  "error": "Missing dependencies: $DEPS_LIST",
-  "systemMessage": "Telegram Notifier plugin: Missing required dependencies ($DEPS_LIST). Install them to use Telegram notifications:\n\n- jq: https://jqlang.github.io/jq/download/\n- curl: Usually pre-installed on most systems"
-}
-EOF
+  # One line: Claude Code shows only the first line of a failing hook's stderr
+  printf '{"error": "Missing dependencies: %s", "systemMessage": "Telegram Notifier plugin: Missing required dependencies (%s). Install them to use Telegram notifications:\\n\\n- jq: https://jqlang.github.io/jq/download/\\n- curl: Usually pre-installed on most systems"}\n' "$DEPS_LIST" "$DEPS_LIST" >&2
   exit 2
 fi
 
@@ -67,12 +63,8 @@ MISSING_CREDS=()
 
 if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
   CREDS_LIST=$(IFS=", "; echo "${MISSING_CREDS[*]}")
-  cat >&2 <<EOF
-{
-  "error": "Missing Telegram credentials: $CREDS_LIST",
-  "systemMessage": "Telegram Notifier plugin: Missing required environment variables ($CREDS_LIST). See README.md for setup instructions."
-}
-EOF
+  # One line: Claude Code shows only the first line of a failing hook's stderr
+  printf '{"error": "Missing Telegram credentials: %s", "systemMessage": "Telegram Notifier plugin: Missing required environment variables (%s). See README.md for setup instructions."}\n' "$CREDS_LIST" "$CREDS_LIST" >&2
   exit 2
 fi
 

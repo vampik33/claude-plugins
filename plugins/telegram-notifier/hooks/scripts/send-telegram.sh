@@ -8,6 +8,9 @@ set -euo pipefail
 # Debug: Set TELEGRAM_NOTIFIER_DEBUG=1 to print the payload and the response
 # (never `set -x`: the trace would print the bot token wherever it is expanded)
 
+# Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace, for the same reason
+{ set +x; } 2>/dev/null
+
 MESSAGE="${1:-}"
 
 if [[ -z "$MESSAGE" ]]; then

@@ -20,7 +20,9 @@ if [[ "$ENABLED_STATUS" != "true" ]]; then
   exit 0
 fi
 
-# Check credentials are present (skip silently if not)
+# Check credentials are present (skip silently if not), with tracing off: a
+# `bash -x` trace would print the bot token
+{ set +x; } 2>/dev/null
 [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && exit 0
 [[ -z "${TELEGRAM_CHAT_ID:-}" ]] && exit 0
 

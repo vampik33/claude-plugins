@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Debug mode (`TELEGRAM_NOTIFIER_DEBUG=1`) no longer prints the bot token: `send-telegram.sh` drops `set -x` (it traced the credential check, which expands the token), and `check-credentials.sh` turns tracing off around its credential check, whose trace went to the hook output
+- Running a hook script under `bash -x` (or with `SHELLOPTS=xtrace` exported) no longer prints the bot token: `send-telegram.sh` turns tracing off before it reads the token, and so does `update-activity.sh` before its credential check
 
 ### Fixed
 - `/telegram` passes the message through a quoted heredoc, so quotes, `$` and backticks in it stay text instead of running as shell

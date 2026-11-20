@@ -214,6 +214,30 @@ describe("band", () => {
     });
   }
 
+  test("promptCacheTtl from the merged settings, a policy's included, sets the clock", async ($, on) => {
+    engine(on, { read: 80_000, write: 1_000 });
+    const engineOn = on as any;
+    engineOn("command.register", () => ({ value: undefined }));
+    engineOn("session.start", (_$: unknown, e: unknown) => e);
+    engineOn("settings.read", () => ({ value: { promptCacheTtl: "5m" } }));
+    await $.session.start({ cwd: "/r" } as never);
+    await measure($);
+    await step($);
+    const ui = await $.ui.mount({
+      plugin: "continuity",
+      surface: "terminal",
+      ...BAND,
+    });
+    expect(
+      await ui.find({
+        in: "continuity-gauge",
+        type: "Text",
+        text: /^[45]:\d\d$/,
+      }),
+    ).toBeDefined();
+    await ui.unmount();
+  });
+
   test("a request that hit the cache starts a ticking clock on the gauge's line", async ($, on) => {
     engine(on, { read: 80_000, write: 1_000 });
     await measure($);

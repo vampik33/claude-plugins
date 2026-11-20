@@ -6,8 +6,7 @@
   },
   "metadata": {
     "description": "A collection of Claude Code plugins for development workflows",
-    "version": "1.0.0",
-    "homepage": "https://github.com/vampik33/claude-plugins"
+    "version": "1.0.0"
   },
   "plugins": [
     {

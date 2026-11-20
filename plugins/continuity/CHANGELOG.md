@@ -4,6 +4,13 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.4] - 2026-11-20
+
+### Fixed
+- A continue prompt that a hook or the engine refuses (it resolves `{ drop }`, it does not reject) is told in a toast, and the handover no longer reports "continuing" when it did not; the same after a usage limit resets
+- `promptCacheTtl` is read with `$.settings.read`, so managed policy and `--settings` count, not only the user, project and local files
+- With `HOME` unset the handover fails with a reason instead of writing a literal `~` folder into the working directory
+
 ## [0.4.3] - 2026-11-20
 
 ### Fixed

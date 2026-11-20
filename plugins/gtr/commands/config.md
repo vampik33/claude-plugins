@@ -18,7 +18,7 @@ Manage git-worktree-runner configuration.
 ## Process
 
 1. Parse arguments from `$ARGUMENTS` - subcommand, key, and value
-2. Execute: `git gtr config "$ARGUMENTS"`
+2. Execute: `git gtr config <args>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one
 
 ## Subcommands
 

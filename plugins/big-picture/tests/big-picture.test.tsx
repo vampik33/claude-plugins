@@ -931,6 +931,19 @@ describe("session", () => {
     expect(seen.opens).toEqual([]);
   });
 
+  test("no HOME: no page under /tmp, the command says why", async ($, on) => {
+    const { seen } = engine(on, { env: { HOME: "" } });
+    const r = await $.command.run({
+      command: "big-picture",
+      args: "",
+    } as never);
+    expect((r as { text: string }).text).toBe(
+      "Could not write the summary page: Error: HOME is not set",
+    );
+    expect([...seen.files.keys()]).toEqual([]);
+    expect(seen.opens).toEqual([]);
+  });
+
   test("a page path with a space is opened as one encoded URL", async ($, on) => {
     const { seen } = engine(on, { env: { HOME: "/h/my home" } });
     await $.command.run({ command: "big-picture", args: "" } as never);

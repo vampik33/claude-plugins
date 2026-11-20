@@ -4,6 +4,14 @@ All notable changes to the effort-pilot plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-11-20
+
+### Fixed
+- Jev's level is held to the `maxEffortLevel` setting: a `turn.step` rewrite has no documented clamp, so a cap of `high` no longer lets Jev send `xhigh` or `max`
+
+### Added
+- `network.hosts` in `plugin.json` names `api.typesafe.ai`, where Jev is asked (the validator can't see it: the URL is an imported constant)
+
 ## [0.3.1] - 2026-11-19
 
 ### Fixed

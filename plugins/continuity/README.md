@@ -35,7 +35,7 @@ cache 4:31     red from 10%, with one toast: send a message to keep it warm
 ```
 
 - `turn.step` records each main-loop request's cache read/write; the countdown starts from that request's start.
-- The lifetime follows Claude Code's order: `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL`, `promptCacheTtl` in settings, `ENABLE_PROMPT_CACHING_1H`, then 1h on a subscription and 5m otherwise. A cache hit after more than 5 minutes proves 1h; a miss proves 5m.
+- The lifetime follows Claude Code's order: `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL`, `promptCacheTtl` in settings (as Claude Code merges them, managed policy included), `ENABLE_PROMPT_CACHING_1H`, then 1h on a subscription and 5m otherwise. A cache hit after more than 5 minutes proves 1h; a miss proves 5m.
 
 ### Cache hit rate
 

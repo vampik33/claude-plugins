@@ -4,6 +4,11 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.2] - 2026-11-20
+
+### Fixed
+- `/palette` and the refresh button no longer fail when `$.session.root()` does: project commands are then looked for under the cwd, and with neither known the pane opens with no project group
+
 ## [0.5.1] - 2026-11-19
 
 ### Fixed

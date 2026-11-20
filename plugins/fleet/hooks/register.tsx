@@ -290,11 +290,18 @@ function ensureShellPoll($: EngineInterface, t: Tracker) {
     t.shellPoll = $.clock.every(SHELL_POLL_MS, () => void watchShells($, t));
 }
 
-/** Stops a background shell the way the model would, through TaskStop. */
+/** Stops a background shell the way the model would, through TaskStop; a refusal says why. */
 async function stopShell($: EngineInterface, id: string): Promise<void> {
-  await $.tool
+  // a refused call resolves { deny } (a permission rule, sec-default), it does not reject
+  const r = await $.tool
     .call({ tool: "TaskStop", task_id: id } as never)
-    .catch(() => $.ui.toast(`fleet: could not stop ${id}`));
+    .catch((err: unknown) => ({
+      deny: err instanceof Error ? err.message : String(err),
+    }));
+  const why =
+    r.deny ??
+    ("isError" in r && r.isError ? (r.text ?? "TaskStop failed") : undefined);
+  if (why !== undefined) $.ui.toast(`fleet: could not stop ${id}: ${why}`);
 }
 
 /** A task notification or a turn's end: one agent or shell reached `status`. */

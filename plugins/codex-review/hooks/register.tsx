@@ -501,7 +501,8 @@ export const register: Register = (on, options) => {
     return { text: await startReview($, t, cmd.mode, cmd.focus) };
   });
 
-  on("tool.call", { tool: TOOL }, async ($, e, next) => {
+  // served once the call is allowed, so the session's permission rules hold over it
+  on("tool.run", { tool: TOOL }, async ($, e, next) => {
     const mode: CxMode =
       str(e.mode) === "standard" ? "standard" : "adversarial";
     const cwd = str(e.cwd) ?? (await $.session.cwd().catch(() => undefined));
@@ -527,6 +528,22 @@ export const register: Register = (on, options) => {
         isError: true,
       };
     return { result: toolText(done) };
+  }).catch(($, e, next) =>
+    next.called
+      ? next(e)
+      : { result: "codex-review failed to run the review.", isError: true },
+  );
+
+  // /clear starts a new conversation: its session commits start at today's HEAD
+  on("session.end", async ($, e, next) => {
+    if (e.reason === "clear") {
+      const head = await repoHead(
+        $,
+        await $.session.cwd().catch(() => undefined),
+      );
+      await update($, cx, (s) => ({ ...s, sessionHead: head }));
+    }
+    return next(e);
   });
 
   // listed in the prompt's tools from the start, not behind ToolSearch
@@ -672,7 +689,9 @@ export const register: Register = (on, options) => {
     const close = () => $.ui.close({ id: PANE });
     const send = async (text: string) => {
       await close();
-      await $.prompt.submit({ text });
+      const { drop } = await $.prompt.submit({ text });
+      if (drop !== undefined)
+        $.ui.toast(`Codex findings were not sent to Claude: ${drop}`);
     };
 
     if (!job.review) {

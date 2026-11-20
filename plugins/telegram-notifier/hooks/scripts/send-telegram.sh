@@ -5,12 +5,11 @@ set -euo pipefail
 # Usage: send-telegram.sh "message"
 # Returns: 0 on success, 1 on failure
 # Output: JSON response on success, error message on failure
-# Debug: Set TELEGRAM_NOTIFIER_DEBUG=1 for verbose output
+# Debug: Set TELEGRAM_NOTIFIER_DEBUG=1 to print the payload and the response
+# (never `set -x`: the trace would print the bot token wherever it is expanded)
 
-# Debug mode support
-if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-  set -x
-fi
+# Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace, for the same reason
+{ set +x; } 2>/dev/null
 
 MESSAGE="${1:-}"
 
@@ -39,17 +38,13 @@ if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   echo "Payload: $JSON_PAYLOAD" >&2
 fi
 
-# Send with timeout and capture response
-# Disable tracing to prevent token leak in debug mode
-{ set +x; } 2>/dev/null
-RESPONSE=$(curl -s -m 10 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+# Send with timeout and capture response; 8 s keeps it inside the Stop hook's 10 s
+RESPONSE=$(curl -s --connect-timeout 5 -m 8 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
   -d "$JSON_PAYLOAD" 2>&1) || {
   echo "Error: curl failed" >&2
   exit 1
 }
-# Re-enable tracing if debug mode is on
-if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then set -x; fi
 
 if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   echo "Response: $RESPONSE" >&2

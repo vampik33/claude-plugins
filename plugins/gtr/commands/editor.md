@@ -19,7 +19,7 @@ Open a worktree directory in the configured code editor.
 
 1. Parse arguments from `$ARGUMENTS` - branch name and optional `--editor` flag
 2. Verify worktree exists with `git gtr list`
-3. Execute: `git gtr editor "$ARGUMENTS"`
+3. Execute: `git gtr editor <args>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one
 
 ## Examples
 

@@ -4,6 +4,13 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.13] - 2026-11-20
+
+### Fixed
+- The CodexReview tool is served at `tool.run`, after Claude Code's permission check, instead of at `tool.call` ahead of it: an ask or deny rule on `mcp__codex-review__CodexReview` now holds, so Claude cannot start a review (which sends the diff to OpenAI) past a rule that refuses it
+- Sending findings to Claude says why in a toast when the prompt is refused, instead of closing the pane silently
+- `/clear` restarts "Session commits" at the HEAD of the moment, instead of keeping the first conversation's start
+
 ## [0.3.12] - 2026-11-19
 
 ### Fixed

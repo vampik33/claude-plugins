@@ -76,7 +76,7 @@ If `.fix-findings/ledger.json` exists with `status` `running`, resume from it an
 }
 ```
 
-- `sessionId` is this session's id, exactly as shown. The Stop hook ignores a ledger that names another session.
+- `sessionId` is this session's id, exactly as shown. The turn-end hook ignores a ledger that names another session.
 - `status` is `running`, `converged` or `stopped`.
 - `reviews` lists the `HEAD` each review judged, in order.
 - `state` is `open` until the finding is settled, then `fixed`, `invalid` or `pre-existing`. A `pre-existing` finding is reported, not fixed, and does not keep the loop going.

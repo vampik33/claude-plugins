@@ -1,5 +1,5 @@
 ---
-name: Telegram Messaging
+name: telegram-messaging
 description: This skill should be used when the user asks about sending Telegram messages, setting up Telegram notifications, configuring Telegram bot tokens or chat IDs, enabling automatic session notifications, troubleshooting "chat not found" or "unauthorized" errors, fixing notifications not sending, or using the /telegram command. Covers credential setup, telegram-notifier.local.md configuration, idle threshold tuning, and debug mode.
 ---
 

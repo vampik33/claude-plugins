@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from "claude-code";
 import type { EffortContext, EffortLevel, Step, Verdict } from "../types";
 import {
   bandOrder,
+  capLevel,
   configuredEffort,
   footerLine,
   isLevel,
@@ -132,10 +133,21 @@ async function decide(
   }
   // A held request's level (ultrathink, a skill's) is not the session's.
   const sessionLevel = last && !last.held ? last.session : undefined;
-  const v = await askJev(
-    $,
-    jevRequest(prompt, ctx, m, sessionLevel ?? (await configuredLevel($, m))),
-  );
+  // no documented clamp on a turn.step rewrite: hold Jev to the setting here
+  const capRead = $.settings
+    .read({ key: "maxEffortLevel" })
+    .catch(() => undefined);
+  const [asked, cap] = await Promise.all([
+    askJev(
+      $,
+      jevRequest(prompt, ctx, m, sessionLevel ?? (await configuredLevel($, m))),
+    ),
+    capRead,
+  ]);
+  const v: Verdict =
+    asked.kind === "jev"
+      ? { ...asked, level: capLevel(asked.level, cap) }
+      : asked;
   await Promise.all([
     update($, verdict, () => ({ ...v, turnId })),
     update($, context, (c) => withPrompt(c ?? EMPTY, prompt)),

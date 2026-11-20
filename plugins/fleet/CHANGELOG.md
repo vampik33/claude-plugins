@@ -4,6 +4,14 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.1] - 2026-11-20
+
+### Fixed
+- The pane's stop button says why in a toast when Claude Code refuses or fails the TaskStop call (a permission rule, an organization's sec-default); a refusal resolves `{ deny }` rather than rejecting, so it was silent before
+
+### Added
+- `network.hosts` in `plugin.json` names `api.telegram.org`, where the away summary goes
+
 ## [0.6.0] - 2026-11-19
 
 ### Changed

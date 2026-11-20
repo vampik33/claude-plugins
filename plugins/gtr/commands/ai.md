@@ -19,7 +19,7 @@ Launch an AI coding tool in the specified worktree directory.
 
 1. Parse arguments from `$ARGUMENTS` - branch name and optional `--ai` flag
 2. Verify worktree exists with `git gtr list`
-3. Execute: `git gtr ai "$ARGUMENTS"`
+3. Execute: `git gtr ai <args>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one
 
 **Nested Claude Warning**: If running from within Claude Code with default AI tool `claude`, this will spawn a nested instance which may break TTY/input. Consider `--ai aider` or use a separate terminal.
 

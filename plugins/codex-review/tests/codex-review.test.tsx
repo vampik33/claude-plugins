@@ -374,6 +374,10 @@ function engine(
     launchDenied?: string;
     /** Refuse every git command with this reason */
     gitDenied?: string;
+    /** The HEAD `git rev-parse` answers (default abc1234def) */
+    head?: () => string;
+    /** Refuse every submitted prompt with this reason */
+    submitDrop?: string;
   } = {},
 ) {
   const seen = {
@@ -394,6 +398,7 @@ function engine(
   on("tool.register", () => ({ value: undefined }));
   on("session.cwd", () => ({ value: "/r/deployer" }));
   on("session.start", (_$: unknown, e: { cwd: string }) => ({ cwd: e.cwd }));
+  on("session.end", () => ({ sessionId: "s1" }));
   on("fs.read", (_$: unknown, e: { path: string }) => ({
     value: e.path.endsWith("installed_plugins.json")
       ? JSON.stringify({
@@ -431,7 +436,7 @@ function engine(
         ? fail()
         : ok(
             rest.includes("HEAD")
-              ? "/r/deployer\nabc1234def\n"
+              ? `/r/deployer\n${opts.head?.() ?? "abc1234def"}\n`
               : "/r/deployer\n",
           );
     if (cmd === "git" && rest[0] === "rev-list")
@@ -482,12 +487,10 @@ function engine(
       { value: undefined }
     ),
   );
-  on(
-    "prompt.submit",
-    (_$: unknown, e: { text: string }) => (
-      seen.submitted.push(e.text),
-      { text: e.text }
-    ),
+  on("prompt.submit", (_$: unknown, e: { text: string }) =>
+    opts.submitDrop
+      ? { drop: opts.submitDrop }
+      : (seen.submitted.push(e.text), { text: e.text }),
   );
   on("command.run", () => ({ text: "" }));
   return { seen, clock };
@@ -686,6 +689,27 @@ describe("session", () => {
     expect(seen.submitted.length).toBe(2);
   });
 
+  test("a send the prompt refuses says why", async ($, on) => {
+    const { seen, clock } = engine(on, JSON.stringify(REAL), {
+      submitDrop: "a Stop hook stands",
+    });
+    await $.command.run({ command: "cx", args: "" } as never);
+    seen.alive = false;
+    await clock.advance(10_000);
+    const ui = await $.ui.mount({
+      plugin: "codex-review",
+      surface: "terminal",
+      component: "Pane",
+      requestId: "codex-review",
+      props: PANE_PROPS,
+    });
+    await ui.press({ key: "verify" });
+    expect(seen.toasts.at(-1)).toBe(
+      "Codex findings were not sent to Claude: a Stop hook stands",
+    );
+    await ui.unmount();
+  });
+
   test("the CodexReview tool is listed up front, not behind ToolSearch", async ($, on) => {
     engine(on, JSON.stringify(REAL));
     on("tool.describe", (_$: unknown, e: { description: string }) => ({
@@ -825,6 +849,19 @@ describe("session", () => {
     expect(seen.launch).toEqual(["--base", "abc1234def"]);
   });
 
+  test("session commits: /clear starts them again at the HEAD of the moment", async ($, on) => {
+    let head = "abc1234def";
+    const { seen } = engine(on, JSON.stringify(REAL), {
+      answer: "Session commits",
+      head: () => head,
+    });
+    await $.session.start({ cwd: "/r/deployer" } as never);
+    head = "fedcba9876";
+    await $.session.end({ reason: "clear" } as never);
+    await $.command.run({ command: "cx", args: "" } as never);
+    expect(seen.launch).toEqual(["--base", "fedcba9876"]);
+  });
+
   test("session commits: none yet, or no start recorded", async ($, on) => {
     const none = engine(on, "", { answer: "Session commits", ahead: "0" });
     let r = await $.command.run({ command: "cx", args: "" } as never);
@@ -918,6 +955,20 @@ describe("session", () => {
     const parsed = JSON.parse(r.result!);
     expect(parsed.codexRan).toBe(true);
     expect(parsed.findings[0].severity).toBe("high");
+  });
+
+  test("a CodexReview call the permission check refuses starts no review", async ($, on) => {
+    const { seen } = engine(on, JSON.stringify(REAL));
+    on("tool.check", { tool: "mcp__codex-review__CodexReview" }, () => ({
+      decision: "deny",
+      reason: "not allowed here",
+    }));
+    const r = (await $.tool.call({
+      tool: "mcp__codex-review__CodexReview",
+    } as never)) as { isError?: boolean; result?: string };
+    expect(r.isError).toBe(true);
+    expect(r.result).toContain("not allowed here");
+    expect(seen.started).toBe(0);
   });
 
   test("a refused launch says why Codex did not start", async ($, on) => {

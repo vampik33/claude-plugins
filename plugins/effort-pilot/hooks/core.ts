@@ -271,6 +271,10 @@ export function stepEffort(
   return verdict.confidence >= MIN_CONFIDENCE ? verdict.level : session;
 }
 
+/** Jev's level held to the `maxEffortLevel` setting; a cap that is not a level holds nothing. */
+export const capLevel = (level: EffortLevel, cap: unknown): EffortLevel =>
+  isLevel(cap) && LEVELS.indexOf(level) > LEVELS.indexOf(cap) ? cap : level;
+
 /** A model id as a short name: `claude-opus-5-5` → `opus-5-5`. */
 export const shortModel = (m: string) => m.replace(/^claude-/, "");
 

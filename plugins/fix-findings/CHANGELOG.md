@@ -4,6 +4,12 @@ All notable changes to the fix-findings plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] - 2026-11-20
+
+### Fixed
+- `plugin.json` names the `$.state` contract (`"types": "./types/index.d.ts"`), as the other mods do
+- The description, README and skill say "turn-end hook" for what has been a `turn.complete` hook since 0.2.2, not "Stop hook"
+
 ## [0.2.2] - 2026-11-20
 
 ### Fixed

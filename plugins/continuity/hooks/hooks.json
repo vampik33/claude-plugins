@@ -1,4 +1,4 @@
 {
-  "description": "continuity: session.measure keeps the context gauge; turn.complete past the threshold writes a handover note, compacts after a 5 s grace and submits a continue prompt; session.compact adds the note to every compaction; classic.StopFailure on rate_limit schedules the resume",
+  "description": "continuity: session.measure keeps the context gauge; turn.complete past the threshold writes a handover note, compacts after a 5 s grace and submits a continue prompt; command.run on /compact writes the note and adds it after the summary; turn.complete on an API error at a used-up usage limit schedules the resume",
   "modules": ["./register.tsx"]
 }

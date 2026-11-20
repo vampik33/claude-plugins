@@ -4,6 +4,11 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.3] - 2026-11-20
+
+### Fixed
+- The hooks module's description no longer names the `session.compact` and classic `StopFailure` hooks that 0.4.2 replaced with `command.run` and `turn.complete`
+
 ## [0.4.2] - 2026-11-19
 
 ### Fixed

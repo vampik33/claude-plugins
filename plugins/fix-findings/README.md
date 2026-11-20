@@ -31,8 +31,8 @@ A real defect the change did not introduce is marked `pre-existing`: reported, n
 
 ## The Stop hook
 
-If Claude tries to end a turn while `.fix-findings/ledger.json` in the session's working directory says `running`, the hook sends it back with what is still open. It does so once per turn and not while background work is in flight, so it cannot hold a session forever. A ledger whose `sessionId` names another session is ignored.
+If Claude ends a turn while `.fix-findings/ledger.json` in the session's working directory says `running`, the hook sends it back with a prompt naming what is still open. It does so once per turn that you or a background task started, never for a turn it started itself, and not while a subagent is still running, so it cannot hold a session forever. A ledger whose `sessionId` names another session is ignored.
 
-`classic.*` hooks don't run where an organization manages Claude Code. There the skill still works, without the hook.
+The hook uses `turn.complete` and `$.prompt.submit`, not the classic `Stop` hook, so it also works where an organization manages Claude Code (there classic hooks run only for plugins the organization lists). It sees subagents in flight but not background shells: a turn that ends waiting on a shell is sent back once. If its prompt is refused, a toast says why and the next turn may try again.
 
 The hook needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).

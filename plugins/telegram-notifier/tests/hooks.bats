@@ -578,6 +578,53 @@ EOF
   [ "$output" = $'• Edited: a&lt;1&gt;.rs, b.rs\n• Created: new.md\n• Ran: cargo' ]
 }
 
+@test "summarize-transcript: keeps quotes and backslashes in file names" {
+  unset LAST_ASSISTANT_MESSAGE
+  local t="$BATS_TEST_TMPDIR/quotes.jsonl"
+  # an apostrophe name comes first, as it once hid every other name (xargs read it as quoting)
+  cat > "$t" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/a'b.ts"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/w/c.ts"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/w/d\"e\\f&.ts"}},{"type":"tool_use","name":"Write","input":{"file_path":"/w/x'y.md","content":"x"}},{"type":"tool_use","name":"Write","input":{"file_path":"/w/z.md","content":"x"}}]}}
+EOF
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Edited: a\'b.ts, c.ts, d"e\\f&amp;.ts\n• Created: x\'y.md, z.md' ]
+}
+
+@test "summarize-transcript: keeps a double quote in a created file name" {
+  unset LAST_ASSISTANT_MESSAGE
+  local t="$BATS_TEST_TMPDIR/dquote.jsonl"
+  cat > "$t" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/w/a\"b\\c.md","content":"x"}},{"type":"tool_use","name":"Write","input":{"file_path":"/w/sub/b.md","content":"x"}}]}}
+EOF
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Created: a"b\\c.md, b.md' ]
+}
+
+@test "summarize-transcript: names the first word of each command line, skipping internal ones" {
+  unset LAST_ASSISTANT_MESSAGE
+  local t="$BATS_TEST_TMPDIR/bash.jsonl"
+  cat > "$t" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd /x && make\nls\n  npm run build && cat y"}},{"type":"tool_use","name":"Bash","input":{"command":"echo hi"}}]}}
+EOF
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Ran: ls, npm' ]
+}
+
+@test "summarize-transcript: skips a line that isn't JSON" {
+  unset LAST_ASSISTANT_MESSAGE
+  local t="$BATS_TEST_TMPDIR/broken.jsonl"
+  cat > "$t" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/a.ts"}}]}}
+{"type":"assistant","message":{"con
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/b.ts"}}]}}
+EOF
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Edited: a.ts, b.ts' ]
+}
+
 @test "summarize-transcript: returns empty for missing transcript" {
   run bash "$SCRIPTS/summarize-transcript.sh" "$BATS_TEST_TMPDIR/nonexistent.jsonl"
   [ "$status" -eq 0 ]

@@ -4,7 +4,9 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
+import type { EffortLevel } from "../../plugins/effort-pilot/types";
 import {
+  capLevel,
   configuredEffort,
   cut,
   cutTail,
@@ -58,6 +60,19 @@ describe("parseJev", () => {
     );
     fc.assert(fc.property(fc.string(), (s) => void parseJev(s)));
     fc.assert(fc.property(fc.json(), (s) => void parseJev(s)));
+  });
+});
+
+describe("capLevel", () => {
+  test("never above a cap that is a level; otherwise the level as it was", () => {
+    fc.assert(
+      fc.property(level, fc.oneof(level, fc.anything()), (l, cap) => {
+        const held = capLevel(l, cap);
+        if (typeof cap === "string" && (LEVELS as readonly string[]).includes(cap))
+          expect(held).toBe(LEVELS.indexOf(l) > LEVELS.indexOf(cap as EffortLevel) ? cap : l);
+        else expect(held).toBe(l);
+      }),
+    );
   });
 });
 

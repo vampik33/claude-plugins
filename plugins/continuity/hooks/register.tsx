@@ -247,16 +247,14 @@ async function armResume($: EngineInterface, t: Tracker, resumeAt: number) {
     async () => {
       t.resume = undefined;
       await setPhase($, "idle");
-      let why: string | undefined;
-      try {
-        why = (
-          await $.prompt.submit({
-            text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
-          })
-        ).drop;
-      } catch (err) {
-        why = err instanceof Error ? err.message : String(err);
-      }
+      const why = await $.prompt
+        .submit({
+          text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
+        })
+        .then(
+          (r) => r.drop,
+          (err) => (err instanceof Error ? err.message : String(err)),
+        );
       if (why !== undefined)
         $.ui.toast(`The usage limit reset, but continuing was refused: ${why}`);
     },

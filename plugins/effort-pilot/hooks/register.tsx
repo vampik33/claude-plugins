@@ -133,13 +133,16 @@ async function decide(
   }
   // A held request's level (ultrathink, a skill's) is not the session's.
   const sessionLevel = last && !last.held ? last.session : undefined;
+  // no documented clamp on a turn.step rewrite: hold Jev to the setting here
+  const capRead = $.settings
+    .read({ key: "maxEffortLevel" })
+    .catch(() => undefined);
   const [asked, cap] = await Promise.all([
     askJev(
       $,
       jevRequest(prompt, ctx, m, sessionLevel ?? (await configuredLevel($, m))),
     ),
-    // no documented clamp on a turn.step rewrite: hold Jev to the setting here
-    $.settings.read({ key: "maxEffortLevel" }).catch(() => undefined),
+    capRead,
   ]);
   const v: Verdict =
     asked.kind === "jev"

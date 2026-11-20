@@ -18,7 +18,7 @@ Copy or sync files from the main repository to worktrees.
 ## Process
 
 1. Parse arguments from `$ARGUMENTS` - target, flags, and patterns after `--`
-2. Execute: `git gtr copy "$ARGUMENTS"`
+2. Execute: `git gtr copy <args>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one
 3. Report copied files
 
 **Important**: File patterns must be preceded by `--` separator.

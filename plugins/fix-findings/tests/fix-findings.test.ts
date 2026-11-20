@@ -15,6 +15,8 @@ const running = (over = {}) =>
 type Opts = {
   cwd?: string;
   agents?: { status: string }[];
+  /** Runs while the mod waits on the agent list. */
+  listing?: () => void;
   /** How the mod's own prompt is refused: dropped by a hook, or the call throws. */
   refuse?: () => "drop" | "throw" | undefined;
 };
@@ -29,7 +31,10 @@ function engine(on: any, file: () => string | null, opts: Opts = {}) {
   clock = mock.clock(on);
   on("session.cwd", () => ({ value: opts.cwd ?? CWD }));
   on("session.id", () => ({ value: ME }));
-  on("agent.list", () => ({ value: opts.agents ?? [] }));
+  on("agent.list", () => {
+    opts.listing?.();
+    return { value: opts.agents ?? [] };
+  });
   on("fs.read", (_$: unknown, e: { path: string }) => {
     const text = e.path === `${CWD}/.fix-findings/ledger.json` ? file() : null;
     if (text === null) throw new Error("ENOENT");
@@ -163,6 +168,22 @@ test("a prompt typed into the running turn does not reset the send-back", async 
 for (const status of ["pending", "running"]) {
   test(`a ${status} agent lets the turn end`, async ($: any, on: any) => {
     const sent = engine(on, () => running(), { agents: [{ status }] });
+    await turnEnd($);
+    expect(sent).toHaveLength(0);
+  });
+}
+
+for (const [what, after] of [
+  ["another session takes the ledger over", { sessionId: OTHER }],
+  ["the loop converges", { status: "converged" }],
+] as const) {
+  test(`no send-back when ${what} while agents are listed`, async ($: any, on: any) => {
+    let text = running();
+    const sent = engine(on, () => text, {
+      listing: () => {
+        text = running(after);
+      },
+    });
     await turnEnd($);
     expect(sent).toHaveLength(0);
   });

@@ -23,6 +23,18 @@ async function sendBack($: EngineInterface, text: string) {
   $.ui.toast(`fix-findings could not send Claude back to the loop: ${why}`);
 }
 
+/** The prompt that sends the model back, while a ledger this session owns still runs. */
+async function continuation($: EngineInterface): Promise<string | undefined> {
+  let text: string;
+  try {
+    text = await $.fs.read(`${await $.session.cwd()}${LEDGER_SUFFIX}`);
+  } catch {
+    return undefined; // no ledger, no loop
+  }
+  if (!ownedBy(text, await $.session.id())) return undefined;
+  return reprompt(parseLedger(text));
+}
+
 /**
  * Not classic.Stop: an organization-managed Claude Code skips the classic hooks
  * of plugins it doesn't list. So the model is sent back with a prompt after the
@@ -45,17 +57,13 @@ export const register: Register = (on) => {
     if (e.agentId || e.reason !== "answer" || (await read($, continued)))
       return r;
 
-    let text: string;
-    try {
-      text = await $.fs.read(`${await $.session.cwd()}${LEDGER_SUFFIX}`);
-    } catch {
-      return r; // no ledger, no loop
-    }
-    if (!ownedBy(text, await $.session.id())) return r;
-    const block = reprompt(parseLedger(text));
-    if (!block) return r;
+    // list agents only for a loop this session runs
+    if (!(await continuation($))) return r;
     // work still in flight will wake it
     if ((await $.agent.list()).some((a) => BUSY.has(a.status))) return r;
+    // the ledger may have changed while the agents were listed: send what it says now
+    const block = await continuation($);
+    if (!block) return r;
     await update($, continued, () => true);
     // a plugin's prompt runs once the session is idle, after this turn ends: don't wait on it here
     void sendBack($, block).catch(() => {});

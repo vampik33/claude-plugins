@@ -73,7 +73,9 @@ const setStatus = ($: EngineInterface, s: SummaryStatus) =>
   update($, status, () => s);
 
 async function pagePath($: EngineInterface): Promise<string> {
-  const home = (await $.env.get("HOME").catch(() => undefined)) ?? "/tmp";
+  const home = await $.env.get("HOME").catch(() => undefined);
+  // never a predictable page under /tmp, where anyone can plant the folder first
+  if (!home) throw new Error("HOME is not set");
   return `${home}/.claude/big-picture/${await $.session.id()}.html`;
 }
 
@@ -318,21 +320,24 @@ async function restore($: EngineInterface): Promise<void> {
   if (s.kind !== "ready") return;
   isBig = true;
   lastWrittenAt = s.at;
-  lastSummary = await $.fs.read(await pagePath($)).catch(() => undefined);
+  lastSummary = await pagePath($)
+    .then((path) => $.fs.read(path))
+    .catch(() => undefined);
 }
 
 /** Opens the page in the default browser, a placeholder before any summary; what it says, and whether it opened. */
 async function show(
   $: EngineInterface,
 ): Promise<{ text: string; isOpened: boolean }> {
-  const path = await pagePath($);
+  let path: string | undefined;
   try {
+    path = await pagePath($);
     if (!(await $.fs.exists(path).catch(() => false)))
       await writePage($, placeholderHtml(PLACEHOLDER));
   } catch (err) {
     // a failed write is said, not thrown: the command and the band's press both show it
     return {
-      text: `Could not write the summary page ${path}: ${String(err)}`,
+      text: `Could not write the summary page${path ? ` ${path}` : ""}: ${String(err)}`,
       isOpened: false,
     };
   }

@@ -4,6 +4,14 @@ All notable changes to the big-picture plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.4] - 2026-11-20
+
+### Fixed
+- With `HOME` unset (or empty) the summary page is not written: `/big-picture` and the band say why, instead of a page at the predictable `/tmp/.claude/big-picture/<session>.html`
+
+### Added
+- `network.hosts` in `plugin.json` names `api.typesafe.ai` (Jev) and `cdn.jsdelivr.net` (the page's Mermaid)
+
 ## [0.5.3] - 2026-11-19
 
 ### Fixed

@@ -18,7 +18,7 @@ Execute a shell command within the context of a worktree directory.
 ## Process
 
 1. Parse arguments from `$ARGUMENTS` - first arg is branch, rest is command
-2. Execute: `git gtr run "$ARGUMENTS"`
+2. Execute: `git gtr run <args>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one (an argument the user quoted, such as `"npm install && npm test"`, stays one word)
 3. Display output and exit status
 
 **Caution**: This executes arbitrary shell commands. Be careful with destructive commands.

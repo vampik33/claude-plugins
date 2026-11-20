@@ -18,7 +18,7 @@ Remove one or more git worktrees.
 ## Process
 
 1. Parse arguments from `$ARGUMENTS` - branch/worktree name and flags
-2. Execute: `git gtr rm "$ARGUMENTS"`
+2. Execute: `git gtr rm <args>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one
 3. Report result; optionally show remaining worktrees
 
 Note: Use `--yes` for non-interactive removal.

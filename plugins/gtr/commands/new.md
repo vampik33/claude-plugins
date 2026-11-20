@@ -18,7 +18,7 @@ Create a new git worktree using git-worktree-runner.
 ## Process
 
 1. Parse arguments from `$ARGUMENTS` - branch name and optional flags
-2. Execute: `git gtr new "$ARGUMENTS"`
+2. Execute: `git gtr new <args>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one
 3. Report result and suggest next steps: `/gtr:editor` or `/gtr:ai`
 
 ## Examples

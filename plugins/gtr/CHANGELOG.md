@@ -4,6 +4,11 @@ All notable changes to the gtr plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.3] - 2026-11-20
+
+### Fixed
+- `go` tells Claude to pass each argument as its own shell word, as the other commands do since 1.0.2: `git gtr go "$ARGUMENTS"` put the whole argument text inside one double-quoted word
+
 ## [1.0.2] - 2026-11-20
 
 ### Fixed

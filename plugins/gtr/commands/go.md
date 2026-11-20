@@ -20,7 +20,7 @@ Get the path to a worktree for navigation purposes.
 ## Process
 
 1. Parse branch name from `$ARGUMENTS`
-2. Execute: `git gtr go "$ARGUMENTS"`
+2. Execute: `git gtr go <branch-name>`, each parsed argument its own quoted shell word, never all of `$ARGUMENTS` quoted as one
 3. Provide copy-paste ready navigation command
 
 ## Shell Navigation

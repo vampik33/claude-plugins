@@ -72,6 +72,10 @@ async function isFirstParty($: EngineInterface): Promise<boolean> {
   return firstParty;
 }
 
+/** Whether Jev's level may apply on `model`: an effort change there keeps the cache. */
+const canSteer = async ($: EngineInterface, model: string) =>
+  keepsCacheOnChange(model, await isFirstParty($));
+
 /** Jev's level for the prompt, or why there is none; never waits past JEV_TIMEOUT_MS. */
 async function askJev($: EngineInterface, body: unknown): Promise<Verdict> {
   const key = await $.env.get("TYPESAFE_API_KEY").catch(() => undefined);
@@ -127,7 +131,7 @@ async function decide(
   ]);
   const m = model ?? last?.model;
   // Where a change would re-cache, Jev's level could never apply: don't ask.
-  if (m && !keepsCacheOnChange(m, await isFirstParty($))) {
+  if (m && !(await canSteer($, m))) {
     await update($, context, (c) => withPrompt(c ?? EMPTY, prompt));
     return;
   }
@@ -192,10 +196,12 @@ export const register: Register = (on) => {
 
   on("session.end", async ($, e, next) => {
     if (e.reason === "clear") {
-      await update($, verdict, () => null);
-      await update($, step, () => null);
-      await update($, context, () => EMPTY);
-      await update($, holds, () => NO_HOLDS);
+      await Promise.all([
+        update($, verdict, () => null),
+        update($, step, () => null),
+        update($, context, () => EMPTY),
+        update($, holds, () => NO_HOLDS),
+      ]);
     }
     return next(e);
   });
@@ -262,10 +268,10 @@ export const register: Register = (on) => {
   on("turn.step", async function* ($, e, next) {
     if (e.agentId !== undefined) return yield* next(e);
     // `last`: the previous main-loop request, whose level stays when Jev is unsure.
-    const [v, last, direct, was, envLevel] = await Promise.all([
+    const [v, last, keeps, was, envLevel] = await Promise.all([
       verdictFor($, e.turnId),
       read($, step),
-      isFirstParty($),
+      canSteer($, e.model),
       read($, holds),
       effortEnvLevel($),
     ]);
@@ -289,7 +295,7 @@ export const register: Register = (on) => {
       : h.held?.turnId === e.turnId
         ? h.held.by
         : undefined;
-    const steers = keepsCacheOnChange(e.model, direct) && !held;
+    const steers = keeps && !held;
     const sent = stepEffort(
       e.effort,
       v,
@@ -313,11 +319,11 @@ export const register: Register = (on) => {
   on("turn.complete", async ($, e, next) => {
     const r = await next(e);
     if (e.agentId !== undefined) return r;
-    await Promise.all([
+    const [, , s] = await Promise.all([
       update($, holds, (h = NO_HOLDS) => ({ ...h, running: null })),
       update($, context, (c) => withAnswer(c ?? EMPTY, e.answer)),
+      read($, step),
     ]);
-    const s = await read($, step);
     if (!s || s.turnId !== e.turnId) return r;
     const line = footerLine(s);
     return { ...r, text: r.text === e.answer ? line : `${r.text}\n${line}` };
@@ -325,10 +331,9 @@ export const register: Register = (on) => {
 
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e);
-    const s = await read($, step);
+    const [s, below] = await Promise.all([read($, step), next(e)]);
     const m = s?.model ?? (await $.session.model().catch(() => undefined));
-    if (!m) return next(e);
-    const below = await next(e);
+    if (!m) return below;
     const { Box, Text } = $.ui.resolve(e);
     const words = s ? verdictWords(s) : undefined;
     const row = (

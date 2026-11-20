@@ -62,21 +62,33 @@ fi
 # Fall through to tool-based extraction if no summary section found
 
 # Extract tool usage from transcript
-# The transcript is JSONL with assistant messages containing tool_use content blocks
+# The transcript is JSONL with assistant messages containing tool_use content blocks;
+# parse it once, keeping only each block's tool name, file_path and command
+TOOL_USES=$(jq -c 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | {name, file_path: .input.file_path, command: .input.command}' "$TRANSCRIPT_PATH" 2>/dev/null || true)
+
+# Print one field of each tool_use block of the named tool
+# Usage: tool_field "Edit" "file_path"
+tool_field() {
+  jq -r --arg name "$1" --arg field "$2" 'select(.name==$name) | .[$field] // empty' <<< "$TOOL_USES" 2>/dev/null
+}
+
+# Escape each input line and join the lines with ", "
+join_escaped() {
+  while IFS= read -r line; do escape_html "$line"; done | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g'
+}
 
 # Get edited files (Edit tool)
-EDITED_FILES=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Edit") | .input.file_path // empty' "$TRANSCRIPT_PATH" 2>/dev/null | \
+EDITED_FILES=$(tool_field Edit file_path | sort -u | \
   xargs -I {} basename {} 2>/dev/null | \
   sort -u | head -5 || echo "")
 
 # Get created files (Write tool)
-CREATED_FILES=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Write") | .input.file_path // empty' "$TRANSCRIPT_PATH" 2>/dev/null | \
-  grep -v '^$' | \
+CREATED_FILES=$(tool_field Write file_path | sort -u | \
   xargs -I {} basename {} 2>/dev/null | \
   sort -u | head -5 || echo "")
 
 # Get bash commands (extract meaningful ones, skip internal commands)
-BASH_COMMANDS=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash") | .input.command // empty' "$TRANSCRIPT_PATH" 2>/dev/null | \
+BASH_COMMANDS=$(tool_field Bash command | \
   grep -vE "^(find |ls |cat |head |tail |echo |pwd|cd )" 2>/dev/null | \
   head -5 | \
   sed 's/&&.*//' | \
@@ -84,21 +96,17 @@ BASH_COMMANDS=$(jq -r 'select(.type=="assistant") | .message.content[]? | select
   sort -u || echo "")
 
 # Get read files count
-READ_COUNT=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Read") | .input.file_path // empty' "$TRANSCRIPT_PATH" 2>/dev/null | \
+READ_COUNT=$(tool_field Read file_path | \
   wc -l | tr -d ' ' || echo "0")
 
 # Build summary parts
 SUMMARY_PARTS=()
 
 # Count edited files (grep -c . counts non-empty lines only)
-if [[ -n "$EDITED_FILES" ]]; then
-  EDIT_COUNT=$(echo "$EDITED_FILES" | grep -c . || echo 0)
-else
-  EDIT_COUNT=0
-fi
+EDIT_COUNT=$(grep -c . <<< "$EDITED_FILES" || true)
 if [[ "$EDIT_COUNT" -gt 0 ]]; then
   if [[ "$EDIT_COUNT" -le 3 ]]; then
-    EDIT_LIST=$(echo "$EDITED_FILES" | while IFS= read -r f; do escape_html "$f"; done | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+    EDIT_LIST=$(echo "$EDITED_FILES" | join_escaped)
     SUMMARY_PARTS+=("Edited: $EDIT_LIST")
   else
     SUMMARY_PARTS+=("Edited $EDIT_COUNT files")
@@ -106,29 +114,20 @@ if [[ "$EDIT_COUNT" -gt 0 ]]; then
 fi
 
 # Count created files (grep -c . counts non-empty lines only)
-if [[ -n "$CREATED_FILES" ]]; then
-  CREATE_COUNT=$(echo "$CREATED_FILES" | grep -c . || echo 0)
-else
-  CREATE_COUNT=0
-fi
+CREATE_COUNT=$(grep -c . <<< "$CREATED_FILES" || true)
 if [[ "$CREATE_COUNT" -gt 0 ]]; then
   if [[ "$CREATE_COUNT" -le 2 ]]; then
-    CREATE_LIST=$(echo "$CREATED_FILES" | while IFS= read -r f; do escape_html "$f"; done | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+    CREATE_LIST=$(echo "$CREATED_FILES" | join_escaped)
     SUMMARY_PARTS+=("Created: $CREATE_LIST")
   else
     SUMMARY_PARTS+=("Created $CREATE_COUNT files")
   fi
 fi
 
-# Add bash commands summary (grep -c . counts non-empty lines only)
+# Add bash commands summary
 if [[ -n "$BASH_COMMANDS" ]]; then
-  CMD_COUNT=$(echo "$BASH_COMMANDS" | grep -c . || echo 0)
-else
-  CMD_COUNT=0
-fi
-if [[ "$CMD_COUNT" -gt 0 ]]; then
   # Extract first word of each command for summary
-  CMD_SUMMARY=$(echo "$BASH_COMMANDS" | awk '{print $1}' | sort -u | head -3 | while IFS= read -r c; do escape_html "$c"; done | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+  CMD_SUMMARY=$(echo "$BASH_COMMANDS" | awk '{print $1}' | sort -u | head -3 | join_escaped)
   if [[ -n "$CMD_SUMMARY" ]]; then
     SUMMARY_PARTS+=("Ran: $CMD_SUMMARY")
   fi

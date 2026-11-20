@@ -109,7 +109,7 @@ Set `status` to `stopped`, with `stopReason`, when:
 - round 3 is finished and the latest review still raised something. Findings that keep coming after three rounds point at the approach, not at more lines to fix: name the defect classes that recurred and ask the user whether to rethink the approach;
 - a product decision is needed, or a gate cannot run.
 
-While `status` is `running`, a Stop hook sends you back once per turn if you try to end early. To end for a reason above, set `status` first.
+While `status` is `running`, a hook sends you back once if you end a turn early, but not from a turn it started. To end for a reason above, set `status` first.
 
 ## Report
 

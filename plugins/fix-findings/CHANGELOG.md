@@ -4,6 +4,15 @@ All notable changes to the fix-findings plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.2] - 2026-11-20
+
+### Fixed
+- The Stop hook no longer gets skipped where an organization manages Claude Code: it sends the model back from `turn.complete` with `$.prompt.submit`, not from the classic `Stop` hook, which the organization's `cc-plugin-sec-default` runs only for plugins it lists
+
+### Changed
+- The send-back is a prompt from the fix-findings plugin after the turn ends, rather than a block of the stop; it still comes once per turn that you or a background task started, and a refused prompt shows a toast and frees it for the next turn
+- It waits while a subagent is pending or running, but no longer sees background shells
+
 ## [0.2.1] - 2026-11-19
 
 ### Fixed

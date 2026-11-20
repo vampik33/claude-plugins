@@ -111,9 +111,6 @@ EDITED_FILES=$(tool_entries E | sort -u | head -5 || echo "")
 # Get created files (Write tool)
 CREATED_FILES=$(tool_entries W | sort -u | head -5 || echo "")
 
-# Get bash commands (first words of meaningful ones; internal commands skipped above)
-BASH_COMMANDS=$(tool_entries B | sort -u || echo "")
-
 # Get read files count
 READ_COUNT=$(tool_entries R)
 
@@ -142,13 +139,10 @@ if [[ "$CREATE_COUNT" -gt 0 ]]; then
   fi
 fi
 
-# Add bash commands summary
-if [[ -n "$BASH_COMMANDS" ]]; then
-  # Extract first word of each command for summary
-  CMD_SUMMARY=$(echo "$BASH_COMMANDS" | awk '{print $1}' | sort -u | head -3 | join_escaped)
-  if [[ -n "$CMD_SUMMARY" ]]; then
-    SUMMARY_PARTS+=("Ran: $CMD_SUMMARY")
-  fi
+# Add bash commands summary (jq already kept only first words of meaningful commands)
+CMD_SUMMARY=$(tool_entries B | sort -u | head -3 | join_escaped)
+if [[ -n "$CMD_SUMMARY" ]]; then
+  SUMMARY_PARTS+=("Ran: $CMD_SUMMARY")
 fi
 
 # If nothing significant, mention exploration

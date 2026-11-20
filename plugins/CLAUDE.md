@@ -22,6 +22,7 @@ Mod gotchas:
 - `$.fs.read` rejects files over 4 MiB, and long session logs exceed that: read a log's tail with `$.process.run(["sh","-c",'… tail -c N "$f"'])` (tool-lens `logTailArgv`), or a known path with no shell (chat-view `transcriptTailArgv`)
 - `$.session.compact` is refused inside a `command.run` hook; defer it with `$.clock.after(0, …)`
 - `classic.*`, `session.compact` and `skill.prompt` hooks don't run where an organization manages Claude Code; say so in the mod's README
+- `classic.Stop` has no blocking replacement: send the model back with `$.prompt.submit` from `turn.complete` (fix-findings `sendBack`). The mod's own submitted prompt still reaches its `prompt.submit` hook (origin `{ kind: 'plugin', name }`), and a refused one resolves `{ drop }` instead of rejecting, so check `.drop` as well as catching
 - Tests: loop UI mounts over `['terminal','desktop'] as const`; use `$.clock.now()` (not `Date.now()`) so the mocked clock applies; fire `session.start` again on the same state to simulate a reload
 - Desktop surface: a proportional font (`█░` reads as a hatched strip, space-padded columns drift) and native Buttons that show a `hotkey` as a badge. Draw a bar there as an `Svg` from the hook, since `Client` modules have no `Svg` (`ClientElements` is the terminal's table less `Client`/`Raster`/`Image`)
 - A `Client`'s `surface.every` ticks on real time, not `mock.clock`: assert a Client's text at mount, don't advance the clock to see it move

@@ -5,6 +5,12 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.7] - 2026-11-20
+
+### Changed
+- The Stop hook's transcript summary parses the transcript once instead of once per tool, and runs `basename` once per distinct file instead of once per edit: on a 112 MB transcript it took 1.1 s instead of 9 s, well inside the hook's 10 s
+- `lib/config.sh` looks up the project and user configs in one loop instead of two copies of the same block; `summarize-transcript.sh` joins its file and command lists through one helper; `update-activity.sh` no longer runs `mkdir -p /tmp`
+
 ## [1.9.6] - 2026-11-20
 
 ### Security

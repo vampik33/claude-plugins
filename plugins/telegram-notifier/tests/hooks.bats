@@ -566,6 +566,18 @@ EOF
   [[ "$output" == *"Edited"* ]] || [[ "$output" == *"Created"* ]] || [[ "$output" == *"Ran"* ]]
 }
 
+@test "summarize-transcript: lists each file and command once, HTML-escaped" {
+  unset LAST_ASSISTANT_MESSAGE
+  local t="$BATS_TEST_TMPDIR/dupes.jsonl"
+  local i
+  for i in 1 2 3; do
+    echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/p/b.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/q/a<1>.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"/p/new.md","content":"x"}},{"type":"tool_use","name":"Bash","input":{"command":"cargo test"}}]}}'
+  done > "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Edited: a&lt;1&gt;.rs, b.rs\n• Created: new.md\n• Ran: cargo' ]
+}
+
 @test "summarize-transcript: returns empty for missing transcript" {
   run bash "$SCRIPTS/summarize-transcript.sh" "$BATS_TEST_TMPDIR/nonexistent.jsonl"
   [ "$status" -eq 0 ]

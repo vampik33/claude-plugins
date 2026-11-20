@@ -4,6 +4,12 @@ All notable changes to the continuity plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.5] - 2026-11-20
+
+### Changed
+- Independent reads run together: the cache settings and environment at session start, the handover note's messages with its other facts, and the gauge and mode state at a turn's end and in `/continuity`
+- The `promptCacheTtl` setting and the `cacheTtl` option are checked by `ttl.ts`'s `asTtl` alone; the error text, the HH:MM time and the message fetch for a note each live in one place
+
 ## [0.4.4] - 2026-11-20
 
 ### Fixed

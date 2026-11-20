@@ -12,6 +12,8 @@ All checks (Lean proofs, property + differential tests, mod tests, telegram-noti
 
 One target: `claude plugin test plugins/<mod>`; `(cd verification && bun test props/<mod>)`; `bats plugins/telegram-notifier/tests`.
 
+Without `bats`/`shellcheck` installed: `npm i --prefix <scratch-dir> bats shellcheck`, then run both from `<scratch-dir>/node_modules/.bin`.
+
 `run.sh` stops at the first failing suite (`set -e`); fix it and rerun before reading later suites as passing.
 
 Without Lean (`lake`) installed, `run.sh` stops at the Lean step and `diff.lean.test.ts` fails with "no oracle"; run the other suites one target at a time.

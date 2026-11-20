@@ -59,11 +59,15 @@ async function refresh($: EngineInterface): Promise<void> {
     .usage({ breakdown: "summary" })
     .catch(() => undefined);
   const agents = usage?.context.breakdown?.agents ?? [];
-  // the project's .claude/ lies under its root, not wherever the session went
-  const root = await $.session.root();
+  // the project's .claude/ lies under its root, not wherever the session went;
+  // no root known: the cwd, and with neither no command is told apart as the project's
+  const root = await $.session
+    .root()
+    .catch(() => $.session.cwd())
+    .catch(() => undefined);
   const local = await Promise.all(
     commands
-      .filter((c) => c.source === "user")
+      .filter((c) => root !== undefined && c.source === "user")
       .map(async (c) => {
         const hits = await Promise.all(
           projectPaths(c.name).map((p) =>

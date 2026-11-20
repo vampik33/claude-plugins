@@ -281,6 +281,10 @@ function engine(
     compactText?: string;
     messages?: () => SessionMessage[];
     writeFails?: string;
+    /** Refuse every submitted prompt with this reason */
+    submitDrop?: string;
+    /** The environment's HOME; null leaves it unset */
+    home?: string | null;
   } = {},
 ) {
   const seen = {
@@ -295,7 +299,7 @@ function engine(
   };
   const start = Date.now();
   const clock = mock.clock(on, { now: start });
-  mock.env(on, { HOME: "/h" });
+  mock.env(on, opts.home === null ? {} : { HOME: opts.home ?? "/h" });
   on("ui.render", () => h("Box", null));
   on("command.register", () => ({ value: undefined }));
   on("session.start", (_$: unknown, e: unknown) => e);
@@ -348,12 +352,10 @@ function engine(
     await gate;
     return skip === undefined ? { messages: [user("summary")] } : { skip };
   });
-  on(
-    "prompt.submit",
-    (_$: unknown, e: { text: string }) => (
-      seen.submitted.push(e.text),
-      { text: e.text }
-    ),
+  on("prompt.submit", (_$: unknown, e: { text: string }) =>
+    opts.submitDrop
+      ? { drop: opts.submitDrop }
+      : (seen.submitted.push(e.text), { text: e.text }),
   );
   on(
     "prompt.suggest",
@@ -654,6 +656,42 @@ describe("session", () => {
     await clock.advance(3_600_000 + 60_000);
     expect(seen.submitted).toHaveLength(1);
     expect(seen.submitted[0]).toContain("Continue from this handover");
+  });
+
+  test("a refused continue prompt is told, not passed off as continuing", async ($, on) => {
+    const { seen, clock } = engine(on, 80, undefined, undefined, {
+      submitDrop: "a Stop hook stands",
+    });
+    await turnEnd($);
+    await clock.advance(5_000);
+    expect(seen.compacted).toHaveLength(1);
+    expect(seen.toasts).toContain(
+      "Compacted, but the continue prompt was refused: a Stop hook stands",
+    );
+  });
+
+  test("a refused continue after the usage limit is told", async ($, on) => {
+    const { seen, clock } = engine(on, 30, undefined, undefined, {
+      submitDrop: "busy",
+    });
+    await turnEnd($, { reason: "error" });
+    await clock.advance(3_600_000 + 60_000);
+    expect(seen.toasts).toContain(
+      "The usage limit reset, but continuing was refused: busy",
+    );
+  });
+
+  test("no HOME: the handover fails, and no ~ folder is written", async ($, on) => {
+    const { seen, clock } = engine(on, 80, undefined, undefined, {
+      home: null,
+    });
+    await turnEnd($);
+    await clock.advance(5_000);
+    expect(seen.written).toEqual([]);
+    expect(seen.compacted).toHaveLength(0);
+    expect(seen.toasts.some((t) => t.startsWith("Handover failed: HOME"))).toBe(
+      true,
+    );
   });
 
   test("/continuity off during a handover lets it compact but not continue", async ($, on) => {

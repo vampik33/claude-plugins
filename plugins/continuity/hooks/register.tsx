@@ -91,24 +91,12 @@ type CacheTracker = {
   toastTimer: { cancel: () => void } | undefined;
 };
 
+/** `promptCacheTtl` as the engine merges it: user, project, local, flag and policy settings. */
 async function readCacheSetting($: EngineInterface): Promise<unknown> {
-  const home = await $.env.get("HOME").catch(() => undefined);
-  const cwd = await $.session.cwd().catch(() => undefined);
-  const files = [
-    cwd && `${cwd}/.claude/settings.local.json`,
-    cwd && `${cwd}/.claude/settings.json`,
-    home && `${home}/.claude/settings.json`,
-  ];
-  for (const file of files) {
-    if (!file) continue;
-    try {
-      const value = JSON.parse(await $.fs.read(file)).promptCacheTtl;
-      if (value === "5m" || value === "1h") return value;
-    } catch {
-      // missing or unreadable: the next file
-    }
-  }
-  return undefined;
+  const value = await $.settings
+    .read({ key: "promptCacheTtl" })
+    .catch(() => undefined);
+  return value === "5m" || value === "1h" ? value : undefined;
 }
 
 async function readCacheEnv($: EngineInterface): Promise<CacheEnv> {
@@ -187,7 +175,9 @@ async function writeNote(
     todos: openTodos(messages),
     check: lastCheck(messages),
   });
-  const path = `${home ?? "~"}/.claude/handover/${sessionId}.md`;
+  // no HOME: fail through handover's error path, never a literal ~ folder in the cwd
+  if (!home) throw new Error("HOME is not set, so the note has nowhere to go");
+  const path = `${home}/.claude/handover/${sessionId}.md`;
   await $.fs.write(path, note + "\n");
   return { path, note };
 }
@@ -229,7 +219,14 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
     if (!wasPaused && (await read($, mode)).paused)
       return `Handover written to ${path}, compacted; continuity paused, not continuing.`;
     await setPhase($, "idle");
-    await $.prompt.submit({ text: continuePrompt(path, note) });
+    // a refused prompt resolves { drop }, it does not reject
+    const { drop } = await $.prompt.submit({
+      text: continuePrompt(path, note),
+    });
+    if (drop !== undefined) {
+      $.ui.toast(`Compacted, but the continue prompt was refused: ${drop}`);
+      return `Handover written to ${path}, compacted; the continue prompt was refused: ${drop}`;
+    }
     return `Handover written to ${path}, compacted, continuing.`;
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
@@ -250,9 +247,18 @@ async function armResume($: EngineInterface, t: Tracker, resumeAt: number) {
     async () => {
       t.resume = undefined;
       await setPhase($, "idle");
-      await $.prompt.submit({
-        text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
-      });
+      let why: string | undefined;
+      try {
+        why = (
+          await $.prompt.submit({
+            text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
+          })
+        ).drop;
+      } catch (err) {
+        why = err instanceof Error ? err.message : String(err);
+      }
+      if (why !== undefined)
+        $.ui.toast(`The usage limit reset, but continuing was refused: ${why}`);
     },
   );
 }

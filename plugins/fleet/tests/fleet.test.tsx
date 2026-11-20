@@ -415,7 +415,8 @@ function engine(
       return {
         value: {
           exitCode: holders.exitCode,
-          stdout: holders.exitCode === 0 ? free.map((f) => `${f}\n`).join("") : "",
+          stdout:
+            holders.exitCode === 0 ? free.map((f) => `${f}\n`).join("") : "",
           stderr: "",
           isStdoutTruncated: false,
           isStderrTruncated: false,
@@ -1069,6 +1070,37 @@ describe("shell progress", () => {
       },
     );
 
+  for (const deny of [true, false])
+    test(
+      `a stop TaskStop ${deny ? "refuses" : "fails"} says why in a toast`,
+      { options: { sound: false, telegram: false } },
+      async ($, on) => {
+        const { seen, clock, files } = engine(on, []);
+        on("tool.call", (_$: unknown, e: { tool: string; task_id?: string }) =>
+          e.tool !== "TaskStop"
+            ? bgResult("b1")
+            : deny
+              ? { deny: "TaskStop is not allowed" }
+              : { isError: true, result: "no such task", text: "no such task" },
+        );
+        await $.tool.call({ tool: "Bash", command: "python sim.py" } as never);
+        files["/tmp/t/b1.output"] = "";
+        await clock.advance(5_000);
+        const pane = await $.ui.mount({
+          plugin: "fleet",
+          surface: "terminal",
+          ...PANE,
+        });
+        await pane.press({ key: "fleet-stop-b1" });
+        expect(seen.toasts.at(-1)).toBe(
+          deny
+            ? "fleet: could not stop b1: TaskStop is not allowed"
+            : "fleet: could not stop b1: no such task",
+        );
+        await pane.unmount();
+      },
+    );
+
   test(
     "a reload picks the shell watch up again",
     { options: { sound: false, telegram: false } },
@@ -1101,7 +1133,12 @@ describe("shells that end unseen", () => {
   });
   const file = (id: string) => `/tmp/t/${id}.output`;
   /** Background shells b1, b2, … with empty output files. */
-  async function start($: any, on: any, files: Record<string, string>, commands: string[]) {
+  async function start(
+    $: any,
+    on: any,
+    files: Record<string, string>,
+    commands: string[],
+  ) {
     let n = 0;
     on("tool.call", () => bgResult(`b${++n}`));
     for (const command of commands) {

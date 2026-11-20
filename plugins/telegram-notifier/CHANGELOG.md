@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.7] - 2026-11-20
 
 ### Changed
-- The Stop hook's transcript summary parses the transcript once instead of once per tool, and runs `basename` once per distinct file instead of once per edit: on a 112 MB transcript it took 1.1 s instead of 9 s, well inside the hook's 10 s
+- The Stop hook's transcript summary reads the transcript in one streaming `jq` pass instead of one per tool, keeping only what it shows (file base names, the first word of up to five command lines, a count of reads) rather than whole commands, and takes base names in `jq` instead of running `basename` once per edit: a 112 MB transcript with 1,600 edits took 1.1 s instead of 5.3 s, well inside the hook's 10 s, and a 64 MB one of large Bash commands 0.6 s instead of 1.6 s, within 64 MB of memory
 - `lib/config.sh` looks up the project and user configs in one loop instead of two copies of the same block; `summarize-transcript.sh` joins its file and command lists through one helper; `update-activity.sh` no longer runs `mkdir -p /tmp`
+
+### Fixed
+- A file name with a quote or backslash in it (`Ed's.ts`) no longer drops itself and the names after it from the summary's Edited and Created lists: the names went through `xargs`, which reads quotes and backslashes as quoting
+- A transcript line that isn't valid JSON no longer ends the summary's tool extraction there: the lines after it still count
 
 ## [1.9.6] - 2026-11-20
 

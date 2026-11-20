@@ -62,14 +62,42 @@ fi
 # Fall through to tool-based extraction if no summary section found
 
 # Extract tool usage from transcript
-# The transcript is JSONL with assistant messages containing tool_use content blocks;
-# parse it once, keeping only each block's tool name, file_path and command
-TOOL_USES=$(jq -c 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | {name, file_path: .input.file_path, command: .input.command}' "$TRANSCRIPT_PATH" 2>/dev/null || true)
+# The transcript is JSONL with assistant messages containing tool_use content blocks.
+# One streaming jq pass keeps only what the summary shows, never whole commands:
+# - "E:"/"W:" the distinct base names of Edit/Write paths, taken in jq so quotes
+#   and backslashes in a name stay literal
+# - "B:" the first word of the first 5 Bash command lines that aren't internal
+#   commands (find, ls, cat, …), cut at "&&" and split on blanks as awk does
+# - "R:" the number of Read paths
+# A line that isn't valid JSON is skipped rather than ending the pass.
+TOOLS=$(jq -Rnr '
+  def lines: if . == "" then [""] else split("\n") end;
+  def base: if test("^/+$") then "/" else sub("/+$"; "") | sub(".*/"; "") end;
+  def paths: .input.file_path // empty | tostring | lines[];
+  def names: [paths | base | select(. != "")];
+  reduce (inputs | try fromjson catch empty
+      | select(type == "object" and .type == "assistant")
+      | .message.content[]? | select(type == "object" and .type == "tool_use")) as $t
+    ({e: {}, w: {}, b: [], r: 0};
+     . as $s | try (
+       if $t.name == "Edit" then reduce ($t | names[]) as $f (.; .e[$f] = 1)
+       elif $t.name == "Write" then reduce ($t | names[]) as $f (.; .w[$f] = 1)
+       elif $t.name == "Read" then .r += ([$t | paths] | length)
+       elif $t.name == "Bash" and (.b | length) < 5 then
+         .b += [limit(5 - (.b | length);
+           $t.input.command // empty | tostring | lines[]
+           | select(test("^(find |ls |cat |head |tail |echo |pwd|cd )") | not)
+           | sub("&&.*"; "") | capture("^[ \t]*(?<w>[^ \t]*)").w)]
+       else . end
+     ) catch $s)
+  | (.e | keys_unsorted[] | "E:" + .), (.w | keys_unsorted[] | "W:" + .),
+    (.b[] | "B:" + .), "R:\(.r)"
+' < "$TRANSCRIPT_PATH" 2>/dev/null || true)
 
-# Print one field of each tool_use block of the named tool
-# Usage: tool_field "Edit" "file_path"
-tool_field() {
-  jq -r --arg name "$1" --arg field "$2" 'select(.name==$name) | .[$field] // empty' <<< "$TOOL_USES" 2>/dev/null
+# Print the entries of one kind, without their tag
+# Usage: tool_entries E
+tool_entries() {
+  sed -n "s/^$1://p" <<< "$TOOLS"
 }
 
 # Escape each input line and join the lines with ", "
@@ -78,26 +106,16 @@ join_escaped() {
 }
 
 # Get edited files (Edit tool)
-EDITED_FILES=$(tool_field Edit file_path | sort -u | \
-  xargs -I {} basename {} 2>/dev/null | \
-  sort -u | head -5 || echo "")
+EDITED_FILES=$(tool_entries E | sort -u | head -5 || echo "")
 
 # Get created files (Write tool)
-CREATED_FILES=$(tool_field Write file_path | sort -u | \
-  xargs -I {} basename {} 2>/dev/null | \
-  sort -u | head -5 || echo "")
+CREATED_FILES=$(tool_entries W | sort -u | head -5 || echo "")
 
-# Get bash commands (extract meaningful ones, skip internal commands)
-BASH_COMMANDS=$(tool_field Bash command | \
-  grep -vE "^(find |ls |cat |head |tail |echo |pwd|cd )" 2>/dev/null | \
-  head -5 | \
-  sed 's/&&.*//' | \
-  awk '{print $1, $2}' | \
-  sort -u || echo "")
+# Get bash commands (first words of meaningful ones; internal commands skipped above)
+BASH_COMMANDS=$(tool_entries B | sort -u || echo "")
 
 # Get read files count
-READ_COUNT=$(tool_field Read file_path | \
-  wc -l | tr -d ' ' || echo "0")
+READ_COUNT=$(tool_entries R)
 
 # Build summary parts
 SUMMARY_PARTS=()

@@ -5,6 +5,21 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] - 2026-11-20
+
+### Security
+- Debug mode (`TELEGRAM_NOTIFIER_DEBUG=1`) no longer prints the bot token: `send-telegram.sh` drops `set -x` (it traced the credential check, which expands the token), and `check-credentials.sh` turns tracing off around its credential check, whose trace went to the hook output
+
+### Fixed
+- `/telegram` passes the message through a quoted heredoc, so quotes, `$` and backticks in it stay text instead of running as shell
+- curl gives up after 8 s (5 s to connect), inside the Stop hook's 10 s timeout, so a slow send fails with the script's own error
+- The hook commands quote `${CLAUDE_PLUGIN_ROOT}`, so a plugin path with spaces works
+- The skill's `name` is `telegram-messaging`, matching its folder
+
+### Added
+- `network.hosts` in `plugin.json` names `api.telegram.org`
+- README: the automatic notifications are classic hooks, which don't run where an organization allows only managed hooks; what the Stop notification sends
+
 ## [1.9.5] - 2026-11-19
 
 ### Fixed

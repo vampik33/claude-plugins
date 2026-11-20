@@ -61,10 +61,15 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
   exit 2
 fi
 
-# Check for credentials
+# Check for credentials, with tracing off: debug mode's trace goes to the hook
+# output and would print the bot token
+{ set +x; } 2>/dev/null
 MISSING_CREDS=()
 [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && MISSING_CREDS+=("TELEGRAM_BOT_TOKEN")
 [[ -z "${TELEGRAM_CHAT_ID:-}" ]] && MISSING_CREDS+=("TELEGRAM_CHAT_ID")
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
+  set -x
+fi
 
 if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
   CREDS_LIST=$(IFS=", "; echo "${MISSING_CREDS[*]}")

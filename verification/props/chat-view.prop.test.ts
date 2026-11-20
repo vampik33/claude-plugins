@@ -14,6 +14,7 @@ import {
   emptyTimes,
   fmtDuration,
   fmtTime,
+  KEEP,
   parseTranscript,
   promptText,
   stampReply,
@@ -21,6 +22,7 @@ import {
   turnRange,
   TRANSCRIPT_TAIL_BYTES,
   transcriptTailArgv,
+  withTime,
 } from "../../plugins/chat-view/hooks/core.ts";
 
 const epoch = fc.integer({ min: 1_000_000_000_000, max: 2_000_000_000_000 });
@@ -269,6 +271,52 @@ describe("cap (light)", () => {
       ),
       { numRuns: 500 },
     );
+  });
+});
+
+describe("withTime", () => {
+  const times = fc.record({
+    sent: fc.dictionary(fc.string(), epoch, { maxKeys: 20 }),
+    byText: fc.dictionary(fc.string(), epoch, { maxKeys: 20 }),
+    turns: fc.dictionary(fc.string(), epoch, { maxKeys: 20 }),
+    replies: fc.dictionary(fc.string(), epoch, { maxKeys: 20 }),
+    repliesByText: fc.dictionary(fc.string(), epoch, { maxKeys: 20 }),
+  });
+  const names = fc.subarray([
+    "sent",
+    "byText",
+    "turns",
+    "replies",
+    "repliesByText",
+  ] as const);
+
+  test("each named map gets the time under its key, capped; the others are untouched", () => {
+    fc.assert(
+      fc.property(times, names, fc.string(), epoch, (t, named, key, at) => {
+        const before = structuredClone(t);
+        const out = withTime(
+          t,
+          at,
+          Object.fromEntries(named.map((k) => [k, key])),
+        );
+        for (const k of Object.keys(t) as (keyof typeof t)[]) {
+          if (named.includes(k))
+            expect(out[k]).toEqual(cap({ ...t[k], [key]: at }));
+          else expect(out[k]).toBe(t[k]);
+        }
+        expect(t).toEqual(before);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  test("a full map drops its oldest entry for the new one", () => {
+    const t = emptyTimes();
+    for (let i = 0; i < KEEP; i++) t.sent[`old${i}`] = i;
+    const out = withTime(t, KEEP, { sent: "new" });
+    expect(Object.keys(out.sent).length).toBe(KEEP);
+    expect(out.sent.new).toBe(KEEP);
+    expect("old0" in out.sent).toBe(false);
   });
 });
 

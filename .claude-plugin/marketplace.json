@@ -24,7 +24,7 @@
     {
       "name": "telegram-notifier",
       "description": "Telegram notifications for Claude Code sessions - send messages manually or automatically after periods of inactivity",
-      "version": "1.9.6",
+      "version": "1.9.7",
       "author": {
         "name": "vampik33"
       },
@@ -84,7 +84,7 @@
     {
       "name": "chat-view",
       "description": "Your prompts as chat bubbles on the right of the terminal, with the send time under each; the time each reply started streaming; start → end times on each turn's duration line",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "author": {
         "name": "vampik33"
       },
@@ -96,7 +96,7 @@
     {
       "name": "fleet",
       "description": "A side pane with the session's subagents, background shells and worktrees, with alerts when they finish or fail",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "author": {
         "name": "vampik33"
       },
@@ -108,7 +108,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.3.13",
+      "version": "0.3.14",
       "author": {
         "name": "vampik33"
       },
@@ -120,7 +120,7 @@
     {
       "name": "continuity",
       "description": "Live context gauge, session length, prompt-cache countdown and hit rate; handover note, compaction and continue past a threshold; resume after a usage limit",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "author": {
         "name": "vampik33"
       },
@@ -144,7 +144,7 @@
     {
       "name": "palette",
       "description": "A side pane listing the session's agents, skills and commands; click one to put it in the prompt box",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "author": {
         "name": "vampik33"
       },
@@ -180,7 +180,7 @@
     {
       "name": "fix-findings",
       "description": "Prove review findings against the code and fix only the valid ones; `converge` repeats failing test, fix and independent review for up to three rounds, and a turn-end hook keeps the loop from ending early",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "author": {
         "name": "vampik33"
       },
@@ -192,7 +192,7 @@
     {
       "name": "effort-pilot",
       "description": "Jev picks the effort level for each prompt and the mod applies it on models where a change keeps the prompt cache; each answer ends with its model and effort, and the last band line shows them",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "author": {
         "name": "vampik33"
       },

@@ -28,9 +28,6 @@ fi
 
 # Update activity timestamp
 SESSION_FILE=$(get_session_file_path)
-SESSION_DIR="$(dirname "$SESSION_FILE")"
-
-mkdir -p "$SESSION_DIR" 2>/dev/null || true
 date +%s > "$SESSION_FILE" 2>/dev/null || true
 
 exit 0

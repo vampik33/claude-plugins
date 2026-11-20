@@ -194,7 +194,7 @@ describe("transitions", () => {
         status: "completed",
       },
     ];
-    const lost = loseShells(shells, new Set(["b2"]), T0 + 5_000);
+    const lost = loseShells(shells, new Set(["b1"]), T0 + 5_000);
     expect(lost.map((s) => [s.id, s.status, s.endedAt])).toEqual([
       ["b1", "lost", T0 + 5_000],
       ["b2", "running", undefined],

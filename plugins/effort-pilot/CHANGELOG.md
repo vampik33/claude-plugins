@@ -4,6 +4,11 @@ All notable changes to the effort-pilot plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-11-20
+
+### Changed
+- Internal cleanup with no change in behaviour: one helper decides whether Jev may steer a model, and independent state reads and writes run together (on `/clear`, at turn end, and in the band's render, which starts the rest of the band while it reads its step)
+
 ## [0.3.2] - 2026-11-20
 
 ### Fixed

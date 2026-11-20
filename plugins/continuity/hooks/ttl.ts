@@ -35,7 +35,7 @@ export type Color = "green" | "yellow" | "red";
 export const isOn = (v: string | undefined) =>
   v === "1" || v?.toLowerCase() === "true";
 
-const asTtl = (v: unknown): Ttl | undefined =>
+export const asTtl = (v: unknown): Ttl | undefined =>
   v === "5m" || v === "1h" ? v : undefined;
 
 /**

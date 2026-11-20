@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.2] - 2026-11-20
+
+### Changed
+- Cleanup with no change in behaviour: the progress text ("47% ~38m") and the agents' running/done/failed counts are each built in one place (`progressNote`, `tally`) for the band and the pane; the band's unreachable `shellNote` branches are gone; `loseShells` takes the shells to lose instead of the ones to keep; the 5 s shell look stats and tails the live shells' output at once instead of one after another; the band's state reads and the Telegram credentials' reads run together
+
 ## [0.6.1] - 2026-11-20
 
 ### Fixed

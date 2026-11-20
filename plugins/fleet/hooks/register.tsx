@@ -1,7 +1,7 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { FleetAgent, FleetShell, FleetState } from "../types";
+import type { FleetAgent, FleetShell } from "../types";
 import {
   applyStatuses,
   emptyFleet,
@@ -12,6 +12,7 @@ import {
   isFailed,
   isLive,
   isWaiter,
+  isWatched,
   lastLine,
   liveCount,
   loseShells,
@@ -71,8 +72,10 @@ function chime($: EngineInterface, sound: "complete" | "dialog-error") {
 
 async function sendTelegram($: EngineInterface, text: string): Promise<void> {
   const none = () => undefined;
-  const token = await $.env.get("TELEGRAM_BOT_TOKEN").catch(none);
-  const chat = await $.env.get("TELEGRAM_CHAT_ID").catch(none);
+  const [token, chat] = await Promise.all([
+    $.env.get("TELEGRAM_BOT_TOKEN").catch(none),
+    $.env.get("TELEGRAM_CHAT_ID").catch(none),
+  ]);
   if (!token || !chat) return;
   const res = await $.http
     .fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -121,16 +124,17 @@ function announce(
   agents: FleetAgent[],
   shells: FleetShell[],
 ) {
+  const toast = (name: string, what: string, x: FleetAgent | FleetShell) => ({
+    text: endToast(name, what, x.status, x.endedAt! - x.startedAt),
+    isFailed: isFailed(x.status),
+  });
   const ended = [
     // a teammate gone idle is no finish
     ...agents
       .filter((a) => ENDED.has(a.status))
-      .map((a) => ({ ...a, name: a.type, what: a.description })),
-    ...shells.map((s) => ({ ...s, name: "shell", what: s.command })),
-  ].map((x) => ({
-    text: endToast(x.name, x.what, x.status, x.endedAt! - x.startedAt),
-    isFailed: isFailed(x.status),
-  }));
+      .map((a) => toast(a.type, a.description, a)),
+    ...shells.map((s) => toast("shell", s.command, s)),
+  ];
   if (ended.length === 0) return;
   $.ui.toast(
     ended.length === 1
@@ -193,40 +197,42 @@ function ensurePoll($: EngineInterface, t: Tracker) {
 
 /** One look at each live shell's output: its last line, progress, a stall, or an end unseen. */
 async function watchShells($: EngineInterface, t: Tracker): Promise<void> {
-  const live = (await read($, fleet)).shells.filter(
-    (s) => isLive(s.status) && s.outputFile,
-  );
+  const live = (await read($, fleet)).shells.filter(isWatched);
   if (live.length === 0) {
     t.shellPoll?.cancel();
     t.shellPoll = undefined;
     return;
   }
   const now = await $.clock.now();
-  const patches = new Map<string, Partial<FleetShell>>();
-  const stalled: FleetShell[] = [];
-  for (const s of live) {
-    const st = await $.fs.stat(s.outputFile!).catch(() => undefined);
-    if (st?.kind === "file" && st.size !== s.size) {
-      const tail = await $.process
-        .run(["tail", "-c", TAIL_BYTES, s.outputFile!])
-        .catch(() => undefined);
-      const line = tail?.exitCode === 0 ? lastLine(tail.stdout) : undefined;
-      patches.set(s.id, {
-        size: st.size,
-        outputAt: now,
-        stalled: false,
-        ...(line
-          ? {
-              line,
-              progress: nextProgress(s.progress, parseProgress(line), now),
-            }
-          : {}),
-      });
-    } else if (!s.waiter && !s.stalled && quietMs(s, now) >= STALL_MS) {
-      patches.set(s.id, { stalled: true });
-      stalled.push(s);
-    }
-  }
+  const looks = await Promise.all(
+    live.map(async (s): Promise<Partial<FleetShell> | undefined> => {
+      const st = await $.fs.stat(s.outputFile!).catch(() => undefined);
+      if (st?.kind === "file" && st.size !== s.size) {
+        const tail = await $.process
+          .run(["tail", "-c", TAIL_BYTES, s.outputFile!])
+          .catch(() => undefined);
+        const line = tail?.exitCode === 0 ? lastLine(tail.stdout) : undefined;
+        return {
+          size: st.size,
+          outputAt: now,
+          stalled: false,
+          ...(line
+            ? {
+                line,
+                progress: nextProgress(s.progress, parseProgress(line), now),
+              }
+            : {}),
+        };
+      }
+      if (!s.waiter && !s.stalled && quietMs(s, now) >= STALL_MS)
+        return { stalled: true };
+      return undefined;
+    }),
+  );
+  const patches = new Map(
+    live.flatMap((s, i) => (looks[i] ? [[s.id, looks[i]] as const] : [])),
+  );
+  const stalled = live.filter((_, i) => looks[i]?.stalled);
   if (patches.size > 0)
     await update($, fleet, (f) => ({
       ...f,
@@ -271,16 +277,12 @@ async function loseVanished(
   const freeNow = new Set(
     live.filter((s) => free.has(s.outputFile!)).map((s) => s.id),
   );
-  const gone = [...freeNow].filter((id) => t.freeOnce.has(id));
+  const gone = new Set([...freeNow].filter((id) => t.freeOnce.has(id)));
   t.freeOnce = freeNow;
-  if (gone.length === 0) return;
+  if (gone.size === 0) return;
   await update($, fleet, (f) => ({
     ...f,
-    shells: loseShells(
-      f.shells,
-      new Set(f.shells.map((s) => s.id).filter((id) => !gone.includes(id))),
-      now,
-    ),
+    shells: loseShells(f.shells, gone, now),
   }));
   await settle($, t);
 }
@@ -392,8 +394,7 @@ export const register: Register = (on, options) => {
     // a reload while agents or shells run: pick the polls up again
     const f = await read($, fleet);
     if (f.agents.some((a) => isLive(a.status))) ensurePoll($, t);
-    if (f.shells.some((s) => isLive(s.status) && s.outputFile))
-      ensureShellPoll($, t);
+    if (f.shells.some(isWatched)) ensureShellPoll($, t);
     return r;
   });
 
@@ -553,9 +554,11 @@ export const register: Register = (on, options) => {
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     if (e.viewport?.isFullscreen !== undefined)
       t.docks = e.viewport.isFullscreen;
-    const f = await read($, fleet);
-    const open = await read($, pane);
-    const now = await $.clock.now();
+    const [f, open, now] = await Promise.all([
+      read($, fleet),
+      read($, pane),
+      $.clock.now(),
+    ]);
     const empty = f.agents.length === 0 && f.shells.length === 0;
     if (e.props.hasSurvey || (empty && !open)) return next(e);
     const below = await next(e);

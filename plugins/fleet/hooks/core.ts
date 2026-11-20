@@ -34,8 +34,8 @@ export function fmtElapsed(ms: number): string {
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  if (h > 0) return `${h}h${String(m).padStart(2, "0")}m`;
-  return m > 0 ? `${m}m${String(s).padStart(2, "0")}s` : `${s}s`;
+  if (h > 0) return `${h}h${pad(m)}m`;
+  return m > 0 ? `${m}m${pad(s)}s` : `${s}s`;
 }
 
 const MONTHS = [
@@ -149,14 +149,14 @@ export function endShell(
   return { shells: next, ended };
 }
 
-/** Marks lost each live shell not in `inFlight`. */
+/** Marks lost each live shell in `lost`. */
 export function loseShells(
   shells: FleetShell[],
-  inFlight: ReadonlySet<string>,
+  lost: ReadonlySet<string>,
   now: number,
 ): FleetShell[] {
   return shells.map((s) =>
-    isLive(s.status) && !inFlight.has(s.id)
+    isLive(s.status) && lost.has(s.id)
       ? { ...s, status: LOST, endedAt: now }
       : s,
   );
@@ -187,6 +187,17 @@ exit 0`,
   ];
 }
 
+/** A live shell with an output file to look at. */
+export const isWatched = (s: FleetShell) =>
+  isLive(s.status) && Boolean(s.outputFile);
+
+/** Agents running, done and failed. */
+export function tally(agents: { status: string }[]) {
+  const run = agents.filter((a) => isLive(a.status)).length;
+  const fail = agents.filter((a) => isFailed(a.status)).length;
+  return { run, done: agents.length - run - fail, fail };
+}
+
 export const liveCount = (f: FleetState) =>
   f.agents.filter((a) => isLive(a.status)).length +
   f.shells.filter((s) => isLive(s.status)).length;
@@ -206,10 +217,9 @@ export function endToast(
 export function statusLine(f: FleetState): string | undefined {
   const batch = f.batchStart;
   if (batch === undefined) return undefined;
-  const agents = f.agents.filter((a) => a.startedAt >= batch);
-  const run = agents.filter((a) => isLive(a.status)).length;
-  const fail = agents.filter((a) => isFailed(a.status)).length;
-  const done = agents.length - run - fail;
+  const { run, done, fail } = tally(
+    f.agents.filter((a) => a.startedAt >= batch),
+  );
   const bg = f.shells.filter((s) => isLive(s.status)).length;
   return `fleet ${run}▶ ${done}✓ ${fail}✗${bg ? ` · bg ${bg}` : ""}`;
 }
@@ -370,13 +380,10 @@ export function shellName(command: string): string {
 export const quietMs = (s: FleetShell, now: number) =>
   now - (s.outputAt ?? s.startedAt);
 
-/** A live shell's state in a few words, or undefined when there is nothing to say. */
-export function shellNote(s: FleetShell, now: number): string | undefined {
-  if (s.waiter) return "waiting";
-  if (s.stalled) return `⚠ no output ${fmtLeft(quietMs(s, now))}`;
-  if (!s.progress) return undefined;
-  const left = etaMs(s.progress, now);
-  return `${Math.floor(s.progress.frac * 100)}%${left === undefined ? "" : ` ~${fmtLeft(left)}`}`;
+/** A progress reading in a few words: "47% ~38m". */
+export function progressNote(p: FleetProgress, now: number): string {
+  const left = etaMs(p, now);
+  return `${Math.floor(p.frac * 100)}%${left === undefined ? "" : ` ~${fmtLeft(left)}`}`;
 }
 
 /** The band's progress items: "sim.py 47% ~38m", "retrain.sh d57 ⚠ 6m". */
@@ -386,7 +393,6 @@ export function shellNotes(shells: FleetShell[], now: number): string[] {
     .flatMap((s) => {
       const name = shellName(s.command);
       if (s.stalled) return [`${name} ⚠ ${fmtLeft(quietMs(s, now))}`];
-      const note = shellNote(s, now);
-      return note ? [`${name} ${note}`] : [];
+      return s.progress ? [`${name} ${progressNote(s.progress, now)}`] : [];
     });
 }

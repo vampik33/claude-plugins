@@ -15,10 +15,12 @@ import {
   isSafeRef,
   lastResult,
   parseArgs,
+  plural,
   preselect,
   readOutcome,
   resultText,
   SCOPES,
+  subcommand,
   target,
   toolText,
   trimJobs,
@@ -172,7 +174,6 @@ async function startJob(
   const made = await run($, ["mkdir", "-p", dir]);
   if (made?.exitCode !== 0) return `Cannot create ${dir}`;
 
-  const sub = req.mode === "adversarial" ? "adversarial-review" : "review";
   // after "--" the focus is free text, never an option of the companion's
   const focus =
     req.mode === "adversarial" && req.focus ? ["--", req.focus] : [];
@@ -187,7 +188,7 @@ async function startJob(
     `${dir}/err.log`,
     "node",
     companion,
-    sub,
+    subcommand(req.mode),
     "--json",
     ...(req.scope === "changes"
       ? ["--scope", "working-tree"]
@@ -231,8 +232,10 @@ async function finishJob(
 ): Promise<CxJob | undefined> {
   const job = (await read($, cx)).jobs.find((j) => j.id === id);
   if (!job || job.status !== "running") return job;
-  const out = await $.fs.read(`${job.dir}/out.json`).catch(() => "");
-  const err = await $.fs.read(`${job.dir}/err.log`).catch(() => "");
+  const [out, err] = await Promise.all([
+    $.fs.read(`${job.dir}/out.json`).catch(() => ""),
+    $.fs.read(`${job.dir}/err.log`).catch(() => ""),
+  ]);
   const outcome = readOutcome(job.mode, out, err);
   let done: CxJob | undefined;
   let fresh = false;
@@ -265,10 +268,9 @@ async function announce($: EngineInterface, t: Tracker, job: CxJob) {
       `Codex review failed after ${took}: ${job.error ?? "no output"}`,
     );
   } else {
-    const n = job.review?.findings.length;
     $.ui.toast(
       job.review
-        ? `Codex ${job.review.verdict} · ${n} finding${n === 1 ? "" : "s"} · ${took}`
+        ? `Codex ${job.review.verdict} · ${plural(job.review.findings.length, "finding")} · ${took}`
         : `Codex review done · ${took}`,
     );
   }
@@ -281,6 +283,16 @@ async function announce($: EngineInterface, t: Tracker, job: CxJob) {
       : undefined;
   if (!opened?.isPlaced)
     $.ui.toast("Codex findings are ready: /cx last opens them");
+}
+
+/** The companion's record of our running job, or undefined when it cannot say. */
+async function companionJob(
+  $: EngineInterface,
+  companion: string,
+  job: CxJob,
+): Promise<ReturnType<typeof companionJobId>> {
+  const st = await run($, ["node", companion, "status", "--json"], job.root);
+  return st?.exitCode === 0 ? companionJobId(st.stdout, job) : undefined;
 }
 
 /** Every 10 s while a job runs: its phase, or its end. */
@@ -301,9 +313,7 @@ async function pollJobs($: EngineInterface, t: Tracker): Promise<void> {
       continue;
     }
     if (!companion) continue;
-    const st = await run($, ["node", companion, "status", "--json"], job.root);
-    const phase =
-      st?.exitCode === 0 ? companionJobId(st.stdout, job)?.phase : undefined;
+    const phase = (await companionJob($, companion, job))?.phase;
     if (phase && phase !== job.phase)
       await update($, cx, (s) => ({
         ...s,
@@ -369,13 +379,7 @@ async function cancelJobs($: EngineInterface, ids?: string[]): Promise<number> {
   const companion = await findCompanion($, home);
   for (const job of running) {
     if (companion) {
-      const st = await run(
-        $,
-        ["node", companion, "status", "--json"],
-        job.root,
-      );
-      const mine =
-        st?.exitCode === 0 ? companionJobId(st.stdout, job) : undefined;
+      const mine = await companionJob($, companion, job);
       if (mine)
         await run(
           $,
@@ -468,8 +472,9 @@ export const register: Register = (on, options) => {
         },
       },
     });
+    const saved = await read($, cx);
     // where "Session commits" begin; a reload keeps the first one
-    if (!(await read($, cx)).sessionHead) {
+    if (!saved.sessionHead) {
       const head = await repoHead($, e.cwd);
       if (head)
         await update($, cx, (s) =>
@@ -477,8 +482,7 @@ export const register: Register = (on, options) => {
         );
     }
     // a reload while a review runs: follow it again
-    if ((await read($, cx)).jobs.some((j) => j.status === "running"))
-      ensurePoll($, t);
+    if (saved.jobs.some((j) => j.status === "running")) ensurePoll($, t);
     return r;
   });
 
@@ -488,7 +492,7 @@ export const register: Register = (on, options) => {
       const n = await cancelJobs($);
       return {
         text: n
-          ? `Cancelled ${n} Codex review${n === 1 ? "" : "s"}.`
+          ? `Cancelled ${plural(n, "Codex review")}.`
           : "No Codex review is running.",
       };
     }
@@ -592,7 +596,7 @@ export const register: Register = (on, options) => {
     const props: BandProps = job
       ? {
           kind: "running",
-          label: `codex ${job.mode === "adversarial" ? "adversarial-review" : "review"}`,
+          label: `codex ${subcommand(job.mode)}`,
           startedAt: job.startedAt,
           detail: `${job.phase ?? "starting"} · ${job.repo} · ${target(job)}${running.length > 1 ? ` · +${running.length - 1} more` : ""}`,
         }
@@ -750,7 +754,7 @@ export const register: Register = (on, options) => {
           </Text>
           <Text
             dimColor
-          >{` · ${findings.length} finding${findings.length === 1 ? "" : "s"} · ${took} · ${target(job)}`}</Text>
+          >{` · ${plural(findings.length, "finding")} · ${took} · ${target(job)}`}</Text>
         </Text>
         <Text dimColor>{summary}</Text>
         <Text> </Text>

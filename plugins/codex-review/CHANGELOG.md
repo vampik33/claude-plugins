@@ -4,6 +4,11 @@ All notable changes to the codex-review plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.14] - 2026-11-20
+
+### Changed
+- Internal cleanup, no change in behaviour: the companion's status lookup, the mode's subcommand, the plural of "finding" and the prompts' fix steps are each written once; a finished job's two output files are read in parallel; `session.start` reads the state once
+
 ## [0.3.13] - 2026-11-20
 
 ### Fixed

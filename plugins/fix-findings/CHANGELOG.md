@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.4] - 2026-11-20
 
 ### Changed
-- The turn-end hook lists agents only once it has found a running ledger this session owns, not on every turn
+- The turn-end hook lists agents only once it has found a running ledger this session owns, not on every turn, and reads the ledger again after listing them, so a ledger that another session took over or that finished meanwhile sends nothing back
 - The send-back recognises its own prompt by `$.plugin.name` rather than a copy of the plugin's name
 
 ## [0.2.3] - 2026-11-20

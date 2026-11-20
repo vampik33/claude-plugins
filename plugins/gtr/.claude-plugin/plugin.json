@@ -1,6 +1,6 @@
 {
   "name": "gtr",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Git worktree management using git-worktree-runner for parallel branch development",
   "author": {
     "name": "vampik33",

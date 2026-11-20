@@ -29,7 +29,7 @@ A real defect the change did not introduce is marked `pre-existing`: reported, n
 - The `CodexReview` tool comes from the `codex-review` plugin. Without it the skill uses the project's own adversarial review. If none can run, the loop stops rather than substituting Claude's own review.
 - A project with no test suite skips the failing test. The report lists those findings as unproven by test.
 
-## The Stop hook
+## The turn-end hook
 
 If Claude ends a turn while `.fix-findings/ledger.json` in the session's working directory says `running`, the hook sends it back with a prompt naming what is still open. It does so once per turn that you or a background task started, never for a turn it started itself, and not while a subagent is still running, so it cannot hold a session forever. A ledger whose `sessionId` names another session is ignored.
 

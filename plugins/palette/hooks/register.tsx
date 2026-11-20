@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from "claude-code";
 
 import type { PaletteGroup, PaletteItem, Usage } from "../types";
 import {
+  aboutOf,
   buildGroups,
   filterGroups,
   fillFor,
@@ -10,7 +11,9 @@ import {
   MOST_USED,
   mostUsed,
   projectPaths,
+  ranSkill,
   recordUse,
+  useKey,
 } from "./core.ts";
 
 const PANE = "palette";
@@ -47,24 +50,27 @@ async function addUse($: EngineInterface, key: string): Promise<void> {
 
 // one at a time, so parallel spawns don't overwrite each other's count
 let counting = Promise.resolve();
-function countUse($: EngineInterface, key: string): Promise<void> {
-  counting = counting.then(() => addUse($, key)).catch(() => {});
+function countUse(
+  $: EngineInterface,
+  item: Pick<PaletteItem, "kind" | "name">,
+): Promise<void> {
+  counting = counting.then(() => addUse($, useKey(item))).catch(() => {});
   return counting;
 }
 
 /** Reads the session's commands, skills and custom agents into `groups`. */
 async function refresh($: EngineInterface): Promise<void> {
-  const commands = await $.command.list().catch(() => []);
-  const usage = await $.session
-    .usage({ breakdown: "summary" })
-    .catch(() => undefined);
-  const agents = usage?.context.breakdown?.agents ?? [];
   // the project's .claude/ lies under its root, not wherever the session went;
   // no root known: the cwd, and with neither no command is told apart as the project's
-  const root = await $.session
-    .root()
-    .catch(() => $.session.cwd())
-    .catch(() => undefined);
+  const [commands, context, root] = await Promise.all([
+    $.command.list().catch(() => []),
+    $.session.usage({ breakdown: "summary" }).catch(() => undefined),
+    $.session
+      .root()
+      .catch(() => $.session.cwd())
+      .catch(() => undefined),
+  ]);
+  const agents = context?.context.breakdown?.agents ?? [];
   const local = await Promise.all(
     commands
       .filter((c) => root !== undefined && c.source === "user")
@@ -145,7 +151,7 @@ export const register: Register = (on) => {
 
   on("command.run", async ($, e, next) => {
     // counted aside: the store's read and write never hold up the call
-    void countUse($, `command:${e.command}`);
+    void countUse($, { kind: "command", name: e.command });
     return next(e);
   });
 
@@ -157,25 +163,15 @@ export const register: Register = (on) => {
     // a refused or failed call (a hook's deny; a permission refusal or an unknown
     // skill reads isError) ran no skill
     if ("deny" in r || r.isError) return r;
-    // the skill as resolved (`deploy` may run `plugin:deploy`), as the pane lists it;
-    // a hook's own answer may leave the name out
-    const res: unknown = r.result;
-    const ran =
-      typeof res === "object" &&
-      res !== null &&
-      "commandName" in res &&
-      typeof res.commandName === "string" &&
-      res.commandName !== ""
-        ? res.commandName
-        : e.skill;
-    // counted aside: the store never holds up the call
-    void countUse($, `command:${ran}`);
+    // counted under the skill as resolved, as the pane lists it, and aside: the
+    // store never holds up the call
+    void countUse($, { kind: "command", name: ranSkill(r.result, e.skill) });
     return r;
   });
 
   on("agent.spawn", async ($, e, next) => {
     // counted aside: the store's read and write never hold up the call
-    void countUse($, `agent:${e.subagentType}`);
+    void countUse($, { kind: "agent", name: e.subagentType });
     return next(e);
   });
 
@@ -191,13 +187,17 @@ export const register: Register = (on) => {
     const els = $.ui.resolve(e);
     const { Box, Button, Text } = els;
     const Input = "Input" in els ? els.Input : undefined;
-    const listed = await read($, groups);
-    const top = mostUsed(listed, await read($, usage));
-    const info = await read($, agentInfo);
-    const q = await read($, query);
+    const [listed, used, info, q, foldedIds] = await Promise.all([
+      read($, groups),
+      read($, usage),
+      read($, agentInfo),
+      read($, query),
+      read($, folded),
+    ]);
+    const top = mostUsed(listed, used);
     const all = filterGroups(top ? [top, ...listed] : listed, q, info);
     // while searching every group with a match shows open
-    const shut = new Set(q.trim() ? [] : await read($, folded));
+    const shut = new Set(q.trim() ? [] : foldedIds);
     const toggle = (id: string) =>
       update($, folded, (f) =>
         f.includes(id) ? f.filter((x) => x !== id) : [...f, id],
@@ -257,8 +257,8 @@ export const register: Register = (on) => {
             </Button>
             {!shut.has(g.id) &&
               g.items.map((item) => {
-                const id = `${g.id === MOST_USED ? "top:" : ""}${item.kind}:${item.name}`;
-                const about = item.description || info[item.name] || "";
+                const id = `${g.id === MOST_USED ? "top:" : ""}${useKey(item)}`;
+                const about = aboutOf(item, info);
                 return (
                   <Box
                     key={`row:${id}`}

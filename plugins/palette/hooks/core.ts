@@ -22,8 +22,7 @@ const AGENT_GROUP: Record<string, string> = {
   userSettings: "user",
 };
 
-const pluginOf = (name: string) =>
-  name.includes(":") ? name.slice(0, name.indexOf(":")) : name;
+const pluginOf = (name: string) => name.split(":")[0]!;
 
 /** Where a user-source command or skill would live in the project's `.claude/`. */
 export function projectPaths(name: string): string[] {
@@ -49,7 +48,9 @@ export function buildGroups(
   const groups = new Map<string, PaletteItem[]>();
   const add = (id: string, item: PaletteItem) => {
     if (id === `plugin:${self}`) return;
-    groups.set(id, [...(groups.get(id) ?? []), item]);
+    const list = groups.get(id);
+    if (list) list.push(item);
+    else groups.set(id, [item]);
   };
 
   for (const a of agents) {
@@ -89,6 +90,20 @@ export function buildGroups(
 /** Where an item's uses are kept: `<kind>:<name>`. */
 export const useKey = (item: Pick<PaletteItem, "kind" | "name">) =>
   `${item.kind}:${item.name}`;
+
+/**
+ * The skill a Skill call ran, as its result names it (`deploy` may run
+ * `plugin:deploy`); `asked` when the result leaves the name out.
+ */
+export function ranSkill(result: unknown, asked: string): string {
+  return typeof result === "object" &&
+    result !== null &&
+    "commandName" in result &&
+    typeof result.commandName === "string" &&
+    result.commandName !== ""
+    ? result.commandName
+    : asked;
+}
 
 /** A second use of one item this soon after the last is taken as the same use. */
 export const REPEAT_MS = 5_000;
@@ -138,14 +153,17 @@ export function filterGroups(
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return groups;
   const hit = (item: PaletteItem) => {
-    const text =
-      `${item.name} ${item.description || info[item.name] || ""}`.toLowerCase();
+    const text = `${item.name} ${aboutOf(item, info)}`.toLowerCase();
     return words.every((w) => text.includes(w));
   };
   return groups
     .map((g) => ({ ...g, items: g.items.filter(hit) }))
     .filter((g) => g.items.length > 0);
 }
+
+/** An item's description, or for an agent listed without one, `agent.offer`'s. */
+export const aboutOf = (item: PaletteItem, info: Record<string, string>) =>
+  item.description || info[item.name] || "";
 
 /** What a row reads: `@<name>` for an agent, `/<name>` for a command or skill. */
 export const label = (item: PaletteItem) =>

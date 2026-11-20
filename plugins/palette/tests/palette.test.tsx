@@ -8,6 +8,7 @@ import {
   label,
   mostUsed,
   projectPaths,
+  ranSkill,
   recordUse,
   REPEAT_MS,
   type RawCommand,
@@ -224,6 +225,23 @@ describe("search", () => {
         filterGroups(groups, "rust expert", { "rust-engineer": "Rust expert" }),
       ),
     ).toEqual(["@rust-engineer"]);
+  });
+});
+
+describe("ranSkill", () => {
+  test("the name the result gives, else the one asked for", () => {
+    expect(ranSkill({ commandName: "plugin:deploy" }, "deploy")).toBe(
+      "plugin:deploy",
+    );
+    for (const result of [
+      undefined,
+      null,
+      "deploy ran",
+      {},
+      { commandName: "" },
+      { commandName: 7 },
+    ])
+      expect(ranSkill(result, "deploy")).toBe("deploy");
   });
 });
 

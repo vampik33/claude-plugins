@@ -254,7 +254,14 @@ const PANE = {
 
 function engine(
   on: any,
-  opts: { exists?: (path: string) => boolean; storeGate?: Promise<void> } = {},
+  opts: {
+    exists?: (path: string) => boolean;
+    storeGate?: Promise<void>;
+    /** `$.session.root()` fails, as it may outside a project */
+    noRoot?: boolean;
+    /** `$.session.cwd()` fails too */
+    noCwd?: boolean;
+  } = {},
 ) {
   const seen = {
     fills: [] as { text: string; mode?: string }[],
@@ -304,7 +311,14 @@ function engine(
       },
     },
   }));
-  on("session.root", () => ({ value: "/proj" }));
+  on("session.root", () => {
+    if (opts.noRoot) throw new Error("no root");
+    return { value: "/proj" };
+  });
+  on("session.cwd", () => {
+    if (opts.noCwd) throw new Error("no cwd");
+    return { value: "/cwd" };
+  });
   on("fs.exists", (_$: unknown, e: { path: string }) => ({
     value: opts.exists?.(e.path) ?? false,
   }));
@@ -438,6 +452,34 @@ describe("pane", () => {
         "▾ project (1)",
       );
       expect(await ui.find({ key: "group:user" })).toBeDefined();
+      await ui.unmount();
+    });
+
+    test(`${surface}: no project root: /palette still opens, the cwd stands for it`, async ($, on) => {
+      const { seen } = engine(on, {
+        noRoot: true,
+        exists: (p) => p === "/cwd/.claude/commands/think.md",
+      });
+      await $.command.run({ command: "palette", args: "" } as never);
+      expect(seen.opened).toBe(1);
+      const ui = await $.ui.mount({ plugin: "palette", surface, ...PANE });
+      expect((await ui.find({ key: "group:project" }))?.text).toBe(
+        "▾ project (1)",
+      );
+      await ui.unmount();
+    });
+
+    test(`${surface}: neither root nor cwd: /palette opens with no project group`, async ($, on) => {
+      const { seen } = engine(on, {
+        noRoot: true,
+        noCwd: true,
+        exists: () => true,
+      });
+      await $.command.run({ command: "palette", args: "" } as never);
+      expect(seen.opened).toBe(1);
+      const ui = await $.ui.mount({ plugin: "palette", surface, ...PANE });
+      expect(await ui.find({ key: "group:project" })).toBeUndefined();
+      expect((await ui.find({ key: "command:think" }))?.text).toBe("/think");
       await ui.unmount();
     });
 

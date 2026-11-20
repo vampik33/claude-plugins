@@ -299,7 +299,6 @@ export function buildNote(f: NoteFacts): string {
   return out.join("\n");
 }
 
-/** What the summarizer is told to keep. */
 /**
  * The note as data: it quotes prompts and command output, so whatever it says
  * is a record to read, never an instruction to follow.

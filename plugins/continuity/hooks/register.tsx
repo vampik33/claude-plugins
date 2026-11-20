@@ -30,6 +30,7 @@ import type { GaugeProps } from "./gauge.tsx";
 import {
   accountOf,
   addHits,
+  asTtl,
   decideTtl,
   expiryOf,
   hitPercent,
@@ -93,19 +94,18 @@ type CacheTracker = {
 
 /** `promptCacheTtl` as the engine merges it: user, project, local, flag and policy settings. */
 async function readCacheSetting($: EngineInterface): Promise<unknown> {
-  const value = await $.settings
-    .read({ key: "promptCacheTtl" })
-    .catch(() => undefined);
-  return value === "5m" || value === "1h" ? value : undefined;
+  // decideTtl ignores a value other than "5m" or "1h"
+  return $.settings.read({ key: "promptCacheTtl" }).catch(() => undefined);
 }
 
 async function readCacheEnv($: EngineInterface): Promise<CacheEnv> {
   const none = () => undefined;
-  return {
-    enable1h: await $.env.get("ENABLE_PROMPT_CACHING_1H").catch(none),
-    force5m: await $.env.get("FORCE_PROMPT_CACHING_5M").catch(none),
-    ttlVar: await $.env.get("CLAUDE_CODE_PROMPT_CACHE_TTL").catch(none),
-  };
+  const [enable1h, force5m, ttlVar] = await Promise.all([
+    $.env.get("ENABLE_PROMPT_CACHING_1H").catch(none),
+    $.env.get("FORCE_PROMPT_CACHING_5M").catch(none),
+    $.env.get("CLAUDE_CODE_PROMPT_CACHE_TTL").catch(none),
+  ]);
+  return { enable1h, force5m, ttlVar };
 }
 
 async function currentTtl($: EngineInterface, c: CacheTracker): Promise<Ttl> {
@@ -125,6 +125,12 @@ const share = (v: unknown, fallback: number) =>
 const percentOption = (v: unknown, fallback: number) =>
   typeof v === "number" && v >= 0 && v <= 100 ? v : fallback;
 
+const errText = (err: unknown) =>
+  err instanceof Error ? err.message : String(err);
+
+/** HH:MM, local time. */
+const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+
 async function git(
   $: EngineInterface,
   args: string[],
@@ -139,14 +145,15 @@ async function git(
 /** Collects the facts, writes the note to ~/.claude/handover/<session>.md; its path and text. */
 async function writeNote(
   $: EngineInterface,
-  messages: readonly SessionMessage[],
 ): Promise<{ path: string; note: string }> {
-  const [cwd, sessionId, usage, home] = await Promise.all([
+  const [cwd, sessionId, usage, home, all] = await Promise.all([
     $.session.cwd(),
     $.session.id(),
     $.session.usage(),
     $.env.get("HOME").catch(() => undefined),
+    $.session.messages(),
   ]);
+  const messages: readonly SessionMessage[] = Array.isArray(all) ? all : [];
   const [branch, gitDir, commonDir, status, lastCommit, top] =
     await Promise.all([
       git($, ["rev-parse", "--abbrev-ref", "HEAD"], cwd),
@@ -201,11 +208,7 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
   const wasPaused = (await read($, mode)).paused;
   await setPhase($, "compacting");
   try {
-    const messages = await $.session.messages();
-    const { path, note } = await writeNote(
-      $,
-      Array.isArray(messages) ? messages : [],
-    );
+    const { path, note } = await writeNote($);
     const r = await $.session.compact({
       instructions: compactInstructions(note),
     });
@@ -229,7 +232,7 @@ async function handover($: EngineInterface, t: Tracker): Promise<string> {
     }
     return `Handover written to ${path}, compacted, continuing.`;
   } catch (err) {
-    const why = err instanceof Error ? err.message : String(err);
+    const why = errText(err);
     $.ui.toast(`Handover failed: ${why}`);
     return `Handover failed: ${why}`;
   } finally {
@@ -251,10 +254,7 @@ async function armResume($: EngineInterface, t: Tracker, resumeAt: number) {
         .submit({
           text: "Continue where you left off: the last turn stopped at the usage limit, which has now reset.",
         })
-        .then(
-          (r) => r.drop,
-          (err) => (err instanceof Error ? err.message : String(err)),
-        );
+        .then((r) => r.drop, errText);
       if (why !== undefined)
         $.ui.toast(`The usage limit reset, but continuing was refused: ${why}`);
     },
@@ -274,9 +274,7 @@ async function resumeAtLimit($: EngineInterface, t: Tracker): Promise<void> {
   if (!limit) return;
   const resumeAt = limit.resetsAt + RESET_SLACK_MS;
   await armResume($, t, resumeAt);
-  $.ui.toast(
-    `Usage limit (${limit.kind}): continuing at ${new Date(resumeAt).toTimeString().slice(0, 5)}`,
-  );
+  $.ui.toast(`Usage limit (${limit.kind}): continuing at ${hhmm(resumeAt)}`);
 }
 
 function cancelTimers(t: Tracker) {
@@ -381,7 +379,7 @@ export const register: Register = (on, options) => {
       toastTimer: undefined,
     },
   };
-  const pinnedTtl = t.cache.option === "5m" || t.cache.option === "1h";
+  const pinnedTtl = asTtl(t.cache.option) !== undefined;
 
   on("session.start", async ($, e, next) => {
     const r = await next(e);
@@ -394,9 +392,13 @@ export const register: Register = (on, options) => {
       description:
         "Show continuity's status, or pause and resume it: /continuity [on|off]",
     });
-    await refreshGauge($);
-    t.cache.env = await readCacheEnv($);
-    t.cache.setting = await readCacheSetting($);
+    const [, env, setting] = await Promise.all([
+      refreshGauge($),
+      readCacheEnv($),
+      readCacheSetting($),
+    ]);
+    t.cache.env = env;
+    t.cache.setting = setting;
     // a reload drops the timers: a limit wait is armed again from its reset, a pending grace starts over as idle
     const m = await read($, mode);
     if (
@@ -479,8 +481,7 @@ export const register: Register = (on, options) => {
     if (e.agentId) return r;
     t.turnsSinceHandover += 1;
     await refreshGauge($);
-    const g = await read($, gauge);
-    const m = await read($, mode);
+    const [g, m] = await Promise.all([read($, gauge), read($, mode)]);
     if (
       m.phase === "idle" &&
       !t.grace &&
@@ -527,11 +528,9 @@ export const register: Register = (on, options) => {
     // a note that can't be written leaves the /compact as typed
     let saved: { path: string; note: string } | undefined;
     try {
-      const messages = await $.session.messages();
-      saved = await writeNote($, Array.isArray(messages) ? messages : []);
+      saved = await writeNote($);
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
-      $.ui.toast(`No handover note saved for this /compact: ${why}`);
+      $.ui.toast(`No handover note saved for this /compact: ${errText(err)}`);
     }
     const r = await next(e);
     // one that didn't compact says why ("Not enough messages to compact."); a done one prints nothing
@@ -579,15 +578,12 @@ export const register: Register = (on, options) => {
       await update($, mode, (m) => ({ ...m, paused: false }));
       return { text: `Continuity on: handover at ${t.threshold}%.` };
     }
-    const g = await read($, gauge);
-    const m = await read($, mode);
+    const [g, m] = await Promise.all([read($, gauge), read($, mode)]);
     const fill =
       g?.percent === undefined ? "not measured yet" : `${g.percent}%`;
     return {
       text: `Continuity ${m.paused ? "paused" : "on"} · context ${fill} · handover at ${t.threshold}% · ${m.phase}${
-        m.resumeAt
-          ? ` until ${new Date(m.resumeAt).toTimeString().slice(0, 5)}`
-          : ""
+        m.resumeAt ? ` until ${hhmm(m.resumeAt)}` : ""
       }`,
     };
   });
@@ -647,8 +643,7 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e);
     const pct = g.percent;
     const now = await $.clock.now();
-    const until =
-      d && ` · cache until ${new Date(d.expiresAt).toTimeString().slice(0, 5)}`;
+    const until = d && ` · cache until ${hhmm(d.expiresAt)}`;
     const row = (
       <Box key="band:continuity">
         <Text

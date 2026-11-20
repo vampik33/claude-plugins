@@ -83,6 +83,8 @@ The plugin sends notifications when:
 2. Idle time (since last interaction) exceeds the configured threshold
 3. Credentials are properly set
 
+They come from classic hooks (SessionStart, UserPromptSubmit, Stop). Where an organization manages Claude Code and allows only managed hooks (`allowManagedHooksOnly`), these don't run; `/telegram` still works. The Stop notification sends the cwd, the session id and the start of Claude's last answer (up to 1000 characters) to `api.telegram.org`.
+
 ## Configuration
 
 The plugin supports two configuration scopes, similar to CLAUDE.md:
@@ -160,7 +162,7 @@ For troubleshooting, enable debug mode:
 export TELEGRAM_NOTIFIER_DEBUG=1
 ```
 
-This shows verbose output including API requests and responses.
+This shows verbose output including the request payload and the API response. The bot token is never printed: the scripts keep shell tracing off wherever it is expanded.
 
 ## Troubleshooting
 

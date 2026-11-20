@@ -53,7 +53,7 @@ Always drawn on its own line in the band above the prompt, just above continuity
 
 ## CodexReview tool
 
-Claude gets `mcp__codex-review__CodexReview({ mode, base, focus, cwd })`. It runs a real Codex review and returns Codex's JSON (`verdict`, `summary`, `findings`, `next_steps`). When Codex fails it returns an error, never a review of Claude's own.
+Claude gets `mcp__codex-review__CodexReview({ mode, base, focus, cwd })`. It runs a real Codex review and returns Codex's JSON (`verdict`, `summary`, `findings`, `next_steps`). When Codex fails it returns an error, never a review of Claude's own. The call goes through Claude Code's permission check like any MCP tool, so outside bypass or auto mode it asks first; allow it with `"permissions": { "allow": ["mcp__codex-review__CodexReview"] }`, and a deny rule keeps Claude from starting reviews (each one sends the diff to OpenAI through Codex).
 
 ## How It Works
 

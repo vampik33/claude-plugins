@@ -4,6 +4,11 @@ All notable changes to the chat-view plugin (formerly prompt-clock) will be docu
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.4] - 2026-11-20
+
+### Changed
+- The prompt, reply and turn-end stamps go through one `withTime` helper in `core.ts` instead of three hand-copied capped-map updates; no change in behaviour
+
 ## [0.2.3] - 2026-11-19
 
 ### Fixed

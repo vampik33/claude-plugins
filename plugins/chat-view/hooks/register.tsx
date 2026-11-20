@@ -1,10 +1,8 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { ChatViewTimes } from "../types";
 import {
   bubbleWidth,
-  cap,
   emptyTimes,
   fmtDuration,
   fmtTime,
@@ -22,6 +20,7 @@ import {
   turnEnd,
   transcriptTailArgv,
   turnRange,
+  withTime,
 } from "./core.ts";
 
 const times = atom(
@@ -83,11 +82,9 @@ export const register: Register = (on, options) => {
     const text = promptText(e.message.content);
     if (text === undefined) return r;
     const at = await $.clock.now();
-    await update($, times, (t: ChatViewTimes) => ({
-      ...t,
-      sent: cap({ ...t.sent, [r.uuid]: at }),
-      byText: cap({ ...t.byText, [text]: at }),
-    }));
+    await update($, times, (t) =>
+      withTime(t, at, { sent: r.uuid, byText: text }),
+    );
     return r;
   });
 
@@ -132,11 +129,9 @@ export const register: Register = (on, options) => {
     // one first token per block; none streamed (an engine stand-in, a reload mid-stream): when the row was written
     const streamed = pending.splice(0, textBlocks(e.message.content).length);
     const at = streamed[0] ?? (await $.clock.now());
-    await update($, times, (t: ChatViewTimes) => ({
-      ...t,
-      replies: cap({ ...t.replies, [r.uuid]: at }),
-      repliesByText: cap({ ...t.repliesByText, [text]: at }),
-    }));
+    await update($, times, (t) =>
+      withTime(t, at, { replies: r.uuid, repliesByText: text }),
+    );
     return r;
   });
 
@@ -144,10 +139,9 @@ export const register: Register = (on, options) => {
     const r = await next(e);
     if (!e.agentId) {
       const end = await $.clock.now();
-      await update($, times, (t) => ({
-        ...t,
-        turns: cap({ ...t.turns, [String(e.durationMs)]: end }),
-      }));
+      await update($, times, (t) =>
+        withTime(t, end, { turns: String(e.durationMs) }),
+      );
     }
     return r;
   });

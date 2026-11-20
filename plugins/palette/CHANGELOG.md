@@ -4,6 +4,11 @@ All notable changes to the palette plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.3] - 2026-11-20
+
+### Changed
+- Cleanup with no change in behaviour: usage keys, the row id and the description fallback each come from one `core.ts` helper (`useKey`, the new `aboutOf`), the Skill result's name is read by a pure `ranSkill`, the refresh's three lookups and the pane's atom reads run in parallel, and groups are built without copying each list on every add
+
 ## [0.5.2] - 2026-11-20
 
 ### Fixed

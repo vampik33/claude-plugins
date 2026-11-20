@@ -5,14 +5,15 @@
 
 import type { FleetAgent, FleetShell, FleetTree } from "../types";
 import {
-  etaMs,
   fmtClock,
   fmtElapsed,
   fmtLeft,
   isFailed,
   isLive,
   LOST,
+  progressNote,
   quietMs,
+  tally,
 } from "./core.ts";
 
 export type FleetView = {
@@ -87,8 +88,7 @@ function shellDetail(Text: any, s: FleetShell, now: number, w: number) {
     );
   }
   if (s.progress) {
-    const left = etaMs(s.progress, now);
-    const head = `   ${bar(s.progress.frac)} ${Math.floor(s.progress.frac * 100)}%${left === undefined ? "" : ` ~${fmtLeft(left)}`}`;
+    const head = `   ${bar(s.progress.frac)} ${progressNote(s.progress, now)}`;
     return (
       <Text>
         <Text color="cyan">{head}</Text>
@@ -105,9 +105,7 @@ export function drawFleet(els: Elements, v: FleetView, now: number) {
   const { Box, Text } = els;
   const w = Math.max(24, v.width);
   const name = Math.min(18, w - 10);
-  const run = v.agents.filter((a) => isLive(a.status)).length;
-  const fail = v.agents.filter((a) => isFailed(a.status)).length;
-  const done = v.agents.length - run - fail;
+  const { run, done, fail } = tally(v.agents);
 
   return (
     <Box flexDirection="column">
@@ -141,22 +139,15 @@ export function drawFleet(els: Elements, v: FleetView, now: number) {
       {v.shells.length > 0 && <Text dimColor>BACKGROUND</Text>}
       {order(v.shells).map((s) => {
         const time = timing(s, now);
-        const row = (
-          <Text>
-            {mark(Text, s.status)}
-            {` ${fit(s.command, Math.max(8, w - 4 - time.length))} ${time}`}
-          </Text>
-        );
-        if (!isLive(s.status) || (!s.line && !s.waiter && !s.stalled))
-          return (
-            <Box key={s.id} flexDirection="column">
-              {row}
-            </Box>
-          );
         return (
           <Box key={s.id} flexDirection="column">
-            {row}
-            {shellDetail(Text, s, now, w)}
+            <Text>
+              {mark(Text, s.status)}
+              {` ${fit(s.command, Math.max(8, w - 4 - time.length))} ${time}`}
+            </Text>
+            {isLive(s.status) && (s.line || s.waiter || s.stalled)
+              ? shellDetail(Text, s, now, w)
+              : null}
           </Box>
         );
       })}

@@ -180,7 +180,7 @@
     {
       "name": "fix-findings",
       "description": "Prove review findings against the code and fix only the valid ones; `converge` repeats failing test, fix and independent review for up to three rounds, and a turn-end hook keeps the loop from ending early",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "author": {
         "name": "vampik33"
       },

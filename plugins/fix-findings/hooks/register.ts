@@ -3,7 +3,6 @@ import type { EngineInterface, Register } from "claude-code";
 
 import { LEDGER_SUFFIX, ownedBy, parseLedger, reprompt } from "./core.ts";
 
-const NAME = "fix-findings";
 /** Whether the running turn is one this mod sent the model back into. */
 const continued = atom(
   { plugin: "fix-findings", key: "continued" } as const,
@@ -33,7 +32,8 @@ export const register: Register = (on) => {
   // a prompt that starts a turn: ours keeps the continuation, any other ends it
   on("prompt.submit", async ($, e, next) => {
     if (e.turnId === undefined) {
-      const ours = e.origin.kind === "plugin" && e.origin.name === NAME;
+      const ours =
+        e.origin.kind === "plugin" && e.origin.name === $.plugin.name;
       await update($, continued, () => ours);
     }
     return next(e);
@@ -44,8 +44,6 @@ export const register: Register = (on) => {
     // once a turn something else started, so it can never hold the model forever
     if (e.agentId || e.reason !== "answer" || (await read($, continued)))
       return r;
-    // work still in flight will wake it
-    if ((await $.agent.list()).some((a) => BUSY.has(a.status))) return r;
 
     let text: string;
     try {
@@ -56,6 +54,8 @@ export const register: Register = (on) => {
     if (!ownedBy(text, await $.session.id())) return r;
     const block = reprompt(parseLedger(text));
     if (!block) return r;
+    // work still in flight will wake it
+    if ((await $.agent.list()).some((a) => BUSY.has(a.status))) return r;
     await update($, continued, () => true);
     // a plugin's prompt runs once the session is idle, after this turn ends: don't wait on it here
     void sendBack($, block).catch(() => {});

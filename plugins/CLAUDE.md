@@ -39,5 +39,6 @@ Mod gotchas:
 
 - Start with `set -euo pipefail`
 - Debug mode via `<PLUGIN>_DEBUG=1` environment variable
+- A script that reads `TELEGRAM_BOT_TOKEN` runs `{ set +x; } 2>/dev/null` before it, so neither debug mode nor an outside `bash -x` traces the token; `tests/hooks.bats` checks each such script with tracing on
 - Extract shared logic into `hooks/scripts/lib/`
 - Read hook input via `HOOK_INPUT=$(cat)` before sourcing libraries

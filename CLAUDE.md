@@ -14,6 +14,8 @@ One target: `claude plugin test plugins/<mod>`; `(cd verification && bun test pr
 
 `run.sh` stops at the first failing suite (`set -e`); fix it and rerun before reading later suites as passing.
 
+Without Lean (`lake`) installed, `run.sh` stops at the Lean step and `diff.lean.test.ts` fails with "no oracle"; run the other suites one target at a time.
+
 ## Repository Structure
 
 `plans/` = implementation plans from Claude sessions; `verification/` = Lean models and proofs, property, differential and formal-verify (`*.fv.test.ts`) tests, `run.sh`.

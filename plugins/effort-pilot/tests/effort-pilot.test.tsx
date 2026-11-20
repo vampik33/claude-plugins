@@ -442,6 +442,13 @@ describe("a session", () => {
     expect(r.text).toBe("opus-5-5 · effort xhigh · Jev: medium → xhigh 80%");
   });
 
+  test("Jev's level is held to the maxEffortLevel setting", async ($, on) => {
+    const { seen } = world(on, { settings: { maxEffortLevel: "high" } });
+    await startTurn($, "Refactor the auth flow across the services");
+    await stepAt($, "medium");
+    expect(seen.steps.map((s) => s.effort)).toEqual(["high"]);
+  });
+
   test("Jev under 50% sure on the first turn sends the session's level", async ($, on) => {
     const { seen } = world(on, { confidence: 0.33 });
     await startTurn($, "go");

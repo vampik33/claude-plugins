@@ -107,6 +107,37 @@ EOF
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
 
+@test "check-credentials: bash -x never prints the bot token" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  run --separate-stderr bash -x "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-x"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Ready"* ]]
+  [[ "$stderr" == *"+ "* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+}
+
+@test "session-notification: exported SHELLOPTS=xtrace never prints the bot token" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+session_threshold_minutes: 0
+---
+EOF
+  local sf="/tmp/claude-telegram-notifier-session-sn-x"
+  echo "$(($(date +%s) - 900))" > "$sf"
+  # Debug mode shows send-telegram.sh's stderr; SHELLOPTS traces that child too
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  run --separate-stderr env SHELLOPTS=xtrace bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-x","cwd":"/tmp/test","transcript_path":"","last_assistant_message":""}'
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  [[ "$output" == *"+ "* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+}
+
 @test "hooks.json: every command path is quoted" {
   run jq -r '.hooks[][].hooks[].command' "$PLUGIN_DIR/hooks/hooks.json"
   [ "$status" -eq 0 ]
@@ -282,6 +313,20 @@ EOF
   [ ! -f "/tmp/claude-telegram-notifier-session-upd-3" ]
 }
 
+@test "update-activity: bash -x never prints the bot token" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  run --separate-stderr bash -x "$SCRIPTS/update-activity.sh" <<< '{"session_id":"upd-x"}'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"+ "* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+  [ -f "/tmp/claude-telegram-notifier-session-upd-x" ]
+  rm -f "/tmp/claude-telegram-notifier-session-upd-x"
+}
+
 # =========================================================
 # send-telegram.sh
 # =========================================================
@@ -302,6 +347,14 @@ EOF
   run --separate-stderr bash "$SCRIPTS/send-telegram.sh" "Hello World"
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"Payload:"* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+}
+
+@test "send-telegram: bash -x never prints the bot token" {
+  run --separate-stderr bash -x "$SCRIPTS/send-telegram.sh" "Hello World"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  [[ "$stderr" == *"+ "* ]]
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
 

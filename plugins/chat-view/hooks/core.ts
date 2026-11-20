@@ -88,6 +88,20 @@ const mapTimes = (
 export const emptyTimes = (): ChatViewTimes =>
   mapTimes(() => Object.create(null));
 
+/** `t` with `at` under each given map's key, each map it adds to capped. */
+export function withTime(
+  t: ChatViewTimes,
+  at: number,
+  keys: Partial<Record<keyof ChatViewTimes, string>>,
+): ChatViewTimes {
+  const out = { ...t };
+  for (const k of TIME_KEYS) {
+    const key = keys[k];
+    if (key !== undefined) out[k] = cap({ ...t[k], [key]: at });
+  }
+  return out;
+}
+
 /** `newer` folded over `older` map by map, each map capped. */
 export const mergeTimes = (older: ChatViewTimes, newer: ChatViewTimes) =>
   mapTimes((k) => cap({ ...older[k], ...newer[k] }));

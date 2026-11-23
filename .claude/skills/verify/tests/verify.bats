@@ -3,7 +3,7 @@
 # stubbed: each stub logs its argv to $calls and exits 0.
 
 setup() {
-  tmp="$(mktemp -d)"
+  tmp="$BATS_TEST_TMPDIR"
   export HOME="$tmp/home" GIT_CONFIG_NOSYSTEM=1
   export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
   unset VERIFY_BASE
@@ -32,11 +32,6 @@ setup() {
   git init -q --bare "$tmp/origin.git"
   git -C "$repo" remote add origin "$tmp/origin.git"
   git -C "$repo" push -q origin main
-}
-
-teardown() {
-  chmod -R u+rwX "$tmp"
-  rm -rf "$tmp"
 }
 
 @test "an invalid VERIFY_BASE fails setup" {

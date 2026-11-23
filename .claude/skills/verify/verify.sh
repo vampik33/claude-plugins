@@ -11,7 +11,9 @@
 #   auto   full when a Lean-modelled file or anything under verification/ changed, else quick
 #
 # "Changed" = git diff against VERIFY_BASE (default: the merge base with origin/main, so a
-# branch's commits count too) plus untracked files. Plugin names given as arguments replace it.
+# branch's commits count too; no merge base is a FAIL, not a fallback to HEAD), plus staged and
+# untracked files. Plugin names given as arguments replace it. The checks run on the working
+# tree, not on what is staged: a NOTE names the files with both staged and unstaged changes.
 # One PASS/FAIL line per step; the first FAIL stops the run with the tail of that step's log.
 # Exit 0 only when every step passed.
 set -uo pipefail
@@ -80,11 +82,21 @@ if [ $# -gt 0 ]; then
   done
   echo "plugins: ${plugins[*]} (from the arguments)"
 else
-  base="${VERIFY_BASE:-$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD)}"
-  changed=$({
-    git diff --name-only "$base" --
-    git ls-files --others --exclude-standard
-  } | sort -u) || fail setup /dev/null "git diff against $base failed"
+  if [ -n "${VERIFY_BASE:-}" ]; then
+    base=$(git rev-parse --verify --quiet "$VERIFY_BASE^{commit}") ||
+      fail setup /dev/null "VERIFY_BASE=$VERIFY_BASE is not a commit"
+  else
+    base=$(git merge-base HEAD origin/main) ||
+      fail setup /dev/null "no merge base with origin/main: git fetch origin main, or set VERIFY_BASE"
+  fi
+  worktree=$(git diff --name-only "$base" --) || fail setup /dev/null "git diff against $base failed"
+  staged=$(git diff --cached --name-only "$base" --) || fail setup /dev/null "git diff --cached against $base failed"
+  untracked=$(git ls-files --others --exclude-standard) || fail setup /dev/null "git ls-files failed"
+  changed=$(printf '%s\n' "$worktree" "$staged" "$untracked" | sort -u)
+  # Every check runs on the working tree, so for these files it is not what will be committed.
+  index=$(git diff --cached --name-only --) || fail setup /dev/null "git diff --cached failed"
+  unstaged=$(git diff --name-only --) || fail setup /dev/null "git diff failed"
+  partial=$(comm -12 <(sort <<<"$index") <(sort <<<"$unstaged") | tr '\n' ' ')
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     case "$f" in
@@ -102,6 +114,7 @@ else
   marketplace=""
   grep -qx '.claude-plugin/marketplace.json' <<<"$changed" && marketplace=1
   echo "changed since ${base:0:12}: $(grep -c . <<<"$changed") files; plugins: ${plugins[*]:-none}"
+  [ -n "${partial// /}" ] && echo "NOTE staged and unstaged changes in: ${partial}- the checks run on the working tree, not on what will be committed"
 fi
 
 if [ "$tier" = auto ]; then
@@ -124,12 +137,18 @@ done
 [ -n "${marketplace:-}" ] && step validate-marketplace claude plugin validate .
 
 quick() {
-  local p props
+  local p f list rc props
   for p in "${plugins[@]}"; do
     if is_mod "$p"; then
       need bun
       step "test-$p" claude plugin test "plugins/$p"
-      mapfile -t props < <(cd verification && grep -lF "/plugins/$p/" props/*.test.ts | grep -v '^props/diff\.lean\.test\.ts$')
+      rc=0
+      list=$(cd verification || exit 2; grep -lF "/plugins/$p/" props/*.test.ts) || rc=$?
+      [ "$rc" -le 1 ] || fail "props-$p" /dev/null "exit $rc listing the verification/props files that import plugins/$p"
+      props=()
+      while IFS= read -r f; do
+        [ -n "$f" ] && [ "$f" != props/diff.lean.test.ts ] && props+=("$f")
+      done <<<"$list"
       if [ ${#props[@]} -gt 0 ]; then
         [ -d verification/node_modules ] || step bun-install bash -c 'cd verification && bun install --frozen-lockfile'
         # shellcheck disable=SC2016 # $@ expands in the inner shell

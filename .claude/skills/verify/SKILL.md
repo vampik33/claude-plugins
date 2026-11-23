@@ -14,7 +14,7 @@ From the repo root:
 .claude/skills/verify/verify.sh quick fleet   # name the plugins instead of reading the diff
 ```
 
-"Changed" is `git diff` against the merge base with `origin/main` (or `VERIFY_BASE`) plus untracked files, so a branch's earlier commits count.
+"Changed" is `git diff` against the merge base with `origin/main` (or `VERIFY_BASE`), plus staged and untracked files, so a branch's earlier commits count. Without that merge base the run stops with `FAIL setup`: `git fetch origin main` or set `VERIFY_BASE`. The checks run on the working tree, not on what is staged: a `NOTE` names any file with both staged and unstaged changes.
 
 ## What each plugin gets
 

@@ -484,6 +484,8 @@ esac
     });
   });
 
+  // 200 runs, each a real sh and up to six fake lsof processes: 2 s on an idle machine,
+  // past bun's default 5 s with every core busy, so the budget is the work's, not 5 s.
   test("any file name comes back verbatim, free ones only, in order", () => {
     const name = fc
       .string({ minLength: 1, maxLength: 24 })
@@ -504,7 +506,7 @@ esac
       ),
       { numRuns: 200 },
     );
-  });
+  }, 20_000);
 
   /** The system's tools: a file a live process writes to is held, one nobody opened is free. */
   for (const tool of ["lsof", "fuser"] as const)

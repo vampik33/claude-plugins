@@ -182,8 +182,9 @@ async function tick($: EngineInterface, t: Tracker): Promise<void> {
   if (!list) return;
   const statuses = Object.fromEntries(list.map((a) => [a.id, a.status]));
   let ended: FleetAgent[] = [];
+  const now = await $.clock.now();
   await update($, fleet, (f) => {
-    const r = applyStatuses(f.agents, statuses, Date.now());
+    const r = applyStatuses(f.agents, statuses, now);
     ended = r.ended;
     return { ...f, agents: r.agents };
   });
@@ -315,8 +316,8 @@ async function endTask(
 ): Promise<void> {
   let agents: FleetAgent[] = [];
   let shell: FleetShell | undefined;
+  const now = await $.clock.now();
   await update($, fleet, (f) => {
-    const now = Date.now();
     const a = applyStatuses(f.agents, { [id]: status }, now);
     const s = endShell(f.shells, id, status, now);
     agents = a.ended;
@@ -443,7 +444,7 @@ export const register: Register = (on, options) => {
       type: e.subagentType,
       description: e.description,
       model: r.model,
-      startedAt: Date.now(),
+      startedAt: await $.clock.now(),
       status: "running",
       tools: 0,
       ...(e.isTeammate ? { teammate: true } : {}),
@@ -490,7 +491,7 @@ export const register: Register = (on, options) => {
     const shell: FleetShell = {
       id: taskId,
       command: e.command,
-      startedAt: Date.now(),
+      startedAt: await $.clock.now(),
       status: "running",
       ...(outputFile ? { outputFile } : {}),
       ...(isWaiter(e.command) ? { waiter: true } : {}),
@@ -547,7 +548,7 @@ export const register: Register = (on, options) => {
         </Box>
       );
     }
-    return drawFleet($.ui.resolve(e), view, Date.now());
+    return drawFleet($.ui.resolve(e), view, await $.clock.now());
   });
 
   // its own line in the band: the counts and a show/hide toggle

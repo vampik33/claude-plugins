@@ -480,18 +480,26 @@ describe("trim / words", () => {
 });
 
 describe("SCAN_SCRIPT on this machine", () => {
-  /** Scans this process's children; answers the shell writing to `file`. */
-  const scanFor = (file: string) => {
+  /** Scans this process's children once (`grace`: the scan's second argument); answers
+   * each shell by the file it writes to. One scan reads every process on the machine,
+   * a third of a second here when idle, so a test scans once per moment it checks and
+   * reads every shell from that one snapshot: a scan per assertion pushed the tests past
+   * bun's 5 s on a busy machine. */
+  const scanAll = (...grace: string[]) => {
     const p = Bun.spawnSync([
       "bash",
       "-c",
       SCAN_SCRIPT,
       "scan",
       String(process.pid),
+      ...grace,
     ]);
     expect(p.exitCode).toBe(0);
-    return parseScan(p.stdout.toString()).find((s) => s.file === file);
+    const shells = parseScan(p.stdout.toString());
+    return (file: string) => shells.find((s) => s.file === file);
   };
+  /** Scans this process's children; answers the shell writing to `file`. */
+  const scanFor = (file: string) => scanAll()(file);
 
   test("finds a child shell writing to a task file, its tree, its CPU and a sleep in it", async () => {
     const dir = `${process.env.TMPDIR ?? "/tmp"}/watchdog-scan-${process.pid}/tasks`;
@@ -526,12 +534,17 @@ describe("SCAN_SCRIPT on this machine", () => {
     await Bun.$`mkdir -p ${dir}`;
     const log = `${dir}/../app.log`;
     await Bun.write(log, "");
+    // the copy starts only when the test opens this gate, after the first scan: a fixed
+    // 0.5 s delay lost the race to that scan on a busy machine, which then counted the
+    // copy's reads as already done
+    const gate = `${dir}/../go`;
+    await Bun.$`mkfifo ${gate}`;
     // each `; true` keeps bash from exec-ing into its last command
     const kids = {
       server: "python3 -m http.server 0 --bind 127.0.0.1; true",
       watcher: `tail -f ${log}; true`,
       idle: "sleep 30; true",
-      copy: "sleep 0.5; head -c 10000000 /dev/zero > /dev/null; sleep 30; true",
+      copy: `read -r _ < ${gate}; head -c 10000000 /dev/zero > /dev/null; sleep 30; true`,
     };
     const children = Object.entries(kids).map(([name, cmd]) =>
       Bun.spawn(["bash", "-c", cmd], {
@@ -539,11 +552,14 @@ describe("SCAN_SCRIPT on this machine", () => {
       }),
     );
     try {
-      const scan = (name: string) => scanFor(`${dir}/${name}.output`)!;
+      const at = (scan: ReturnType<typeof scanAll>) => (name: string) =>
+        scan(`${dir}/${name}.output`)!;
       await Bun.sleep(200);
-      const before = { copy: scan("copy"), idle: scan("idle") };
+      const first = at(scanAll());
+      const before = { copy: first("copy"), idle: first("idle") };
+      Bun.spawnSync(["sh", "-c", 'echo go > "$1"', "sh", gate]);
       await Bun.sleep(1_800);
-      const after = (name: string) => scan(name);
+      const after = at(scanAll());
       expect(after("server").serving).toBe(true);
       expect(after("watcher").serving).toBe(true);
       expect(after("idle").serving).toBe(false);
@@ -671,10 +687,12 @@ time.sleep(30)`;
       }),
     );
     try {
-      const scan = (name: string) => scanFor(`${dir}/${name}.output`)!;
+      const at = (scan: ReturnType<typeof scanAll>) => (name: string) =>
+        scan(`${dir}/${name}.output`)!;
       await Bun.sleep(300);
-      const before = scan("logging");
+      const before = at(scanAll())("logging");
       await Bun.sleep(1_200);
+      const scan = at(scanAll());
       expect(scan("bounded").bounded).toBe(true);
       expect(scan("bounded").remote).toBe(false);
       expect(scan("zero").bounded).toBe(false);
@@ -710,23 +728,11 @@ time.sleep(30)`;
         stdout: Bun.file(`${dir}/${name}.output`),
       }),
     );
-    // no grace: the deadline alone decides
-    const scan = (name: string) => {
-      const p = Bun.spawnSync([
-        "bash",
-        "-c",
-        SCAN_SCRIPT,
-        "scan",
-        String(process.pid),
-        "0",
-      ]);
-      expect(p.exitCode).toBe(0);
-      return parseScan(p.stdout.toString()).find(
-        (s) => s.file === `${dir}/${name}.output`,
-      )!;
-    };
     try {
       await Bun.sleep(1_500);
+      // no grace: the deadline alone decides
+      const now = scanAll("0");
+      const scan = (name: string) => now(`${dir}/${name}.output`)!;
       expect(scan("long").bounded).toBe(true);
       expect(scan("longOpts").bounded).toBe(true);
       expect(scan("zero").bounded).toBe(false);

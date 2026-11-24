@@ -32,15 +32,19 @@ CURL
   export TELEGRAM_CHAT_ID="test-chat-456"
 }
 
-# Print a dir to use as PATH: every system tool except the named ones
+# Print a dir to use as PATH: every system tool except the named ones. One ln for
+# all of them: a basename and an ln per tool (where /bin links to /usr/bin, about
+# 3,400 tools, so 7,000 forks a call) took most of a minute per call.
 path_without() {
   local dir="$BATS_TEST_TMPDIR/path-without-${*// /-}"
   mkdir -p "$dir"
+  local -A keep=()
   local f
   for f in /usr/bin/* /bin/*; do
-    [[ " $* " == *" $(basename "$f") "* ]] && continue
-    ln -sf "$f" "$dir/" 2>/dev/null || true
+    [[ " $* " == *" ${f##*/} "* ]] && continue
+    keep[${f##*/}]=$f
   done
+  ln -sf "${keep[@]}" "$dir/" 2>/dev/null || true
   echo "$dir"
 }
 

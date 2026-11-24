@@ -379,6 +379,7 @@ function engine(
   on: any,
   list: { id: string; status: string }[],
   env: Record<string, string> = {},
+  start = Date.now(),
 ) {
   const seen = {
     toasts: [] as string[],
@@ -394,7 +395,7 @@ function engine(
     /** False while another tab is in front of the pane. */
     isShown: true,
   };
-  const clock = mock.clock(on, { now: Date.now() });
+  const clock = mock.clock(on, { now: start });
   /** Output files by path: what `tail` and `fs.stat` read. */
   const files: Record<string, string> = {};
   /** What the held-file look answers: the files no process holds, its exit code, how often it ran. */
@@ -1021,6 +1022,41 @@ describe("shell progress", () => {
         await band.unmount();
       },
     );
+
+  // The engine's clock, not the wall clock: a mocked one that runs elsewhere
+  // in time still measures a shell's quiet and an agent's run.
+  test(
+    "times come from the engine's clock: a quiet shell stalls and an agent's run is measured by it",
+    { options: { sound: false, telegram: false } },
+    async ($, on) => {
+      const { seen, clock, files } = engine(
+        on,
+        [{ id: "a1", status: "running" }],
+        {},
+        Date.UTC(2030, 0, 1, 9),
+      );
+      on("tool.call", () => bgResult("b1"));
+      await $.tool.call({ tool: "Bash", command: "./retrain.sh d57" } as never);
+      files["/tmp/t/b1.output"] = "fitting\n";
+      await spawn($, "review plan");
+      await clock.advance(5_000);
+      expect(seen.toasts).toEqual([]);
+      await clock.advance(5 * 60_000);
+      expect(seen.toasts).toEqual(["⚠ retrain.sh d57 · no output for 5m"]);
+
+      await $.turn.complete({
+        answer: "",
+        durationMs: 1,
+        isAborted: false,
+        turnId: "t",
+        reason: "answer",
+        agentId: "a1",
+      } as never);
+      expect(seen.toasts).toContain(
+        `✓ Explore · review plan · ${fmtElapsed(5_000 + 5 * 60_000)}`,
+      );
+    },
+  );
 
   for (const surface of ["terminal", "desktop"] as const)
     test(

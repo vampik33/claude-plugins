@@ -4,6 +4,11 @@ All notable changes to the fleet plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.3] - 2026-11-24
+
+### Fixed
+- Start and end times, and the pane drawn outside the terminal, come from the engine's clock (`$.clock.now()`) like the stall check and the band, not `Date.now()`: under a mocked clock an agent's run toasted "0s"
+
 ## [0.6.2] - 2026-11-20
 
 ### Changed

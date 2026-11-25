@@ -145,6 +145,53 @@ EOF
   [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
 }
 
+@test "session-notification: debug mode with SHELLOPTS=xtrace keeps the summarizer's trace out of the message" {
+  arm_notification sn-x-summary
+  local t="$BATS_TEST_TMPDIR/tr<b>&x.jsonl"
+  cp "$FIXTURES/transcript.jsonl" "$t"
+  local input
+  input=$(jq -cn --arg t "$t" '{session_id: "sn-x-summary", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  run --separate-stderr env SHELLOPTS=xtrace bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  # the summarizer was traced, into the hook output
+  [[ "$output" == *"tr<b>&x.jsonl"* ]]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"Edited: main.rs"* ]]
+  [[ "$payload" != *"tr<b>"* ]]
+  [[ "$payload" != *"+ "* ]]
+}
+
+@test "session-notification: without jq, skips quietly when notifications are off" {
+  rm -f "$HOME/.claude/telegram-notifier.local.md" "$CLAUDE_PROJECT_DIR/.claude/telegram-notifier.local.md"
+  run --separate-stderr env PATH="$(path_without jq)" bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-nojq-off"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output$stderr" ]
+  printf -- '---\nenabled: false\n---\n' > "$HOME/.claude/telegram-notifier.local.md"
+  run --separate-stderr env PATH="$(path_without jq)" bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-nojq-off"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output$stderr" ]
+}
+
+@test "session-notification: without jq, prints one stderr line when notifications are on" {
+  arm_notification sn-nojq-on
+  run --separate-stderr env PATH="$(path_without jq)" bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-nojq-on"}'
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  [ "$stderr" = "Telegram Notifier: session notification skipped, missing jq" ]
+  [ ! -f "$BATS_TEST_TMPDIR/curl_args" ]
+  rm -f /tmp/claude-telegram-notifier-session-sn-nojq-on
+}
+
+@test "session-notification: without jq and curl, names both in one line" {
+  arm_notification sn-nodeps
+  run --separate-stderr env PATH="$(path_without jq curl)" bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-nodeps"}'
+  [ "$status" -eq 1 ]
+  [ "$stderr" = "Telegram Notifier: session notification skipped, missing jq, curl" ]
+  rm -f /tmp/claude-telegram-notifier-session-sn-nodeps
+}
+
 @test "check-credentials: bash -x never prints the bot token" {
   cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
 ---

@@ -5,6 +5,14 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.12] - 2026-11-25
+
+### Security
+- In debug mode, the Stop notification takes only the summarizer's stdout: its stderr, which under an exported `SHELLOPTS=xtrace` holds a trace with the raw transcript path and jq program, went into the Telegram message unescaped. It now goes to the hook output
+
+### Fixed
+- The Stop hook checks for `jq` and `curl` before using them: without them it exits quietly when notifications are off, and prints one stderr line naming what is missing when they are on, instead of failing with exit 127 after every response
+
 ## [1.9.11] - 2026-11-25
 
 ### Security

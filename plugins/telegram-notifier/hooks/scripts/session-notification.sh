@@ -17,6 +17,22 @@ source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/session.sh"
 # shellcheck source=lib/html.sh
 source "$SCRIPT_DIR/lib/html.sh"
+
+# Reading the event needs jq and sending needs curl. Without them, skip quietly
+# when notifications are off; when on, say so in one line (exit 1: Claude Code
+# shows it without blocking the stop, as exit 2 would)
+MISSING_DEPS=()
+command -v jq &> /dev/null || MISSING_DEPS+=("jq")
+command -v curl &> /dev/null || MISSING_DEPS+=("curl")
+if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
+  if [[ "$(is_plugin_enabled)" == "true" ]]; then
+    printf -v DEPS_LIST '%s, ' "${MISSING_DEPS[@]}"
+    echo "Telegram Notifier: session notification skipped, missing ${DEPS_LIST%, }" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
 extract_session_id "$HOOK_INPUT"
 extract_cwd "$HOOK_INPUT"
 extract_transcript_path "$HOOK_INPUT"
@@ -77,8 +93,10 @@ CUSTOM_MESSAGE=$(get_notification_body)
 # Get transcript summary if available
 TASK_SUMMARY=""
 if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
+  # Only stdout goes into the message: in debug mode the summarizer's stderr
+  # (its trace, under an exported SHELLOPTS=xtrace) goes to the hook output
   if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-    TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" 2>&1 || echo "")
+    TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" || echo "")
   else
     TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
   fi

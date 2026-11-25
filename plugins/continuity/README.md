@@ -75,4 +75,4 @@ The note holds: your first and latest prompts, cwd, branch and worktree, uncommi
 
 ## License
 
-Apache-2.0. See [LICENSE](../../LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

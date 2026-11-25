@@ -41,4 +41,4 @@ The hook uses `turn.complete` and `$.prompt.submit`, not the classic `Stop` hook
 
 ## License
 
-Apache-2.0. See [LICENSE](../../LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

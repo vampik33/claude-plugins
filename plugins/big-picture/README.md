@@ -55,4 +55,4 @@ Each check costs a Jev call; only a yes costs a Haiku call.
 
 ## License
 
-Apache-2.0. See [LICENSE](../../LICENSE). show-me's text is HumanLayer's, MIT: [`licenses/show-me.LICENSE`](licenses/show-me.LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE). show-me's text is HumanLayer's, MIT: [`licenses/show-me.LICENSE`](licenses/show-me.LICENSE).

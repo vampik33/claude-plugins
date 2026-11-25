@@ -6,9 +6,9 @@ Thumbs.db
 *.log
 
 # Claude Code local files (rules and skills are shared)
-.claude/*
-!.claude/rules/
-!.claude/skills/
+**/.claude/*
+!/.claude/rules/
+!/.claude/skills/
 
 # Editor directories
 .idea/

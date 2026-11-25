@@ -133,4 +133,4 @@ cd $(git gtr go branch-name)    # May break with spaces
 
 ## License
 
-Apache-2.0. See [LICENSE](../../LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

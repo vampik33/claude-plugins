@@ -20,6 +20,10 @@ summary  updated 09:05  show  update       the page is current
 summary  ✗ Jev answered HTTP 401  show  update
 ```
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -47,6 +51,8 @@ Every tool call that goes through (subagents' too) is logged: files written or e
 3. **Is there progress?** Every 30 minutes, once a summary exists, the background shells still running are found in the transcript (a Bash call whose record names the background task it became, with no task notification for it since) and the last 2 KB of each one's `tasks/<id>.output` file is read. When that output moved since the last look, Jev is asked, over the commands alone, whether their progress is worth a rewrite; at p ≥ 0.5 Haiku rewrites the page with the output. The output never goes to Jev (TypeSafe), only to Haiku. A no is not asked again on the same output; a failed ask or write is. A long *foreground* command's output cannot be read until it ends.
 4. **Writing** is Haiku (`$.model.complete`, 32k tokens and 5 minutes at most): show-me's guidance and the page's contract as a cached system prompt, the transcript as a digest (what was typed, said and run: the newest 60k characters), the session's numbers counted from the whole transcript (main conversation only), the previous summary to update (its `<style>` dropped), and the commands still running with the end of their output. The page gets the mod's own stylesheet, so Haiku writes no CSS. Mermaid comes from jsDelivr, pinned; a diagram that fails to parse shows its source text. The page runs no script of Haiku's: its scripts, `<meta>` and `<link>` tags are stripped, and a Content-Security-Policy lets only the mod's Mermaid loader and Mermaid's own files run. The page's only `<meta>` refresh is the mod's own.
 
-Each check costs a Jev call; only a yes costs a Haiku call. Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+Each check costs a Jev call; only a yes costs a Haiku call.
 
-show-me's text is HumanLayer's, MIT: [`licenses/show-me.LICENSE`](licenses/show-me.LICENSE).
+## License
+
+Apache-2.0. See [LICENSE](../../LICENSE). show-me's text is HumanLayer's, MIT: [`licenses/show-me.LICENSE`](licenses/show-me.LICENSE).

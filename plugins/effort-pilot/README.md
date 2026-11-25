@@ -6,6 +6,10 @@ Jev, TypeSafe's classifier, picks the effort level for each prompt, and the mod 
 opus-5-5 · effort xhigh · Jev: medium → xhigh 84%
 ```
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -20,9 +24,9 @@ Set a TypeSafe key for Jev, in `~/.claude/settings.json`:
 { "env": { "TYPESAFE_API_KEY": "…" } }
 ```
 
-Without one the mod shows a toast once and leaves the session's own level. Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+Without one the mod shows a toast once and leaves the session's own level.
 
-## How it works
+## How It Works
 
 1. **On each prompt**, as its turn starts (`turn.start`, so a prompt typed while a turn runs is judged when its own turn starts, not in the middle of the running one), Jev gets one `score` question over five levels, low to max, and the mod takes the most likely one. Its criteria follow [Which Claude model should you build with?](https://claude.dev/blog/which-claude-model-should-you-build-with/) and Claude Code's [effort guide](https://code.claude.com/docs/en/model-config#choose-an-effort-level): `low` for chat, sketches and small changes such as a rename; `medium`, the default on current models, for everyday engineering and debugging with a clear scope; `high` where verification matters, edge cases are likely, or `medium` fell short; `xhigh` only after `high` fell short on the same problem; `max` for a hard problem to work through unattended, such as hunting for security vulnerabilities. If Jev is less than 50% sure, its level is shown but not applied: the turn runs at the session's own level, your configured default (`/effort`, `effortLevel`). A turn with no prompt, such as a continuation, also keeps the previous turn's level, without asking Jev. Jev reads the prompt, your last 3 prompts and the end of the last answer, all cut to a few KB, and is told the session's default level, which stands when it is unsure (from the session's last request, or before the first one and after a held turn from `CLAUDE_CODE_EFFORT_LEVEL`, then `modelSettings.<model>.effortLevel`, then a top-level `effortLevel`, then the model's own default: `medium` on Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.2, `xhigh` on Opus 4.7, `high` on the others. As in Claude Code, a top-level `effortLevel` in your user settings counts only on Opus 5, Fable 5.1 and earlier; one in project, local, `--settings` or managed settings counts on every model). Tool output and file contents are never sent: TypeSafe is a third party. The prompt waits for Jev at most 4 s (it usually answers in about 0.3 s); past that, or on an HTTP error, the session's level stands.
 2. **On each main-loop request** (`turn.step`) the mod sends Jev's level in place of the session's. Your `/effort` setting is not changed: the level applies request by request. Subagents keep their own level.
@@ -37,3 +41,7 @@ Without one the mod shows a toast once and leaves the session's own level. Needs
 Both are plain text, the same in the terminal and the desktop app.
 
 Each prompt costs one Jev call (a few hundred input tokens), none on a model where Jev's level could not apply.
+
+## License
+
+Apache-2.0. See [LICENSE](../../LICENSE).

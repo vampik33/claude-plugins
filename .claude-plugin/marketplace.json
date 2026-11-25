@@ -12,7 +12,7 @@
     {
       "name": "gtr",
       "description": "Git worktree management using git-worktree-runner for parallel branch development",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "author": {
         "name": "vampik33"
       },
@@ -36,7 +36,7 @@
     {
       "name": "explain-changes",
       "description": "Explains code changes in detail - what was done and why. Uses explanatory style with educational insights.",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "author": {
         "name": "vampik33"
       },
@@ -48,7 +48,7 @@
     {
       "name": "plan-renamer",
       "description": "Rename plan files from random names to meaningful titles extracted from content",
-      "version": "1.2.5",
+      "version": "1.2.6",
       "author": {
         "name": "vampik33"
       },
@@ -60,7 +60,7 @@
     {
       "name": "big-picture",
       "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated while the work goes on; /big-picture opens it in the default browser",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "author": {
         "name": "vampik33"
       },
@@ -72,7 +72,7 @@
     {
       "name": "claudemd-gen",
       "description": "Interactive CLAUDE.md generator and auditor - encodes best practices for writing effective Claude Code memory files",
-      "version": "1.1.3",
+      "version": "1.1.4",
       "author": {
         "name": "vampik33"
       },
@@ -84,7 +84,7 @@
     {
       "name": "chat-view",
       "description": "Your prompts as chat bubbles on the right of the terminal, with the send time under each; the time each reply started streaming; start → end times on each turn's duration line",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "author": {
         "name": "vampik33"
       },
@@ -96,7 +96,7 @@
     {
       "name": "fleet",
       "description": "A side pane with the session's subagents, background shells and worktrees, with alerts when they finish or fail",
-      "version": "0.6.3",
+      "version": "0.6.4",
       "author": {
         "name": "vampik33"
       },
@@ -108,7 +108,7 @@
     {
       "name": "codex-review",
       "description": "Codex reviews as background jobs with findings to pick and send to Claude, and a CodexReview tool",
-      "version": "0.3.14",
+      "version": "0.3.15",
       "author": {
         "name": "vampik33"
       },
@@ -120,7 +120,7 @@
     {
       "name": "continuity",
       "description": "Live context gauge, session length, prompt-cache countdown and hit rate; handover note, compaction and continue past a threshold; resume after a usage limit",
-      "version": "0.4.5",
+      "version": "0.4.6",
       "author": {
         "name": "vampik33"
       },
@@ -132,7 +132,7 @@
     {
       "name": "memory-watch",
       "description": "A side pane summarizing each auto-memory file the session creates or updates",
-      "version": "0.1.9",
+      "version": "0.1.10",
       "author": {
         "name": "vampik33"
       },
@@ -144,7 +144,7 @@
     {
       "name": "palette",
       "description": "A side pane listing the session's agents, skills and commands; click one to put it in the prompt box",
-      "version": "0.5.3",
+      "version": "0.5.4",
       "author": {
         "name": "vampik33"
       },
@@ -156,7 +156,7 @@
     {
       "name": "ship",
       "description": "A line above the prompt with unpushed commits and installed mods behind the repo, and /ship to push, refresh the marketplace and update those mods",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "author": {
         "name": "vampik33"
       },
@@ -168,7 +168,7 @@
     {
       "name": "watchdog",
       "description": "Watches every Bash command, foreground and background: stops one with no output, no CPU and no I/O for 10 minutes (servers, watchers and commands under `timeout` excepted) and tells the model, which decides whether to re-run it",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "author": {
         "name": "vampik33"
       },
@@ -180,7 +180,7 @@
     {
       "name": "fix-findings",
       "description": "Prove review findings against the code and fix only the valid ones; `converge` repeats failing test, fix and independent review for up to three rounds, and a turn-end hook keeps the loop from ending early",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "author": {
         "name": "vampik33"
       },
@@ -192,7 +192,7 @@
     {
       "name": "effort-pilot",
       "description": "Jev picks the effort level for each prompt and the mod applies it on models where a change keeps the prompt cache; each answer ends with its model and effort, and the last band line shows them",
-      "version": "0.3.3",
+      "version": "0.3.4",
       "author": {
         "name": "vampik33"
       },
@@ -204,7 +204,7 @@
     {
       "name": "tool-lens",
       "description": "Adds an icon, the duration and an estimated token count under every tool call, and a button that expands the diff of an Edit, Write or file-changing Bash call.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "vampik33"
       },

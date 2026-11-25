@@ -22,9 +22,12 @@ Snapshot apply path holds a race between commit and unlock.
 [ Send 1 to Claude: verify & fix ]  [ verify only ]  [ dismiss ]
 ```
 
-## Installation
+## Requirements
 
-Requires the official codex plugin (`codex@openai-codex`, set up with `/codex:setup`).
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+- The official codex plugin (`codex@openai-codex`, set up with `/codex:setup`)
+
+## Installation
 
 ```bash
 claude plugin install codex-review@vampik-plugins
@@ -66,4 +69,6 @@ The codex plugin's companion (`codex-companion.mjs`, found through `installed_pl
 | `suggestAfterPush` | `true` | propose `/cx adv` after a push |
 | `preselect` | `medium+` | `medium+`, `all` or `none` ticked |
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](../../LICENSE).

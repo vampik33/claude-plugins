@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.9.8] - 2026-11-25
 
+### Changed
+- README: the title is the plugin's name, Prerequisites is now Requirements, and the License section links the license file
+
 ### Removed
 - The README's Testing section: running the checks is now in the repository's CONTRIBUTING.md
 

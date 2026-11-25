@@ -1,4 +1,4 @@
-# CLAUDE.md Generator Plugin
+# claudemd-gen
 
 Writing effective CLAUDE.md files is the highest-leverage activity for Claude Code users, yet most files are too long, too vague, or contain the wrong kind of instructions. This plugin encodes best practices into an interactive generator with audit capabilities.
 
@@ -52,4 +52,4 @@ The plugin includes curated guidance:
 
 ## License
 
-Apache-2.0
+Apache-2.0. See [LICENSE](../../LICENSE).

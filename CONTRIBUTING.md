@@ -64,7 +64,7 @@ Runs the Lean proofs, the property and differential tests, `claude plugin test` 
 
 ## Adding a plugin
 
-1. Create `plugins/<name>/` with `.claude-plugin/plugin.json`, a `README.md` and a `CHANGELOG.md`.
+1. Create `plugins/<name>/` with `.claude-plugin/plugin.json`, a `README.md` and a `CHANGELOG.md`. The README starts with `# <name>` and a short description, then `## Requirements` (when there are any; a mod lists function hooks) and `## Installation`; the plugin's own sections follow, and it ends with `## License`.
 2. Add an entry to `.claude-plugin/marketplace.json` with the same version as `plugin.json`:
 
    ```json

@@ -13,6 +13,10 @@ Adds a line under every tool call with a colored icon, how long the call ran and
 
 Only the drawing changes: the model never sees these lines.
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -34,4 +38,6 @@ The toggle is a button, so it needs a surface that takes clicks: the fullscreen 
 
 The `PostToolUse` hooks the durations come from do not run where an organization manages Claude Code (there only plugins the organization lists run classic hooks): durations there are the mod's wall clock, which includes any approval wait.
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](../../LICENSE).

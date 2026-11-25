@@ -4,6 +4,11 @@ All notable changes to the memory-watch plugin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.10] - 2026-11-25
+
+### Changed
+- README follows the repository's layout: the plugin's name as the title, Requirements before Installation, and a License section
+
 ## [0.1.9] - 2026-11-19
 
 ### Fixed

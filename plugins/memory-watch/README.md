@@ -11,6 +11,10 @@ MEMORY.md (index)
 09:05 updated · +1 −0
 ```
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -29,4 +33,6 @@ A `tool.call` hook on `Write` and `Edit` looks at each call that went through (n
 
 Not seen: writes by other sessions, by hand, or through Bash (`rm`, `mv`, `sed -i`), so deletions are not listed.
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](../../LICENSE).

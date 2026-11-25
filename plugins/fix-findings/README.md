@@ -2,6 +2,10 @@
 
 Treats review findings as claims to prove. Each one is checked against the code, only the valid ones are fixed, the resulting diff is attacked, and an adversarial review runs before the report.
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`), for the turn-end hook
+
 ## Installation
 
 ```bash
@@ -35,4 +39,6 @@ If Claude ends a turn while `.fix-findings/ledger.json` in the session's working
 
 The hook uses `turn.complete` and `$.prompt.submit`, not the classic `Stop` hook, so it also works where an organization manages Claude Code (there classic hooks run only for plugins the organization lists). It sees subagents in flight but not background shells: a turn that ends waiting on a shell is sent back once. If its prompt is refused, a toast says why and the next turn may try again.
 
-The hook needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](../../LICENSE).

@@ -6,6 +6,10 @@ Watches every Bash command the model runs, foreground and background, and stops 
 watchdog · ⚠ hang.sh quiet 6m/10m · ✗ ssh build-box stopped
 ```
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -38,4 +42,6 @@ Linux only (`/proc`, `ps`, `stat -c`).
 |---|---|---|
 | `quietMinutes` | `10` | stop a command after this long with no output, no CPU and no I/O |
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](../../LICENSE).

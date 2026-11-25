@@ -599,19 +599,16 @@ EOF
   # the lines after a command's first one (ls, npm in the first call) are not read
   cat > "$t" <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd /x && make\nls\n  npm run build && cat y"}},{"type":"tool_use","name":"Bash","input":{"command":"echo hi"}},{"type":"tool_use","name":"Bash","input":{"command":"  npm run build && cat y"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"FOO=1 ls -la"}},{"type":"tool_use","name":"Bash","input":{"command":"/bin/cat x"}},{"type":"tool_use","name":"Bash","input":{"command":"pwdx 1"}}]}}
 EOF
   run bash "$SCRIPTS/summarize-transcript.sh" "$t"
   [ "$status" -eq 0 ]
-  [ "$output" = $'• Ran: npm' ]
+  # internal commands are dropped after the program name is resolved
+  [ "$output" = $'• Ran: npm, pwdx' ]
 }
 
 @test "summarize-transcript: names programs only, never heredoc lines or assignments" {
-  local t="$BATS_TEST_TMPDIR/secrets.jsonl"
-  cat > "$t" <<'JSONL'
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > .env <<'EOF'\nTELEGRAM_BOT_TOKEN=123456:AAExampleSecret\nDB_PASSWORD=hunter2\nEOF"}},{"type":"tool_use","name":"Bash","input":{"command":"GITHUB_TOKEN=ghp_examplesecret gh pr create"}}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"FOO=1 BAR=2 make test"}},{"type":"tool_use","name":"Bash","input":{"command":"/usr/local/bin/cargo build"}}]}}
-JSONL
-  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/secrets.jsonl"
   [ "$status" -eq 0 ]
   [ "$output" = $'• Ran: cargo, gh, make' ]
   [[ "$output" != *hunter2* && "$output" != *ghp_* && "$output" != *123456* ]]
@@ -694,29 +691,26 @@ EOF
   [ "$output" = $'• Edited: main.rs\n• Created: test_main.rs\n• Ran: cargo' ]
 }
 
-@test "session-notification: payload holds counts and names, never Claude's answer" {
+# Enable notifications with no threshold and start session $1 15 minutes ago
+arm_notification() {
   cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
 ---
 enabled: true
 session_threshold_minutes: 0
 ---
 EOF
-  echo "$(($(date +%s) - 900))" > "/tmp/claude-telegram-notifier-session-sn-8"
+  echo "$(($(date +%s) - 900))" > "/tmp/claude-telegram-notifier-session-$1"
+}
 
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-for arg in "$@"; do echo "$arg"; done >> "$BATS_TEST_TMPDIR/curl_payload"
-echo '{"ok":true,"result":{"message_id":1}}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-
+@test "session-notification: payload holds counts and names, never Claude's answer" {
+  arm_notification sn-8
   local input
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" \
     '{session_id: "sn-8", cwd: "/tmp", transcript_path: $t, last_assistant_message: "SECRET-ANSWER-TEXT from config.rs"}')
   run bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
   local payload
-  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Edited: main.rs"* ]]
   [[ "$payload" == *"Ran: cargo"* ]]
   [[ "$payload" != *"SECRET-ANSWER-TEXT"* ]]
@@ -727,32 +721,14 @@ CURL
 }
 
 @test "session-notification: payload holds no heredoc lines or inline assignments" {
-  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
----
-enabled: true
-session_threshold_minutes: 0
----
-EOF
-  echo "$(($(date +%s) - 900))" > "/tmp/claude-telegram-notifier-session-sn-9"
-
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-for arg in "$@"; do echo "$arg"; done >> "$BATS_TEST_TMPDIR/curl_payload"
-echo '{"ok":true,"result":{"message_id":1}}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-
-  local t="$BATS_TEST_TMPDIR/secrets.jsonl"
-  cat > "$t" <<'JSONL'
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > .env <<'EOF'\nTELEGRAM_BOT_TOKEN=123456:AAExampleSecret\nDB_PASSWORD=hunter2\nEOF"}},{"type":"tool_use","name":"Bash","input":{"command":"GITHUB_TOKEN=ghp_examplesecret gh pr create"}}]}}
-JSONL
+  arm_notification sn-9
   local input
-  input=$(jq -cn --arg t "$t" '{session_id: "sn-9", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  input=$(jq -cn --arg t "$FIXTURES/secrets.jsonl" '{session_id: "sn-9", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   run bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
   local payload
-  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" != *hunter2* ]]
   [[ "$payload" != *ghp_* ]]
-  [[ "$payload" == *"Ran: gh"* ]]
+  [[ "$payload" == *"Ran: cargo, gh, make"* ]]
 }

@@ -5,6 +5,12 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.16] - 2026-11-25
+
+### Fixed
+- A Stop notification is no longer lost when the session's working directory passes 128 KiB once escaped for HTML (about 27 KB of `&`, which becomes `&amp;`): `send-telegram.sh` got the message as one argument, and one argument holds at most 128 KiB ("Argument list too long"). The message now goes to `send-telegram.sh`, and the payload to `jq` and `curl`, on stdin: `send-telegram.sh [max_seconds] < message`. `jq` reads it with `--rawfile`, since jq 1.7's `-R` splits a multibyte character that crosses a 4 KB boundary of its input
+- A message longer than Telegram's 4096 characters (counted after HTML parsing, in UTF-16 code units, so an emoji counts 2) is cut to fit and ends in "…" with its open tags closed, instead of being refused by the API ("message is too long"); this covers `/telegram` too. The cut never splits a tag or an entity, and a message that fits is sent unchanged
+
 ## [1.9.15] - 2026-11-25
 
 ### Fixed

@@ -21,8 +21,9 @@ setup() {
   mkdir -p "$BATS_TEST_TMPDIR/bin"
   cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
 #!/bin/bash
-# one atomic write: the Stop hook sends from a background job, and tests wait for the file
-printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/curl_args.$$"
+# one atomic write: the Stop hook sends from a background job, and tests wait for the file;
+# the payload (stdin, --data-binary @-) follows the arguments
+{ printf '%s\n' "$@"; cat; } > "$BATS_TEST_TMPDIR/curl_args.$$"
 mv "$BATS_TEST_TMPDIR/curl_args.$$" "$BATS_TEST_TMPDIR/curl_args"
 echo '{"ok":true,"result":{"message_id":1}}'
 CURL
@@ -56,6 +57,19 @@ wait_for_send() {
   done
   echo "no send recorded in $f"
   return 1
+}
+
+# Print the JSON payload the stubbed curl read on stdin (jq prints "{" on a line of its own)
+curl_payload() {
+  sed -n '/^{$/,$p' "$BATS_TEST_TMPDIR/curl_args"
+}
+
+# Print the length Telegram counts for the HTML text on stdin, less the newline <<<
+# adds: tags count 0, a named entity 1, a numeric one 2 (at most: it may be an
+# emoji), a character its UTF-16 units
+rendered_length() {
+  jq -n --rawfile t /dev/stdin '$t | rtrimstr("\n") | gsub("<[^>]*>"; "") | gsub("&#(x[0-9A-Fa-f]+|[0-9]+);"; "xx")
+    | gsub("&(lt|gt|amp|quot);"; "x") | [explode[] | if . > 65535 then 2 else 1 end] | add // 0'
 }
 
 # Print the -m (max time) the stubbed curl was called with
@@ -243,7 +257,7 @@ EOF
       [[ "$s" != check-credentials ]] || jq -e . <<< "$output" > /dev/null || { echo "$mode $s: $output"; false; }
     done
     # shellcheck disable=SC2086
-    run --separate-stderr $mode "$SCRIPTS/send-telegram.sh" "Hi"
+    run --separate-stderr $mode "$SCRIPTS/send-telegram.sh" <<< "Hi"
     [ "$status" -eq 0 ]
     [ -z "$stderr" ] || { echo "$mode send-telegram: $stderr"; false; }
     [[ $'\n'"$output" != *$'\n+'* ]] || { echo "$mode send-telegram: $output"; false; }
@@ -277,7 +291,7 @@ slow_curl() {
 #!/bin/bash
 ps -o pgid= -p $$ | tr -d ' ' > "$BATS_TEST_TMPDIR/curl_pgid"
 sleep 2
-printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/curl_args.$$"
+{ printf '%s\n' "$@"; cat; } > "$BATS_TEST_TMPDIR/curl_args.$$"
 mv "$BATS_TEST_TMPDIR/curl_args.$$" "$BATS_TEST_TMPDIR/curl_args"
 echo '{"ok":true,"result":{"message_id":1}}'
 CURL
@@ -323,6 +337,20 @@ CURL
   done
   wait_for_send
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
+}
+
+@test "session-notification: a 30 KB cwd is sent, cut to 4096 characters" {
+  arm_notification sn-long-cwd
+  local cwd input text
+  # escaped for HTML it is 150 KB, past the 128 KiB a single argument can hold
+  cwd="/tmp/$(printf '&%.0s' {1..30000})"
+  input=$(jq -cn --arg c "$cwd" '{session_id: "sn-long-cwd", cwd: $c, transcript_path: "", last_assistant_message: ""}')
+  run bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  wait_for_send
+  text=$(curl_payload | jq -r .text)
+  [[ "$text" == "<b>Claude Code session completed in project ("*")</b>"$'\n\n'"<i>Dir: /tmp/&amp;&amp;"*"&amp;…</i>" ]]
+  [ "$(rendered_length <<< "$text")" -eq 4096 ]
 }
 
 @test "session-notification: reads the config before it consumes the session file" {
@@ -650,7 +678,7 @@ EOF
 # =========================================================
 
 @test "send-telegram: sends message via curl with correct payload" {
-  run bash "$SCRIPTS/send-telegram.sh" "Hello World"
+  run bash "$SCRIPTS/send-telegram.sh" <<< "Hello World"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"ok":true'* ]]
   # Check curl was called
@@ -662,14 +690,14 @@ EOF
 
 @test "send-telegram: debug mode never prints the bot token" {
   export TELEGRAM_NOTIFIER_DEBUG=1
-  run --separate-stderr bash "$SCRIPTS/send-telegram.sh" "Hello World"
+  run --separate-stderr bash "$SCRIPTS/send-telegram.sh" <<< "Hello World"
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"Payload:"* ]]
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
 
 @test "send-telegram: bash -x never prints the bot token" {
-  run --separate-stderr bash -x "$SCRIPTS/send-telegram.sh" "Hello World"
+  run --separate-stderr bash -x "$SCRIPTS/send-telegram.sh" <<< "Hello World"
   [ "$status" -eq 0 ]
   [ -f "$BATS_TEST_TMPDIR/curl_args" ]
   [ -z "$stderr" ]
@@ -677,7 +705,7 @@ EOF
 }
 
 @test "send-telegram: curl times out inside the Stop hook's 10 s" {
-  run bash "$SCRIPTS/send-telegram.sh" "Hello World"
+  run bash "$SCRIPTS/send-telegram.sh" <<< "Hello World"
   [ "$status" -eq 0 ]
   local args
   args=$(cat "$BATS_TEST_TMPDIR/curl_args")
@@ -686,33 +714,35 @@ EOF
   [[ "$args" == *$'--retry\n0'* ]]
 }
 
-@test "send-telegram: a second argument of 1 to 8 shortens curl's time" {
-  run bash "$SCRIPTS/send-telegram.sh" "Hello World" 3
+@test "send-telegram: an argument of 1 to 8 shortens curl's time" {
+  run bash "$SCRIPTS/send-telegram.sh" 3 <<< "Hello World"
   [ "$status" -eq 0 ]
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *$'-m\n3'* ]]
   local arg
   for arg in 9 0 x -1 ""; do
     rm -f "$BATS_TEST_TMPDIR/curl_args"
-    run bash "$SCRIPTS/send-telegram.sh" "Hello World" "$arg"
+    run bash "$SCRIPTS/send-telegram.sh" "$arg" <<< "Hello World"
     [ "$status" -eq 0 ]
     [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *$'-m\n8'* ]] || { echo "arg: $arg"; false; }
   done
 }
 
 @test "send-telegram: fails with no message" {
-  run bash "$SCRIPTS/send-telegram.sh" ""
+  run bash "$SCRIPTS/send-telegram.sh" <<< ""
   [ "$status" -eq 1 ]
   [[ "$output" == *"No message"* ]]
 }
 
-@test "send-telegram: fails with no arguments" {
-  run bash "$SCRIPTS/send-telegram.sh"
+@test "send-telegram: fails with no input" {
+  run bash "$SCRIPTS/send-telegram.sh" < /dev/null
   [ "$status" -eq 1 ]
+  [[ "$output" == *"No message"* ]]
+  [ ! -f "$BATS_TEST_TMPDIR/curl_args" ]
 }
 
 @test "send-telegram: fails when credentials missing" {
   unset TELEGRAM_BOT_TOKEN
-  run bash "$SCRIPTS/send-telegram.sh" "test"
+  run bash "$SCRIPTS/send-telegram.sh" <<< "test"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Missing"* ]]
 }
@@ -721,12 +751,156 @@ EOF
   # Override curl stub to return error
   cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
 #!/bin/bash
+cat > /dev/null
 echo '{"ok":false,"description":"Unauthorized"}'
 CURL
   chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-  run bash "$SCRIPTS/send-telegram.sh" "test"
+  run bash "$SCRIPTS/send-telegram.sh" <<< "test"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unauthorized"* ]]
+}
+
+@test "send-telegram: reads the message on stdin and gives curl the payload on stdin" {
+  local msg='Hello <b>World</b> &amp; "quotes" $HOME'
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$msg"
+  [ "$status" -eq 0 ]
+  # no argument holds the message
+  [[ "$(sed '/^{$/,$d' "$BATS_TEST_TMPDIR/curl_args")" != *World* ]]
+  [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *$'--data-binary
+@-
+{'* ]]
+  curl_payload | jq -e --arg m "$msg" '.text == $m and .chat_id == "test-chat-456" and .parse_mode == "HTML"'
+}
+
+@test "send-telegram: a 1 MB message is sent, cut to 4096 characters" {
+  local msg text start=$SECONDS
+  # 11 bytes a repeat: no 4 KB boundary of the input falls between two of them
+  msg=$(jq -nj '"<b>" + ("é😀&amp;" * 100000) + "</b>"')
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$msg"
+  [ "$status" -eq 0 ]
+  [ $((SECONDS - start)) -lt 8 ]
+  text=$(curl_payload | jq -r .text)
+  # 1023 repeats of 4 units, é and 😀 (4095), then "…"
+  [ "$(rendered_length <<< "$text")" -eq 4096 ]
+  [[ "$text" == "<b>é😀&amp;é😀&amp;"*"&amp;é😀…</b>" ]]
+  [[ "$msg" == "${text%…</b>}"* ]]
+  [[ "$text" != *$'\uFFFD'* ]]
+}
+
+@test "send-telegram: a message of exactly 4096 characters is sent whole, one more is cut" {
+  local msg text a4093
+  a4093=$(printf 'a%.0s' {1..4093})
+  msg="<b>$a4093&amp;😀</b>"
+  [ "$(rendered_length <<< "$msg")" -eq 4096 ]
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$msg"
+  [ "$status" -eq 0 ]
+  curl_payload | jq -e --arg m "$msg" '.text == $m'
+  rm "$BATS_TEST_TMPDIR/curl_args"
+  run bash "$SCRIPTS/send-telegram.sh" <<< "<b>a$a4093&amp;😀</b>"
+  [ "$status" -eq 0 ]
+  text=$(curl_payload | jq -r .text)
+  # the emoji (2 units) no longer fits beside "…"
+  [ "$text" = "<b>a$a4093&amp;…</b>" ]
+}
+
+@test "send-telegram: the cut closes a tag whose attribute is not ASCII" {
+  local xs
+  xs=$(printf 'x%.0s' {1..5000})
+  run bash "$SCRIPTS/send-telegram.sh" <<< "<a href=\"https://é.example\">$xs</a>"
+  [ "$status" -eq 0 ]
+  xs=$(printf 'x%.0s' {1..4095})
+  [ "$(curl_payload | jq -r .text)" = "<a href=\"https://é.example\">$xs…</a>" ]
+}
+
+@test "send-telegram: the cut keeps entities whole and closes the open tags" {
+  local amps text
+  amps=$(printf '&amp;%.0s' {1..5000})
+  run bash "$SCRIPTS/send-telegram.sh" <<< "<b>bold <i>$amps</i></b> tail"
+  [ "$status" -eq 0 ]
+  text=$(curl_payload | jq -r .text)
+  amps=$(printf '&amp;%.0s' {1..4090})
+  [ "$text" = "<b>bold <i>$amps…</i></b>" ]
+  [ "$(rendered_length <<< "$text")" -eq 4096 ]
+}
+
+# Write $2 random messages to $1/<i>.msg and each one's length after parsing to
+# $1/<i>.units: words, entities, emoji, newlines, lone &, and tags nested at most 3
+# deep, closed at the end. In a child bash: bats' DEBUG trap, run before every
+# command, makes this loop take 50 times as long in the test's own shell
+gen_random_messages() {
+  bash -s "$@" <<'GEN'
+dir=$1 count=$2
+words=("abc " "x/y" "hello world " "zz" "é" "中") lens=(4 3 12 2 1 1)
+ents=("&amp;" "&lt;" "&gt;" "&quot;" "&#128512;" "&#x41;") tags=(b i code a)
+starts=("<b>" "<i>" "<code>" '<a href="https://é.example/?q=1&amp;r=2">')
+targets=(100 4000 4095 4096 4097 4100 5000 20000)
+RANDOM=7
+for ((i = 0; i < count; i++)); do
+  msg="" units=0 open=() target=${targets[RANDOM % 8]}
+  # never ending in a newline: $(cat) drops it, so units would count one too many
+  while ((units < target)) || [[ "$msg" == *$'\n' ]]; do
+    r=$((RANDOM % 100))
+    if ((r < 5 && ${#open[@]} < 3)); then
+      r=$((RANDOM % 4)); open+=("${tags[r]}"); msg+=${starts[r]}; continue
+    elif ((r < 9 && ${#open[@]} > 0)); then
+      msg+="</${open[-1]}>"; unset 'open[-1]'; continue
+    elif ((r < 20)); then
+      p=${ents[RANDOM % 6]}; u=1; [[ "$p" != "&#"* ]] || u=2
+    elif ((r < 25)); then
+      p="😀" u=2
+    elif ((r < 28)); then
+      p=$'\n' u=1
+    elif ((r < 30)); then
+      p="& " u=2
+    else
+      r=$((RANDOM % 6)) n=$((RANDOM % 40 + 1))
+      printf -v p '%*s' "$n" ''; p=${p// /${words[r]}}; u=$((n * lens[r]))
+    fi
+    msg+=$p units=$((units + u))
+  done
+  for ((t = ${#open[@]} - 1; t >= 0; t--)); do msg+="</${open[t]}>"; done
+  printf '%s' "$msg" > "$dir/$i.msg"
+  echo "$units" > "$dir/$i.units"
+done
+GEN
+}
+
+@test "send-telegram: 60 random messages: whole when they fit, else cut after a whole token with the tags closed" {
+  local i msg units text pre closers rest next expect t cut=0 whole=0 dir="$BATS_TEST_TMPDIR/random"
+  mkdir "$dir"
+  gen_random_messages "$dir" 60
+  for ((i = 0; i < 60; i++)); do
+    msg=$(cat "$dir/$i.msg") units=$(cat "$dir/$i.units")
+    rm -f "$BATS_TEST_TMPDIR/curl_args"
+    run bash "$SCRIPTS/send-telegram.sh" <<< "$msg"
+    [ "$status" -eq 0 ] || { echo "case $i: $output"; false; }
+    text=$(curl_payload | jq -r .text)
+    [ "$(rendered_length <<< "$text")" -le 4096 ] || { echo "case $i: too long"; false; }
+    if ((units <= 4096)); then
+      [ "$text" = "$msg" ] || { echo "case $i: changed a message that fits"; false; }
+      whole=$((whole + 1))
+      continue
+    fi
+    cut=$((cut + 1))
+    [[ "$text" =~ ^(.*)…((</[a-z]+>)*)$ ]] || { echo "case $i: no …"; false; }
+    pre=${BASH_REMATCH[1]} closers=${BASH_REMATCH[2]}
+    [[ "$msg" == "$pre"* ]] || { echo "case $i: not a prefix"; false; }
+    # the cut falls between tokens, and the next character or entity would not fit
+    rest=${msg:${#pre}}
+    [[ ! "$pre" =~ \<[^\>]*$ ]] || { echo "case $i: cut inside a tag"; false; }
+    [[ ! ("$pre" =~ \&[a-z#0-9]*$ && "$rest" =~ ^[a-zA-Z#0-9]*\;) ]] || { echo "case $i: cut inside an entity"; false; }
+    while [[ "$rest" =~ ^\<[^\>]*\>(.*)$ ]]; do rest=${BASH_REMATCH[1]}; done
+    [[ "$rest" =~ ^(\&(lt|gt|amp|quot|#[0-9]+|#x[0-9A-Fa-f]+)\;) ]] && next=${BASH_REMATCH[1]} || next=${rest:0:1}
+    (($(rendered_length <<< "$pre$next") + 1 > 4096)) || { echo "case $i: cut too early"; false; }
+    # closers close what is open at the cut, innermost first
+    expect=""
+    while read -r t; do
+      if [[ "$t" == "</"* ]]; then expect=${expect#*>}; else expect="</${t#<}>$expect"; fi
+    done < <(grep -o '</\?[a-z]*' <<< "$pre")
+    [ "$closers" = "$expect" ] || { echo "case $i: closers $closers, expected $expect"; false; }
+  done
+  # both branches ran
+  ((cut > 10 && whole > 10)) || { echo "cut $cut, whole $whole"; false; }
 }
 
 # =========================================================

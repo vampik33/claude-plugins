@@ -51,7 +51,7 @@ Your custom message here
 ### Special characters breaking messages
 
 The plugin uses `jq` for safe JSON encoding. If issues persist:
-- Keep messages under 4096 characters (Telegram limit)
+- Messages over Telegram's 4096 characters are cut to fit and end in "…"
 - Avoid excessive special characters
 
 ### Rate limiting ("Too Many Requests")

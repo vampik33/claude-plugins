@@ -169,7 +169,7 @@ deliver() {
   if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
     echo "Sending notification: $MESSAGE" >&2
   fi
-  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" "$SEND_TIME" || echo "Warning: Failed to send session notification" >&2
+  printf '%s' "$MESSAGE" | bash "$SCRIPT_DIR/send-telegram.sh" "$SEND_TIME" || echo "Warning: Failed to send session notification" >&2
 }
 
 # The session file is consumed above, so a hook stopped from here on would lose

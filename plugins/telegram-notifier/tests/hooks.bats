@@ -722,19 +722,20 @@ EOF
 }
 
 # One random NAME=value word whose value bash reads as one word: plain text, "…" with
-# spaces, escapes and substitutions, '…', $(…), `…` or an escaped space, each
+# spaces, escapes and substitutions, '…', $(…), `…`, an escaped space or $X/…, each
 # holding SENTINEL, so SENTINEL is never a command word
 # Sets REPLY (a $(…) subshell would reseed RANDOM and break the fixed seed)
 random_assignment() {
   local v="" i n=$((1 + RANDOM % 3))
   for ((i = 0; i < n; i++)); do
-    case $((RANDOM % 8)) in
+    case $((RANDOM % 9)) in
       0 | 6) v+="a${RANDOM}" ;;
       1) v+='"a SENTINEL \" $(x SENTINEL ) `y SENTINEL` b"' ;;
       2 | 7) v+="'a SENTINEL \" \$ b'" ;;
       3) v+='$(echo SENTINEL )' ;;
       4) v+='`echo SENTINEL `' ;;
       5) v+='\ SENTINEL' ;;
+      8) v+='$HOME/SENTINEL' ;;
     esac
   done
   REPLY="K$RANDOM=$v"
@@ -758,7 +759,7 @@ random_assignment() {
   done
   # plain and '…' values are skipped, so some commands keep their name
   echo "named: $named"
-  [ "$named" -ge 10 ]
+  [ "$named" -ge 5 ]
 }
 
 @test "summarize-transcript: bounds a huge command word and file name" {

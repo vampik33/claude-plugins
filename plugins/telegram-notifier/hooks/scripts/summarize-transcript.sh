@@ -36,7 +36,10 @@ CAP=6
 #   64 characters
 # - "B:" the program names of the first 5 Bash commands that have one, from a
 #   command's first line only (never heredoc or continuation lines), cut at "&&":
-#   leading NAME=value words are skipped, a path is cut to its base name, internal
+#   leading NAME=value words are skipped when their value is plain, '…' or "…"
+#   (a value with $, `, (, ) or an unquoted \ is not skipped, so its command
+#   word keeps the "=" and is dropped: no word inside a value is ever taken as
+#   the program), a path is cut to its base name, internal
 #   commands (find, ls, cat, …) are dropped, and the word is kept only when shaped
 #   like a program name. What bounds the output is the first-line rule and the
 #   32-character cap; the shape check only keeps the list readable.
@@ -51,7 +54,7 @@ TOOLS=$(jq -Rnr --argjson cap "$CAP" '
   def keep($f): if .[$f] or length < $cap then .[$f] = 1 else . end;
   def program: (split("\n")[0] // "")
     | sub("&&.*"; "")
-    | capture("^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*=[^ \t]*[ \t]+)*(?<w>[^ \t]*)").w
+    | capture("^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*=(?:[^ \t\"\u0027\\\\$`()]|\"(?:[^\"\\\\$`]|\\\\.)*\"|\u0027[^\u0027]*\u0027)*[ \t]+)*(?<w>[^ \t]*)").w
     | sub(".*/"; "")
     | select(test("^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"))
     | select(IN("find", "ls", "cat", "head", "tail", "echo", "pwd", "cd") | not);

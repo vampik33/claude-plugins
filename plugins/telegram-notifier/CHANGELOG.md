@@ -5,6 +5,11 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.13] - 2026-11-25
+
+### Security
+- The Stop summary no longer takes a word from inside an assignment's value as the program name: `K="a SECRET b" make` sent `Ran: SECRET`. Leading `NAME=value` words are now skipped only when bash would read the value as one word (plain text, `'…'` or `"…"`); a value with `$`, a backtick, `(`, `)` or an unquoted `\` is not skipped, so the command is left out of the list. `tests/hooks.bats` checks a fixture, the payload sent to the stubbed `curl`, and 200 seeded random assignment prefixes
+
 ## [1.9.12] - 2026-11-25
 
 ### Security

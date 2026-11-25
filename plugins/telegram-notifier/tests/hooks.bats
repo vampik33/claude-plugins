@@ -21,7 +21,9 @@ setup() {
   mkdir -p "$BATS_TEST_TMPDIR/bin"
   cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
 #!/bin/bash
-printf '%s\n' "$@" >> "$BATS_TEST_TMPDIR/curl_args"
+# one atomic write: the Stop hook sends from a background job, and tests wait for the file
+printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/curl_args.$$"
+mv "$BATS_TEST_TMPDIR/curl_args.$$" "$BATS_TEST_TMPDIR/curl_args"
 echo '{"ok":true,"result":{"message_id":1}}'
 CURL
   chmod +x "$BATS_TEST_TMPDIR/bin/curl"
@@ -42,6 +44,18 @@ stub_hanging_summarizer() {
 exec "$real_jq" "\$@"
 EOF
   chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+}
+
+# Wait up to 10 s for the stubbed curl's record: outside debug mode the Stop hook
+# sends from a detached job and returns before it
+wait_for_send() {
+  local f="$BATS_TEST_TMPDIR/curl_args" i
+  for ((i = 0; i < 100; i++)); do
+    [[ -f "$f" ]] && return 0
+    sleep 0.1
+  done
+  echo "no send recorded in $f"
+  return 1
 }
 
 # Print the -m (max time) the stubbed curl was called with
@@ -124,7 +138,7 @@ EOF
   export TELEGRAM_NOTIFIER_DEBUG=1
   run --separate-stderr bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-dbg","cwd":"/tmp/test","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
-  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  wait_for_send
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
 
@@ -136,7 +150,7 @@ EOF
     '{session_id: "sn-dbg-answer", cwd: "/tmp", transcript_path: $t, last_assistant_message: "SECRET-ANSWER-TEXT"}')
   run --separate-stderr bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
-  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  wait_for_send
   # debug mode still traces the rest of the hook
   [[ "$output" == *"+ "* ]]
   [[ "$output" == *"Sending notification:"* ]]
@@ -175,6 +189,7 @@ EOF
   [ "$status" -eq 0 ]
   # the summarizer was traced, into the hook output
   [[ "$output" == *"tr<b>&x.jsonl"* ]]
+  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Edited: main.rs"* ]]
@@ -192,6 +207,7 @@ EOF
   # a trace on stdout would land in every $(…) value: the status check, the summary, the message
   run --separate-stderr env SHELLOPTS=xtrace BASH_XTRACEFD=1 bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Edited: main.rs"* ]]
@@ -243,7 +259,8 @@ EOF
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-slow", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   run bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
-  # the hanging jq was stopped with the summarizer, not left holding the output
+  wait_for_send
+  # the hanging jq was stopped with the summarizer: the message went out in time
   [ $((SECONDS - start)) -lt 8 ]
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
@@ -254,12 +271,86 @@ EOF
   [ "$m" -ge 1 ] && [ "$m" -le 4 ]
 }
 
+# A curl that records its process group, then takes 2 s before it records its arguments
+slow_curl() {
+  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
+#!/bin/bash
+ps -o pgid= -p $$ | tr -d ' ' > "$BATS_TEST_TMPDIR/curl_pgid"
+sleep 2
+printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/curl_args.$$"
+mv "$BATS_TEST_TMPDIR/curl_args.$$" "$BATS_TEST_TMPDIR/curl_args"
+echo '{"ok":true,"result":{"message_id":1}}'
+CURL
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+}
+
+@test "session-notification: returns before a slow send, which still goes out" {
+  arm_notification sn-async
+  slow_curl
+  local input start=$SECONDS
+  input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-async", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  run bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ $((SECONDS - start)) -lt 2 ]
+  [ ! -f "$BATS_TEST_TMPDIR/curl_args" ]
+  wait_for_send
+  [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
+}
+
+@test "session-notification: SIGHUP, SIGINT and SIGTERM to the hook's process group don't stop the send" {
+  command -v setsid > /dev/null || skip "needs setsid (util-linux)"
+  arm_notification sn-kill
+  slow_curl
+  local input i
+  input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-kill", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  # its own process group, as a terminal's foreground job would be; signal the
+  # whole group once curl runs, as closing the terminal, Ctrl+C or a runner
+  # cancelling the hook would. setsid execs (the background child leads no
+  # group), so the hook's pid is its group
+  setsid bash "$SCRIPTS/session-notification.sh" <<< "$input" > /dev/null 2>&1 &
+  local hook_pgid=$!
+  for ((i = 0; i < 100; i++)); do
+    [[ -s "$BATS_TEST_TMPDIR/curl_pgid" ]] && break
+    sleep 0.1
+  done
+  # the job runs in a group of its own
+  [ "$(cat "$BATS_TEST_TMPDIR/curl_pgid")" != "$hook_pgid" ]
+  # the hook may have ended, leaving its group empty
+  local sig
+  for sig in HUP INT TERM; do
+    kill -"$sig" -- "-$hook_pgid" 2> /dev/null || true
+  done
+  wait_for_send
+  [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
+}
+
+@test "session-notification: reads the config before it consumes the session file" {
+  arm_notification sn-order
+  # a grep that records, at the threshold read (the last config read), whether
+  # the session file is still there
+  cat > "$BATS_TEST_TMPDIR/bin/grep" <<EOF
+#!/bin/bash
+if [[ "\$1" == "^session_threshold_minutes:" ]]; then
+  [[ -f /tmp/claude-telegram-notifier-session-sn-order ]] && echo present > "$BATS_TEST_TMPDIR/at_threshold" || echo gone > "$BATS_TEST_TMPDIR/at_threshold"
+fi
+exec $(type -P grep) "\$@"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/grep"
+  run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-order","cwd":"/tmp","transcript_path":"","last_assistant_message":""}'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/at_threshold")" = present ]
+  [ ! -f /tmp/claude-telegram-notifier-session-sn-order ]
+  wait_for_send
+}
+
 @test "session-notification: without timeout, still summarizes and gives curl the time left" {
   arm_notification sn-notimeout
   local input
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-notimeout", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   run env PATH="$BATS_TEST_TMPDIR/bin:$(path_without timeout gtimeout)" bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Edited: main.rs"* ]]
@@ -280,6 +371,7 @@ EOF
   run env PATH="$BATS_TEST_TMPDIR/bin:$(path_without timeout gtimeout)" bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
   [ $((SECONDS - start)) -lt 8 ]
+  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"session completed"* ]]
@@ -359,7 +451,7 @@ EOF
   export TELEGRAM_NOTIFIER_DEBUG=1
   run --separate-stderr env SHELLOPTS=xtrace bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-x","cwd":"/tmp/test","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
-  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  wait_for_send
   [[ "$output" == *"+ "* ]]
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
@@ -657,7 +749,7 @@ EOF
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-1","cwd":"/tmp/test","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
   # curl should have been called (notification sent)
-  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  wait_for_send
   # Session file should be cleaned up
   [ ! -f "$sf" ]
 }
@@ -726,19 +818,11 @@ EOF
   local sf="/tmp/claude-telegram-notifier-session-sn-5"
   echo "$past_ts" > "$sf"
 
-  # Use a curl stub that captures the payload
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-for arg in "$@"; do echo "$arg"; done >> "$BATS_TEST_TMPDIR/curl_payload"
-echo '{"ok":true,"result":{"message_id":1}}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-5","cwd":"/tmp","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
-  [ -f "$BATS_TEST_TMPDIR/curl_payload" ]
+  wait_for_send
   local payload
-  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"my-cool-project"* ]]
 }
 
@@ -755,17 +839,11 @@ EOF
   local sf="/tmp/claude-telegram-notifier-session-sn-6"
   echo "$past_ts" > "$sf"
 
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-for arg in "$@"; do echo "$arg"; done >> "$BATS_TEST_TMPDIR/curl_payload"
-echo '{"ok":true,"result":{"message_id":1}}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-6","cwd":"/tmp","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
+  wait_for_send
   local payload
-  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Build finished"* ]]
 }
 
@@ -785,7 +863,7 @@ EOF
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-7","cwd":"/tmp","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
   # 15min elapsed > 10min default threshold → should send
-  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  wait_for_send
 }
 
 # =========================================================
@@ -1011,6 +1089,7 @@ EOF
     '{session_id: "sn-8", cwd: "/tmp", transcript_path: $t, last_assistant_message: "SECRET-ANSWER-TEXT from config.rs"}')
   run bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Edited: main.rs"* ]]
@@ -1028,6 +1107,7 @@ EOF
   input=$(jq -cn --arg t "$FIXTURES/quoted-secrets.jsonl" '{session_id: "sn-10", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   run bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Ran: cargo, gh, make"* ]]
@@ -1040,6 +1120,7 @@ EOF
   input=$(jq -cn --arg t "$FIXTURES/secrets.jsonl" '{session_id: "sn-9", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   run bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" != *hunter2* ]]

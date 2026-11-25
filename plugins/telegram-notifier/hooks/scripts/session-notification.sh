@@ -22,7 +22,7 @@ source "$SCRIPT_DIR/lib/html.sh"
 # Reading the event needs jq and sending needs curl. Without them, skip quietly
 # when notifications are off; when on, say so in one line (exit 1: Claude Code
 # shows it without blocking the stop, as exit 2 would). curl alone is checked
-# below, once the session file is consumed
+# below, where the session file is consumed too
 if ! command -v jq &> /dev/null; then
   [[ "$(is_plugin_enabled)" == "true" ]] || exit 0
   MISSING="jq"
@@ -48,24 +48,31 @@ if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   exec 2>&1
 fi
 
-# Read session file early to ensure cleanup happens even if plugin is disabled
-# This handles cases where user disables plugin mid-session
-SESSION_FILE=$(get_session_file_path)
-SESSION_START="0"
+# Read the session file into SESSION_START ("0" without one) and remove it. Every
+# path below consumes it, so it is cleaned up even if the plugin is disabled (a
+# user disabling it mid-session); the main path consumes it only once the config
+# is read, right before the job below starts, so a hook stopped while it reads
+# the config leaves the file in place
+consume_session_file() {
+  SESSION_FILE=$(get_session_file_path)
+  SESSION_START="0"
 
-if [[ -f "$SESSION_FILE" ]]; then
-  SESSION_START=$(cat "$SESSION_FILE" 2>/dev/null || echo "0")
-  rm -f "$SESSION_FILE" 2>/dev/null || true
-fi
+  if [[ -f "$SESSION_FILE" ]]; then
+    SESSION_START=$(cat "$SESSION_FILE" 2>/dev/null || echo "0")
+    rm -f "$SESSION_FILE" 2>/dev/null || true
+  fi
+}
 
 # Check if plugin is enabled at any level (user or project config)
 ENABLED_STATUS=$(is_plugin_enabled)
 
 if [[ "$ENABLED_STATUS" != "true" ]]; then
+  consume_session_file
   exit 0
 fi
 
 if ! command -v curl &> /dev/null; then
+  consume_session_file
   echo "Telegram Notifier: session notification skipped, missing curl" >&2
   exit 1
 fi
@@ -76,6 +83,8 @@ THRESHOLD=$(resolve_config_field "session_threshold_minutes" "10")
 if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
   THRESHOLD=10
 fi
+
+consume_session_file
 
 if [[ "$SESSION_START" == "0" || ! "$SESSION_START" =~ ^[0-9]+$ ]]; then
   # Invalid timestamp, skip
@@ -91,75 +100,96 @@ if [[ $ELAPSED_MINUTES -lt $THRESHOLD ]]; then
   exit 0
 fi
 
-# Get project name (used in message and custom body resolution)
-PROJECT_NAME=$(basename "${CLAUDE_PROJECT_DIR:-$(pwd)}")
+# Summarize, build the message and send it
+deliver() {
+  # Get project name (used in message and custom body resolution)
+  PROJECT_NAME=$(basename "${CLAUDE_PROJECT_DIR:-$(pwd)}")
 
-# Get custom message (project body > user body)
-CUSTOM_MESSAGE=$(get_notification_body)
+  # Get custom message (project body > user body)
+  CUSTOM_MESSAGE=$(get_notification_body)
 
-# Get transcript summary if available
-TASK_SUMMARY=""
-if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
-  # At most 4 s under coreutils' timeout (gtimeout from Homebrew on macOS), so a
-  # huge transcript on a slow machine leaves time to send; past it, the message
-  # goes without a summary. With neither, only a transcript of at most 10 MB is
-  # summarized (about 0.1 s); a larger one goes without a summary
-  SUMMARIZE=("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH")
-  TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
-  if [[ -n "$TIMEOUT_BIN" ]]; then
-    SUMMARIZE=("$TIMEOUT_BIN" 4 "${SUMMARIZE[@]}")
-  else
-    # BSD wc pads the count with spaces
-    TRANSCRIPT_BYTES=$(wc -c < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
-    if ((${TRANSCRIPT_BYTES// /} > 10 * 1024 * 1024)); then
-      SUMMARIZE=(true)
+  # Get transcript summary if available
+  TASK_SUMMARY=""
+  if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
+    # At most 4 s under coreutils' timeout (gtimeout from Homebrew on macOS), so a
+    # huge transcript on a slow machine leaves time to send; past it, the message
+    # goes without a summary. With neither, only a transcript of at most 10 MB is
+    # summarized (about 0.1 s); a larger one goes without a summary
+    SUMMARIZE=("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH")
+    TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
+    if [[ -n "$TIMEOUT_BIN" ]]; then
+      SUMMARIZE=("$TIMEOUT_BIN" 4 "${SUMMARIZE[@]}")
+    else
+      # BSD wc pads the count with spaces
+      TRANSCRIPT_BYTES=$(wc -c < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+      if ((${TRANSCRIPT_BYTES// /} > 10 * 1024 * 1024)); then
+        SUMMARIZE=(true)
+      fi
+    fi
+    # Only stdout goes into the message: in debug mode the summarizer's stderr
+    # (its trace, under an exported SHELLOPTS=xtrace) goes to the hook output
+    if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
+      TASK_SUMMARY=$("${SUMMARIZE[@]}" || echo "")
+    else
+      TASK_SUMMARY=$("${SUMMARIZE[@]}" 2>/dev/null || echo "")
     fi
   fi
-  # Only stdout goes into the message: in debug mode the summarizer's stderr
-  # (its trace, under an exported SHELLOPTS=xtrace) goes to the hook output
-  if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-    TASK_SUMMARY=$("${SUMMARIZE[@]}" || echo "")
+
+  # Build notification message parts
+  MESSAGE_PARTS=()
+  if [[ -n "$CUSTOM_MESSAGE" ]]; then
+    MESSAGE_PARTS+=("<b>$(escape_html "$CUSTOM_MESSAGE") (${ELAPSED_MINUTES}m)</b>")
   else
-    TASK_SUMMARY=$("${SUMMARIZE[@]}" 2>/dev/null || echo "")
+    MESSAGE_PARTS+=("<b>Claude Code session completed in $(escape_html "$PROJECT_NAME") (${ELAPSED_MINUTES}m)</b>")
   fi
-fi
 
-# Build notification message parts
-MESSAGE_PARTS=()
-if [[ -n "$CUSTOM_MESSAGE" ]]; then
-  MESSAGE_PARTS+=("<b>$(escape_html "$CUSTOM_MESSAGE") (${ELAPSED_MINUTES}m)</b>")
-else
-  MESSAGE_PARTS+=("<b>Claude Code session completed in $(escape_html "$PROJECT_NAME") (${ELAPSED_MINUTES}m)</b>")
-fi
+  # Summary is already HTML-escaped by summarize-transcript.sh
+  if [[ -n "$TASK_SUMMARY" ]]; then
+    MESSAGE_PARTS+=("$TASK_SUMMARY")
+  fi
 
-# Summary is already HTML-escaped by summarize-transcript.sh
-if [[ -n "$TASK_SUMMARY" ]]; then
-  MESSAGE_PARTS+=("$TASK_SUMMARY")
-fi
+  # Add session metadata
+  if [[ -n "${CLAUDE_CWD:-}" ]]; then
+    MESSAGE_PARTS+=("<i>Dir: $(escape_html "${CLAUDE_CWD}")</i>")
+  fi
+  if [[ -n "${CLAUDE_SESSION_ID:-}" ]]; then
+    MESSAGE_PARTS+=("<i>Session: $(escape_html "${CLAUDE_SESSION_ID}")</i>")
+  fi
 
-# Add session metadata
-if [[ -n "${CLAUDE_CWD:-}" ]]; then
-  MESSAGE_PARTS+=("<i>Dir: $(escape_html "${CLAUDE_CWD}")</i>")
-fi
-if [[ -n "${CLAUDE_SESSION_ID:-}" ]]; then
-  MESSAGE_PARTS+=("<i>Session: $(escape_html "${CLAUDE_SESSION_ID}")</i>")
-fi
+  # Join parts with blank lines between sections
+  MESSAGE=$(printf '%s\n\n' "${MESSAGE_PARTS[@]}")
+  MESSAGE="${MESSAGE%$'\n\n'}"
 
-# Join parts with blank lines between sections
-MESSAGE=$(printf '%s\n\n' "${MESSAGE_PARTS[@]}")
-MESSAGE="${MESSAGE%$'\n\n'}"
+  # curl gets the time left until 8 s after this script started (SECONDS): in debug
+  # mode the hook ends inside its 10 s, and the detached job ends too
+  SEND_TIME=$((8 - SECONDS))
+  ((SEND_TIME >= 1)) || SEND_TIME=1
 
-# curl gets the time left until 8 s after this script started (SECONDS), so the
-# hook ends inside its 10 s
-SEND_TIME=$((8 - SECONDS))
-((SEND_TIME >= 1)) || SEND_TIME=1
-
-# Send notification using shared script (handles JSON escaping and response validation)
-if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-  echo "Sending notification: $MESSAGE" >&2
+  # Send notification using shared script (handles JSON escaping and response validation)
+  if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
+    echo "Sending notification: $MESSAGE" >&2
+  fi
   bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" "$SEND_TIME" || echo "Warning: Failed to send session notification" >&2
+}
+
+# The session file is consumed above, so a hook stopped from here on would lose
+# the notification: the slow part (summary and send) runs as a detached job and the
+# hook ends at once, out of reach of its 10 s timeout. Job control (set -m, for
+# this one job) starts it in its own process group, so a signal to the hook's
+# group (a runner cancelling the hook with SIGTERM) doesn't reach it. The job
+# holds none of the hook's input or output and ignores SIGHUP (a closed terminal)
+# and SIGINT (Ctrl+C), which a background job no longer ignores under job
+# control. Debug mode keeps it in the foreground, so its trace and the API
+# response show in the hook output
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
+  deliver
 else
-  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" "$SEND_TIME" > /dev/null 2>&1 || echo "Warning: Failed to send session notification" >&2
+  set -m
+  (
+    trap '' HUP INT
+    deliver
+  ) < /dev/null > /dev/null 2>&1 &
+  set +m
 fi
 
 exit 0

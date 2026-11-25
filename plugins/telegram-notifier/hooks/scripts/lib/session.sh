@@ -1,26 +1,27 @@
 #!/bin/bash
 # Session management and hook initialization utilities
 
-# Extract and export session_id from hook input JSON
+# Extract session_id from hook input JSON
 # Usage: Call after capturing stdin, e.g.:
 #   HOOK_INPUT=$(cat)
 #   extract_session_id "$HOOK_INPUT"
-# Sets: CLAUDE_SESSION_ID (exported)
+# Sets: CLAUDE_SESSION_ID (not exported: .claude/rules/shell-hooks.md)
 extract_session_id() {
   local input="${1:-}"
   local val
   val=$(echo "$input" | jq -r '.session_id // empty')
-  export CLAUDE_SESSION_ID="$val"
+  CLAUDE_SESSION_ID="$val"
 }
 
-# Extract and export cwd from hook input JSON
+# Extract cwd from hook input JSON
 # Usage: extract_cwd "$HOOK_INPUT"
-# Sets: CLAUDE_CWD (exported)
+# Sets: CLAUDE_CWD (not exported: .claude/rules/shell-hooks.md)
 extract_cwd() {
   local input="${1:-}"
   local val
   val=$(echo "$input" | jq -r '.cwd // empty')
-  export CLAUDE_CWD="$val"
+  # shellcheck disable=SC2034 # CLAUDE_CWD is read by callers after sourcing
+  CLAUDE_CWD="$val"
 }
 
 # Extract transcript_path from hook input JSON

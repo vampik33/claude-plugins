@@ -594,14 +594,67 @@ EOF
   [ "$output" = $'• Created: a"b\\c.md, b.md' ]
 }
 
-@test "summarize-transcript: names the first word of each command line, skipping internal ones" {
+@test "summarize-transcript: names the first word of each command's first line, skipping internal ones" {
   local t="$BATS_TEST_TMPDIR/bash.jsonl"
+  # the lines after a command's first one (ls, npm in the first call) are not read
   cat > "$t" <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd /x && make\nls\n  npm run build && cat y"}},{"type":"tool_use","name":"Bash","input":{"command":"echo hi"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd /x && make\nls\n  npm run build && cat y"}},{"type":"tool_use","name":"Bash","input":{"command":"echo hi"}},{"type":"tool_use","name":"Bash","input":{"command":"  npm run build && cat y"}}]}}
 EOF
   run bash "$SCRIPTS/summarize-transcript.sh" "$t"
   [ "$status" -eq 0 ]
-  [ "$output" = $'• Ran: ls, npm' ]
+  [ "$output" = $'• Ran: npm' ]
+}
+
+@test "summarize-transcript: names programs only, never heredoc lines or assignments" {
+  local t="$BATS_TEST_TMPDIR/secrets.jsonl"
+  cat > "$t" <<'JSONL'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > .env <<'EOF'\nTELEGRAM_BOT_TOKEN=123456:AAExampleSecret\nDB_PASSWORD=hunter2\nEOF"}},{"type":"tool_use","name":"Bash","input":{"command":"GITHUB_TOKEN=ghp_examplesecret gh pr create"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"FOO=1 BAR=2 make test"}},{"type":"tool_use","name":"Bash","input":{"command":"/usr/local/bin/cargo build"}}]}}
+JSONL
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Ran: cargo, gh, make' ]
+  [[ "$output" != *hunter2* && "$output" != *ghp_* && "$output" != *123456* ]]
+  [[ "$output" != *EOF* && "$output" != *=* ]]
+}
+
+@test "summarize-transcript: bounds a huge command word and file name" {
+  local t="$BATS_TEST_TMPDIR/huge.jsonl"
+  # built inside jq: 300,000 characters would not fit in one argv string
+  jq -cn '("a" * 300000) as $a | ("b" * 300000) as $b
+    | {type: "assistant", message: {content: [
+        {type: "tool_use", name: "Bash", input: {command: ($a + " --flag")}},
+        {type: "tool_use", name: "Edit", input: {file_path: ("/w/" + $b)}}]}}' > "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "${#output}" -lt 1024 ]
+  [[ "$output" != *aaaa* ]]
+  [ "$output" = "• Edited: $(printf 'b%.0s' {1..64})" ]
+}
+
+# Print a transcript line with one call of tool $1 per path /w/f1 ... /w/f$2
+many_calls() {
+  jq -cn --arg tool "$1" --argjson n "$2" \
+    '{type: "assistant", message: {content: [range(1; $n + 1)
+      | {type: "tool_use", name: $tool, input: {file_path: "/w/f\(.)", content: "x"}}]}}'
+}
+
+@test "summarize-transcript: counts up to 5 files exactly, more as 6+" {
+  local t="$BATS_TEST_TMPDIR/many.jsonl"
+  many_calls Edit 7 > "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = "• Edited 6+ files" ]
+
+  many_calls Edit 5 > "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = "• Edited 5 files" ]
+
+  many_calls Write 7 > "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = "• Created 6+ files" ]
 }
 
 @test "summarize-transcript: skips a line that isn't JSON" {
@@ -671,4 +724,35 @@ CURL
   [[ "$payload" != *"All done"* ]]
   [[ "$payload" != *"assert!"* ]]
   [[ "$payload" != *"let x"* ]]
+}
+
+@test "session-notification: payload holds no heredoc lines or inline assignments" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+session_threshold_minutes: 0
+---
+EOF
+  echo "$(($(date +%s) - 900))" > "/tmp/claude-telegram-notifier-session-sn-9"
+
+  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
+#!/bin/bash
+for arg in "$@"; do echo "$arg"; done >> "$BATS_TEST_TMPDIR/curl_payload"
+echo '{"ok":true,"result":{"message_id":1}}'
+CURL
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+
+  local t="$BATS_TEST_TMPDIR/secrets.jsonl"
+  cat > "$t" <<'JSONL'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > .env <<'EOF'\nTELEGRAM_BOT_TOKEN=123456:AAExampleSecret\nDB_PASSWORD=hunter2\nEOF"}},{"type":"tool_use","name":"Bash","input":{"command":"GITHUB_TOKEN=ghp_examplesecret gh pr create"}}]}}
+JSONL
+  local input
+  input=$(jq -cn --arg t "$t" '{session_id: "sn-9", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  run bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  [[ "$payload" != *hunter2* ]]
+  [[ "$payload" != *ghp_* ]]
+  [[ "$payload" == *"Ran: gh"* ]]
 }

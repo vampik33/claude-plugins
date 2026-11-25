@@ -65,11 +65,20 @@ curl_payload() {
 }
 
 # Print the length Telegram counts for the HTML text on stdin, less the newline <<<
-# adds: tags count 0, a named entity 1, a numeric one 2 (at most: it may be an
-# emoji), a character its UTF-16 units
+# adds: tags count 0 (a quoted ">" stays in the tag), a named entity 1, a numeric
+# one the character it decodes to (kept as text when it is 0, a surrogate, past
+# U+10FFFF or written &#X), a character its UTF-16 units
 rendered_length() {
-  jq -n --rawfile t /dev/stdin '$t | rtrimstr("\n") | gsub("<[^>]*>"; "") | gsub("&#(x[0-9A-Fa-f]+|[0-9]+);"; "xx")
-    | gsub("&(lt|gt|amp|quot);"; "x") | [explode[] | if . > 65535 then 2 else 1 end] | add // 0'
+  jq -n --rawfile t /dev/stdin '$t | rtrimstr("\n")
+    | gsub("<(?:[^>\"\u0027]|\"[^\"]*\"|\u0027[^\u0027]*\u0027)*>"; "")
+    | gsub("&(?:(?<n>lt|gt|amp|quot)|#(?<d>[0-9]+)|#x(?<h>[0-9A-Fa-f]+));";
+        if .n then "x"
+        else (if .d then .d | tonumber
+              else reduce (.h | ascii_downcase | split("")[]) as $x (0; . * 16 + ("0123456789abcdef" | index($x))) end) as $v
+          | if $v == 0 or ($v >= 55296 and $v <= 57343) or $v > 1114111 then "&#" + (.d // ("x" + .h)) + ";"
+            else [$v] | implode end
+        end)
+    | [explode[] | if . > 65535 then 2 else 1 end] | add // 0'
 }
 
 # Print the -m (max time) the stubbed curl was called with
@@ -350,6 +359,20 @@ CURL
   wait_for_send
   text=$(curl_payload | jq -r .text)
   [[ "$text" == "<b>Claude Code session completed in project ("*")</b>"$'\n\n'"<i>Dir: /tmp/&amp;&amp;"*"&amp;…</i>" ]]
+  [ "$(rendered_length <<< "$text")" -eq 4096 ]
+}
+
+@test "session-notification: a 140 KB cwd is sent, though it is past what one environment variable can hold" {
+  arm_notification sn-huge-cwd
+  local input text
+  # exported, the cwd (past 128 KiB) would make every later command fail ("Argument list too long")
+  input=$(jq -cn '{session_id: "sn-huge-cwd", cwd: ("/" + "a" * 140000), transcript_path: "", last_assistant_message: ""}')
+  run bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  wait_for_send
+  text=$(curl_payload | jq -r .text)
+  [[ "$text" == "<b>Claude Code session completed in project ("*")</b>"$'\n\n'"<i>Dir: /aaa"*"a…</i>" ]]
+  # every character counts 1, so the cut leaves exactly 4095 and "…"
   [ "$(rendered_length <<< "$text")" -eq 4096 ]
 }
 
@@ -823,16 +846,97 @@ CURL
   [ "$(rendered_length <<< "$text")" -eq 4096 ]
 }
 
+@test "send-telegram: a quoted \">\" stays inside its tag, and a tag may span lines" {
+  local a text msg
+  a=$(printf 'a%.0s' {1..4091})
+  # 4091 and "link" fill 4095, "…" the last: the tag is whole and closed
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$a<a href=\"x>y\">link text more</a> tail"
+  [ "$status" -eq 0 ]
+  text=$(curl_payload | jq -r .text)
+  [ "$text" = "$a<a href=\"x>y\">link…</a>" ]
+  [ "$(rendered_length <<< "$text")" -eq 4096 ]
+  rm "$BATS_TEST_TMPDIR/curl_args"
+  a=$(printf 'a%.0s' {1..4080})
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$a<a href=\"x>y\">link text more and more</a>"
+  [ "$status" -eq 0 ]
+  text=$(curl_payload | jq -r .text)
+  [ "$text" = "$a<a href=\"x>y\">link text more …</a>" ]
+  [ "$(rendered_length <<< "$text")" -eq 4096 ]
+  rm "$BATS_TEST_TMPDIR/curl_args"
+  a=$(printf 'a%.0s' {1..4090})
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$a<a"$'\n'"href=\"x\">link text</a>"
+  [ "$status" -eq 0 ]
+  text=$(curl_payload | jq -r .text)
+  [ "$text" = "$a<a"$'\n'"href=\"x\">link …</a>" ]
+  [ "$(rendered_length <<< "$text")" -eq 4096 ]
+  rm "$BATS_TEST_TMPDIR/curl_args"
+  # 4000 + "link" + " " + "z" + "<": fits, sent unchanged
+  a=$(printf 'a%.0s' {1..4000})
+  msg="$a<a href=\"x>y\">li<b"$'\n'">nk</b></a> <i title='q\"<r'>z</i>&lt;"
+  [ "$(rendered_length <<< "$msg")" -eq 4007 ]
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$msg"
+  [ "$status" -eq 0 ]
+  curl_payload | jq -e --arg m "$msg" '.text == $m'
+}
+
+@test "send-telegram: a numeric entity counts the UTF-16 units of its character" {
+  local e a
+  e=$(printf '&#65;%.0s' {1..4096})
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$e"
+  [ "$status" -eq 0 ]
+  curl_payload | jq -e --arg m "$e" '.text == $m'
+  rm "$BATS_TEST_TMPDIR/curl_args"
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$e&#65;"
+  [ "$status" -eq 0 ]
+  e=$(printf '&#65;%.0s' {1..4095})
+  [ "$(curl_payload | jq -r .text)" = "$e…" ]
+  # an emoji, decimal or hex, counts 2
+  a=$(printf 'a%.0s' {1..4094})
+  for e in '&#128512;' '&#x1F600;'; do
+    rm -f "$BATS_TEST_TMPDIR/curl_args"
+    run bash "$SCRIPTS/send-telegram.sh" <<< "$a$e"
+    [ "$status" -eq 0 ]
+    curl_payload | jq -e --arg m "$a$e" '.text == $m'
+    rm "$BATS_TEST_TMPDIR/curl_args"
+    run bash "$SCRIPTS/send-telegram.sh" <<< "a$a$e"
+    [ "$status" -eq 0 ]
+    [ "$(curl_payload | jq -r .text)" = "a$a…" ] || { echo "$e"; false; }
+  done
+}
+
+@test "send-telegram: an entity Telegram may not decode counts its characters and is never split" {
+  local a e
+  # &#X (uppercase) is not in Telegram's docs, 0 and a surrogate decode to nothing
+  for e in '&#X41;' '&#0;' '&#xD800;'; do
+    a=$(jq -nj --arg e "$e" '"a" * (4096 - ($e | length))')
+    rm -f "$BATS_TEST_TMPDIR/curl_args"
+    run bash "$SCRIPTS/send-telegram.sh" <<< "$a$e"
+    [ "$status" -eq 0 ]
+    curl_payload | jq -e --arg m "$a$e" '.text == $m' || { echo "$e"; false; }
+    rm "$BATS_TEST_TMPDIR/curl_args"
+    run bash "$SCRIPTS/send-telegram.sh" <<< "a$a$e"
+    [ "$status" -eq 0 ]
+    [ "$(curl_payload | jq -r .text)" = "a$a…" ] || { echo "$e"; false; }
+  done
+  rm "$BATS_TEST_TMPDIR/curl_args"
+  a=$(printf 'a%.0s' {1..4090})
+  run bash "$SCRIPTS/send-telegram.sh" <<< "$a&#X41;&#X41;&#X41;&#X41;&#X41;"
+  [ "$status" -eq 0 ]
+  [ "$(curl_payload | jq -r .text)" = "$a…" ]
+}
+
 # Write $2 random messages to $1/<i>.msg and each one's length after parsing to
 # $1/<i>.units: words, entities, emoji, newlines, lone &, and tags nested at most 3
-# deep, closed at the end. In a child bash: bats' DEBUG trap, run before every
+# deep (one with a quoted ">", one spanning lines), closed at the end. In a child bash: bats' DEBUG trap, run before every
 # command, makes this loop take 50 times as long in the test's own shell
 gen_random_messages() {
   bash -s "$@" <<'GEN'
 dir=$1 count=$2
 words=("abc " "x/y" "hello world " "zz" "é" "中") lens=(4 3 12 2 1 1)
-ents=("&amp;" "&lt;" "&gt;" "&quot;" "&#128512;" "&#x41;") tags=(b i code a)
-starts=("<b>" "<i>" "<code>" '<a href="https://é.example/?q=1&amp;r=2">')
+ents=("&amp;" "&lt;" "&gt;" "&quot;" "&#128512;" "&#x41;" "&#65;" "&#X41;") ent_lens=(1 1 1 1 2 1 1 6)
+tags=(b i code a a code)
+starts=("<b>" "<i>" "<code>" '<a href="https://é.example/?q=1&amp;r=2">' '<a href="https://é.example/?a>b">'
+  $'<code\nclass="language-sh">')
 targets=(100 4000 4095 4096 4097 4100 5000 20000)
 RANDOM=7
 for ((i = 0; i < count; i++)); do
@@ -841,11 +945,11 @@ for ((i = 0; i < count; i++)); do
   while ((units < target)) || [[ "$msg" == *$'\n' ]]; do
     r=$((RANDOM % 100))
     if ((r < 5 && ${#open[@]} < 3)); then
-      r=$((RANDOM % 4)); open+=("${tags[r]}"); msg+=${starts[r]}; continue
+      r=$((RANDOM % 6)); open+=("${tags[r]}"); msg+=${starts[r]}; continue
     elif ((r < 9 && ${#open[@]} > 0)); then
       msg+="</${open[-1]}>"; unset 'open[-1]'; continue
     elif ((r < 20)); then
-      p=${ents[RANDOM % 6]}; u=1; [[ "$p" != "&#"* ]] || u=2
+      r=$((RANDOM % 8)) p=${ents[r]} u=${ent_lens[r]}
     elif ((r < 25)); then
       p="😀" u=2
     elif ((r < 28)); then
@@ -888,9 +992,10 @@ GEN
     # the cut falls between tokens, and the next character or entity would not fit
     rest=${msg:${#pre}}
     [[ ! "$pre" =~ \<[^\>]*$ ]] || { echo "case $i: cut inside a tag"; false; }
-    [[ ! ("$pre" =~ \&[a-z#0-9]*$ && "$rest" =~ ^[a-zA-Z#0-9]*\;) ]] || { echo "case $i: cut inside an entity"; false; }
-    while [[ "$rest" =~ ^\<[^\>]*\>(.*)$ ]]; do rest=${BASH_REMATCH[1]}; done
-    [[ "$rest" =~ ^(\&(lt|gt|amp|quot|#[0-9]+|#x[0-9A-Fa-f]+)\;) ]] && next=${BASH_REMATCH[1]} || next=${rest:0:1}
+    [[ ! "$pre" =~ \<([^\>\"]|\"[^\"]*\")*(\"[^\"]*)?$ ]] || { echo "case $i: cut inside a tag"; false; }
+    [[ ! ("$pre" =~ \&[a-zA-Z#0-9]*$ && "$rest" =~ ^[a-zA-Z#0-9]*\;) ]] || { echo "case $i: cut inside an entity"; false; }
+    while [[ "$rest" =~ ^\<([^\>\"]|\"[^\"]*\")*\>(.*)$ ]]; do rest=${BASH_REMATCH[2]}; done
+    [[ "$rest" =~ ^(\&(lt|gt|amp|quot|#[0-9]+|#x[0-9A-Fa-f]+|#X[0-9A-Fa-f]+)\;) ]] && next=${BASH_REMATCH[1]} || next=${rest:0:1}
     (($(rendered_length <<< "$pre$next") + 1 > 4096)) || { echo "case $i: cut too early"; false; }
     # closers close what is open at the cut, innermost first
     expect=""

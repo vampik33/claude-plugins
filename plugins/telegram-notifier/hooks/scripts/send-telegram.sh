@@ -39,43 +39,75 @@ JSON_PAYLOAD=$(printf '%s' "$MESSAGE" | jq -n \
   --arg chat_id "$TELEGRAM_CHAT_ID" \
   --rawfile text /dev/stdin '
   # Telegram counts 4096 characters after HTML parsing; count UTF-16 code units (an
-  # emoji counts 2): a tag counts 0, an entity 1 (a numeric one 2)
+  # emoji counts 2)
   def units: [explode[] | if . > 65535 then 2 else 1 end] | add // 0;
-  # A text part as entities and characters. Only its first $max * 10 characters
-  # (an entity has at most 10): the cut comes before them, and scan takes time
-  # quadratic in the length
-  def text_tokens($max):
-    .[:$max * 10] | scan("&(?:lt|gt|amp|quot|#[0-9]{1,7}|#x[0-9A-Fa-f]{1,6});|[\\s\\S]");
-  def tokens($max):
-    split("<") as $p
-    | ($p[0] | text_tokens($max)),
-      ($p[1:][] | (explode | index(62)) as $i # ">"; a string index counts bytes in jq 1.7
-       | if $i then ("<" + .[:$i + 1]), (.[$i + 1:] | text_tokens($max))
-         else "<" + . | text_tokens($max) end);
-  # Cut where "…" still fits, close the tags open there, and keep counting: a
-  # message that fits after all is sent whole
+  # An entity counts 1, a numeric one by its code point (2 past U+FFFF); one Telegram
+  # may not decode (unknown, &#X41;, 0, a surrogate, past U+10FFFF) counts its own
+  # characters
+  def entity_units:
+    (if test("^&#[0-9]+;$") then .[2:-1] | tonumber
+     elif test("^&#x[0-9A-Fa-f]+;$") then
+       reduce (.[3:-1] | ascii_downcase | explode[]) as $d (0; . * 16 + $d - (if $d > 96 then 87 else 48 end))
+     else null end) as $v
+    | if . == "&lt;" or . == "&gt;" or . == "&amp;" or . == "&quot;" then 1
+      elif $v == null or $v == 0 or ($v >= 55296 and $v <= 57343) or $v > 1114111 then length
+      elif $v > 65535 then 2
+      else 1 end;
+  # The code points $cp as tokens, each with the index it ends at: {u, end} for a
+  # character or an entity (u its UTF-16 units), {tag, end} for a tag (tag "/"
+  # closes, a name opens, "" neither). One pass that builds no string: in jq 1.7
+  # a global scan is quadratic in the length, a string index counts bytes, and
+  # appending to a string in an object copies it. A tag ends at a ">" outside
+  # quotes; an entity is "&", at most 31 of [A-Za-z0-9#] and ";"; an unterminated
+  # one is plain characters
+  def tokens($cp):
+    def char($i): {u: (if $cp[$i] > 65535 then 2 else 1 end), end: ($i + 1)};
+    def text($c; $i):
+      if $c == 60 then {m: "tag", b: $i, e: []}
+      elif $c == 38 then {m: "entity", b: $i, e: []}
+      elif $c == null then {e: []}
+      else {m: "text", e: [char($i)]} end;
+    foreach range(0; ($cp | length) + 1) as $i
+      ({m: "text", e: []};
+       $cp[$i] as $c # null past the end
+       | if .m == "text" then text($c; $i)
+         elif .m == "tag" then
+           if $c == null then {e: [{from: .b, to: $i}]}
+           elif .q then {m: "tag", b: .b, q: (if $c == .q then null else .q end), e: []}
+           elif $c == 34 or $c == 39 then {m: "tag", b: .b, q: $c, e: []}
+           elif $c == 62 then
+             {m: "text",
+              e: [{tag: (if $cp[.b + 1] == 47 then "/"
+                         else ($cp[.b:$i + 1] | implode | capture("^<(?<n>[A-Za-z][A-Za-z0-9-]*)") | .n) // "" end),
+                   end: ($i + 1)}]}
+           else {m: "tag", b: .b, e: []} end
+         elif $c != null and $i - .b < 32
+              and ($c == 35 or ($c >= 48 and $c <= 57) or ($c >= 65 and $c <= 90) or ($c >= 97 and $c <= 122)) then
+           {m: "entity", b: .b, e: []}
+         elif $c == 59 then {m: "text", e: [{u: ($cp[.b:$i + 1] | implode | entity_units), end: ($i + 1)}]}
+         else {from: .b, to: $i} as $f | text($c; $i) | {m, b, e: ([$f] + .e)}
+         end;
+       .e[] | if .from then range(.from; .to) as $k | char($k) else . end);
+  # Cut where "…" still fits, close the tags open there (a list [name, rest]), and
+  # keep counting: a message that fits after all is sent whole
   def bound($max):
     . as $whole
-    | if units <= $max then .
+    | if length <= $max and units <= $max then .
       else
-        label $done
-        | foreach (tokens($max), null) as $t
-            ({out: "", n: 0, tags: [], cut: null};
-             if $t == null then .end = true
-             elif ($t | test("^<.*>$")) then
-               if .cut then . else
-                 .out += $t
-                 | if ($t | startswith("</")) then .tags |= .[:-1]
-                   else .tags += [$t | capture("^<(?<n>[A-Za-z][A-Za-z0-9-]*)") | .n] end
-               end
-             else
-               ($t | if startswith("&#") then 2 elif startswith("&") and length > 1 then 1 else units end) as $u
-               | if .cut == null and .n + $u > $max - 1 then
-                   .cut = .out + "…" + ([.tags | reverse[] | "</\(.)>"] | join(""))
-                 else . end
-               | if .cut == null then .out += $t else . end
-               | .n += $u
-             end;
+        explode as $cp
+        | label $done
+        | foreach (tokens($cp), null) as $t
+            ({n: 0, tags: null, pos: 0, cut: null};
+             if $t == null then {end: true}
+             elif .cut then {n: (.n + ($t.u // 0)), cut}
+             elif $t.tag then
+               {n, pos: $t.end, cut,
+                tags: (if $t.tag == "/" then .tags[1] elif $t.tag == "" then .tags else [$t.tag, .tags] end)}
+             elif .n + $t.u > $max - 1 then
+               {n: (.n + $t.u),
+                cut: (($cp[:.pos] | implode) + "…"
+                      + ([.tags | recurse(.[1]; . != null) | select(. != null) | "</\(.[0])>"] | join("")))}
+             else {n: (.n + $t.u), tags, pos: $t.end, cut} end;
              if .end then $whole, break $done
              elif .n > $max then .cut, break $done
              else empty end)

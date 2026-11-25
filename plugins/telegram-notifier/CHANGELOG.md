@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A Stop notification is no longer lost when the session's working directory passes 128 KiB once escaped for HTML (about 27 KB of `&`, which becomes `&amp;`): `send-telegram.sh` got the message as one argument, and one argument holds at most 128 KiB ("Argument list too long"). The message now goes to `send-telegram.sh`, and the payload to `jq` and `curl`, on stdin: `send-telegram.sh [max_seconds] < message`. `jq` reads it with `--rawfile`, since jq 1.7's `-R` splits a multibyte character that crosses a 4 KB boundary of its input
-- A message longer than Telegram's 4096 characters (counted after HTML parsing, in UTF-16 code units, so an emoji counts 2) is cut to fit and ends in "…" with its open tags closed, instead of being refused by the API ("message is too long"); this covers `/telegram` too. The cut never splits a tag or an entity, and a message that fits is sent unchanged
+- A message longer than Telegram's 4096 characters (counted after HTML parsing, in UTF-16 code units, so an emoji counts 2) is cut to fit and ends in "…" with its open tags closed, instead of being refused by the API ("message is too long"); this covers `/telegram` too. The cut never splits a tag or an entity, and a message that fits is sent unchanged. A tag ends at the first ">" outside quotes, so an attribute holding ">" and a tag spanning lines stay whole. A numeric entity counts as the character it stands for (`&#65;` 1, `&#128512;` 2); one Telegram may not decode (`&#X41;` with an uppercase X, `&#0;`, a surrogate, past U+10FFFF) counts as its own characters
+- A Stop notification is no longer lost when the working directory itself passes 128 KiB: `CLAUDE_CWD` and `CLAUDE_SESSION_ID` are no longer exported, since a variable that size in the environment made every later command fail ("Argument list too long")
 
 ## [1.9.15] - 2026-11-25
 

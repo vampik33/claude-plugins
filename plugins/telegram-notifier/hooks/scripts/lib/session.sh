@@ -5,7 +5,7 @@
 # Usage: Call after capturing stdin, e.g.:
 #   HOOK_INPUT=$(cat)
 #   extract_session_id "$HOOK_INPUT"
-# Sets: CLAUDE_SESSION_ID (not exported: a child process needs none of it)
+# Sets: CLAUDE_SESSION_ID (not exported: .claude/rules/shell-hooks.md)
 extract_session_id() {
   local input="${1:-}"
   local val
@@ -15,8 +15,7 @@ extract_session_id() {
 
 # Extract cwd from hook input JSON
 # Usage: extract_cwd "$HOOK_INPUT"
-# Sets: CLAUDE_CWD (not exported: a variable past 128 KiB in the environment makes
-# every later command fail with "Argument list too long")
+# Sets: CLAUDE_CWD (not exported: .claude/rules/shell-hooks.md)
 extract_cwd() {
   local input="${1:-}"
   local val

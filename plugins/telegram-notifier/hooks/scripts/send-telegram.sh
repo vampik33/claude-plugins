@@ -40,7 +40,8 @@ JSON_PAYLOAD=$(printf '%s' "$MESSAGE" | jq -n \
   --rawfile text /dev/stdin '
   # Telegram counts 4096 characters after HTML parsing; count UTF-16 code units (an
   # emoji counts 2)
-  def units: [explode[] | if . > 65535 then 2 else 1 end] | add // 0;
+  def w: if . > 65535 then 2 else 1 end; # the UTF-16 units of a code point
+  def units: [explode[] | w] | add // 0;
   # An entity counts 1, a numeric one by its code point (2 past U+FFFF); one Telegram
   # may not decode (unknown, &#X41;, 0, a surrogate, past U+10FFFF) counts its own
   # characters
@@ -51,8 +52,7 @@ JSON_PAYLOAD=$(printf '%s' "$MESSAGE" | jq -n \
      else null end) as $v
     | if . == "&lt;" or . == "&gt;" or . == "&amp;" or . == "&quot;" then 1
       elif $v == null or $v == 0 or ($v >= 55296 and $v <= 57343) or $v > 1114111 then length
-      elif $v > 65535 then 2
-      else 1 end;
+      else $v | w end;
   # The code points $cp as tokens, each with the index it ends at: {u, end} for a
   # character or an entity (u its UTF-16 units), {tag, end} for a tag (tag "/"
   # closes, a name opens, "" neither). One pass that builds no string: in jq 1.7
@@ -61,7 +61,7 @@ JSON_PAYLOAD=$(printf '%s' "$MESSAGE" | jq -n \
   # quotes; an entity is "&", at most 31 of [A-Za-z0-9#] and ";"; an unterminated
   # one is plain characters
   def tokens($cp):
-    def char($i): {u: (if $cp[$i] > 65535 then 2 else 1 end), end: ($i + 1)};
+    def char($i): {u: ($cp[$i] | w), end: ($i + 1)};
     def text($c; $i):
       if $c == 60 then {m: "tag", b: $i, e: []}
       elif $c == 38 then {m: "entity", b: $i, e: []}
@@ -88,30 +88,26 @@ JSON_PAYLOAD=$(printf '%s' "$MESSAGE" | jq -n \
          else {from: .b, to: $i} as $f | text($c; $i) | {m, b, e: ([$f] + .e)}
          end;
        .e[] | if .from then range(.from; .to) as $k | char($k) else . end);
-  # Cut where "…" still fits, close the tags open there (a list [name, rest]), and
-  # keep counting: a message that fits after all is sent whole
+  # Cut where "…" still fits, close the tags open there, and keep counting: a
+  # message that fits after all is sent whole
   def bound($max):
-    . as $whole
-    | if length <= $max and units <= $max then .
-      else
-        explode as $cp
-        | label $done
-        | foreach (tokens($cp), null) as $t
-            ({n: 0, tags: null, pos: 0, cut: null};
-             if $t == null then {end: true}
-             elif .cut then {n: (.n + ($t.u // 0)), cut}
-             elif $t.tag then
-               {n, pos: $t.end, cut,
-                tags: (if $t.tag == "/" then .tags[1] elif $t.tag == "" then .tags else [$t.tag, .tags] end)}
-             elif .n + $t.u > $max - 1 then
-               {n: (.n + $t.u),
-                cut: (($cp[:.pos] | implode) + "…"
-                      + ([.tags | recurse(.[1]; . != null) | select(. != null) | "</\(.[0])>"] | join("")))}
-             else {n: (.n + $t.u), tags, pos: $t.end, cut} end;
-             if .end then $whole, break $done
-             elif .n > $max then .cut, break $done
-             else empty end)
-      end;
+    if units <= $max then .
+    else
+      . as $whole
+      | explode as $cp
+      | first(foreach tokens($cp) as $t
+          ({n: 0, tags: [], pos: 0, cut: null};
+           if .cut then .n += ($t.u // 0)
+           elif $t.tag then
+             .pos = $t.end
+             | .tags |= (if $t.tag == "/" then .[:-1] elif $t.tag == "" then . else . + [$t.tag] end)
+           elif .n + $t.u > $max - 1 then
+             .n += $t.u
+             | .cut = ($cp[:.pos] | implode) + "…" + (.tags | reverse | map("</\(.)>") | join(""))
+           else .n += $t.u | .pos = $t.end end;
+           select(.n > $max) | .cut))
+        // $whole
+    end;
   {chat_id: $chat_id, text: ($text | bound(4096)), parse_mode: "HTML"}')
 
 if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then

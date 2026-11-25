@@ -937,10 +937,10 @@ ents=("&amp;" "&lt;" "&gt;" "&quot;" "&#128512;" "&#x41;" "&#65;" "&#X41;") ent_
 tags=(b i code a a code)
 starts=("<b>" "<i>" "<code>" '<a href="https://é.example/?q=1&amp;r=2">' '<a href="https://é.example/?a>b">'
   $'<code\nclass="language-sh">')
-targets=(100 4000 4095 4096 4097 4100 5000 20000)
+targets=(100 2000 4000 4095 4096 4097 4100 5000 20000)
 RANDOM=7
 for ((i = 0; i < count; i++)); do
-  msg="" units=0 open=() target=${targets[RANDOM % 8]}
+  msg="" units=0 open=() target=${targets[RANDOM % 9]}
   # never ending in a newline: $(cat) drops it, so units would count one too many
   while ((units < target)) || [[ "$msg" == *$'\n' ]]; do
     r=$((RANDOM % 100))

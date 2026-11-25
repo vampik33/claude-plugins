@@ -1,8 +1,13 @@
-# plugins/ CLAUDE.md
+---
+paths:
+  - "plugins/*/hooks/**/*.{ts,tsx}"
+  - "plugins/*/tests/**/*.{ts,tsx}"
+  - "verification/**"
+---
 
-## Mods (function-hook plugins)
+# Mods (TypeScript function-hook plugins)
 
-big-picture, chat-view, codex-review, continuity, effort-pilot, fix-findings, fleet, memory-watch, palette, ship, tool-lens and watchdog are TypeScript mods, not shell hooks.
+A mod is a plugin whose `hooks/` holds a TypeScript module (`register.tsx`, `core.ts`); the canonical list is the `for mod in …` loop in `verification/run.sh`.
 
 - Check: `claude plugin validate <dir>` and `claude plugin test <dir>`; `tsc -p <dir>` once the engine has loaded the mod (it lays `.claude-plugin/types/`, gitignored; a fresh worktree has none, so copy one from the main checkout, e.g. `plugins/continuity/.claude-plugin/types/`, and delete it after)
 - Type files in `<mod>/.claude-plugin/types/` are from whichever build last loaded the mod (its header says which); a fresh `tsc -p` can pass on old types, so also check against the current build's `claude-code.d.ts`, which the plugin-authoring skill writes when it loads
@@ -10,9 +15,9 @@ big-picture, chat-view, codex-review, continuity, effort-pilot, fix-findings, fl
 - A function that takes `$` must be top-level (the validator refuses closures)
 - A mod that draws in the AbovePrompt band returns `<Box flexDirection="column">{below}{row}</Box>`, `below` being `await next(e)` and its row keyed `band:<mod>`, with no `marginTop`. The engine hands `next(e)` back as an opaque `{ type: "engine" }` node, never another mod's tree, and stacks each mod's tree as a separate part in hook order. So a mod cannot merge rows across mods, and a `marginTop` puts a blank row between mods' lines. To reorder, hook `ui.render` on `AbovePromptList` and pass `next` its `e.props.rows` reordered (codex-review, continuity and effort-pilot each apply the same idempotent `bandOrder` from their `core.ts`, so the band ends codex, ctx, effort whichever runs first); in tests the kit stacks that list itself, so assert the order on `ui.drawn()`'s children, not in a test `ui.render` hook. In tests, a mod's part is the drawn child whose `part.plugin` is the mod
 - Helpers are copied per mod, not shared: each mod installs alone
-- New mod: add it to the hardcoded `for mod in …` loop in `verification/run.sh`, and add `verification/props/<mod>.prop.test.ts` for pure functions in its `core.ts`
 
-Mod gotchas:
+## Gotchas
+
 - Atom keys (`atom("<mod>:…")`) and `$.env.get("NAME")` arguments must be string literals: the validator scans for them, so a `NAME` constant or a `get(name)` wrapper fails `claude plugin validate` and most tests
 - Module variables reset on every hot reload; anything that must survive goes in `$.state` and is restored in `session.start` (timers re-armed there too)
 - `/clear` fires `session.end` with `reason: 'clear'` and no `session.start` after it; reset session-scoped state there
@@ -33,14 +38,3 @@ Mod gotchas:
 - Mod `.ts`/`.tsx` files are prettier-clean, and the format hooks reformat the whole file on any edit (Edit/Write or a shell edit); a new mod's files get the same treatment on their first edit
 - Some `core.ts`/`ttl.ts` functions (fleet `trim`/`applyStatuses`/`endShell`, codex-review `trimJobs`, continuity `decideTtl`/`observeTtl`, chat-view `turnEnd`/`cap`, Lean module still `PromptClock`) have Lean models in `verification/lean/Plugins/`: change the behaviour and update the model and proofs too. `diff.lean.test.ts` fails when they drift, and `run.sh` rejects `sorry`.
 - A `core.ts` function that returns a shell script (big-picture `openArgv`, watchdog's scan scripts) is tested twice: its text in `tests/*.test.tsx`, its behaviour run for real in `verification/props/<mod>.prop.test.ts` with `Bun.spawnSync(argv, { env: { PATH: dir } })`, `dir` a temp dir holding symlinked tools and fake commands. Change the script, update both. For POSIX `sh` portability, rerun it under `debian:stable-slim` (`dash`) and `busybox:stable` in docker.
-
-## Conventions
-
-### Shell Scripts (hooks)
-
-- Start with `set -euo pipefail`
-- Debug mode via `<PLUGIN>_DEBUG=1` environment variable
-- A script that reads `TELEGRAM_BOT_TOKEN` runs `{ set +x; } 2>/dev/null` before it, so neither debug mode nor an outside `bash -x` traces the token; `tests/hooks.bats` checks each such script with tracing on
-- `summarize-transcript.sh` runs in the Stop hook (10 s budget) on transcripts over 100 MB: stream the transcript through one `jq` pass that keeps only what the summary prints; never hold full tool inputs in a shell variable, and never pass file paths through `xargs` (quotes break it), take base names in `jq`
-- Extract shared logic into `hooks/scripts/lib/`
-- Read hook input via `HOOK_INPUT=$(cat)` before sourcing libraries

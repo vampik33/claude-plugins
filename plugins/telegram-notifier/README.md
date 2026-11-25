@@ -162,7 +162,7 @@ This shows verbose output including the request payload and the API response. Th
 See [troubleshooting guide](skills/telegram-messaging/references/troubleshooting.md) for common issues.
 
 **Quick checks:**
-- Credentials set? `echo $TELEGRAM_BOT_TOKEN`
+- Credentials set? `[ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ] && echo set || echo missing` (prints neither value)
 - Config exists? `cat ~/.claude/telegram-notifier.local.md` or `cat .claude/telegram-notifier.local.md`
 - Test manually: `/telegram Test message`
 

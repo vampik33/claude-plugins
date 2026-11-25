@@ -5,6 +5,11 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.9] - 2026-11-25
+
+### Security
+- README: the troubleshooting check for credentials tests whether `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set instead of echoing the token, which put it in terminal scrollback or tool output
+
 ## [1.9.8] - 2026-11-25
 
 ### Changed

@@ -20,6 +20,8 @@ source "$SCRIPT_DIR/lib/html.sh"
 extract_session_id "$HOOK_INPUT"
 extract_cwd "$HOOK_INPUT"
 extract_transcript_path "$HOOK_INPUT"
+# Clear rather than unset: a trace prefix (PS4) naming it would fail under set -u
+HOOK_INPUT=""
 
 # Debug mode support. Tracing starts only after the fields above are read: the
 # Stop event holds Claude's last answer, and tracing the reads would print it

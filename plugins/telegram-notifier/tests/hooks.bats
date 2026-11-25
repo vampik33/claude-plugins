@@ -126,7 +126,7 @@ EOF
   [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
 }
 
-@test "session-notification: bash -x and SHELLOPTS=xtrace never print Claude's answer" {
+@test "session-notification: bash -x, SHELLOPTS=xtrace and a custom PS4 never print Claude's answer" {
   arm_notification sn-x-answer
   local input
   input=$(jq -cn '{session_id: "sn-x-answer", cwd: "/tmp", transcript_path: "", last_assistant_message: "SECRET-ANSWER-TEXT"}')
@@ -136,6 +136,12 @@ EOF
   arm_notification sn-x-answer
   run --separate-stderr env SHELLOPTS=xtrace bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
+  # a trace prefix that expands the hook input finds it gone once tracing starts
+  arm_notification sn-x-answer
+  run --separate-stderr env PS4='+[$HOOK_INPUT] ' TELEGRAM_NOTIFIER_DEBUG=1 bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"+[] "* ]]
   [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
 }
 

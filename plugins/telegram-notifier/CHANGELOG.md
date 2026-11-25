@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.11] - 2026-11-25
 
 ### Security
-- Debug mode (`TELEGRAM_NOTIFIER_DEBUG=1`) in the Stop hook no longer traces the Stop event, which holds Claude's last answer: `session-notification.sh` starts tracing only after it has read the session ID, cwd and transcript path from the event. Tracing inherited from `bash -x` or an exported `SHELLOPTS=xtrace` is turned off for the whole hook unless debug mode turns it back on. `tests/hooks.bats` checks that the answer never appears in the hook's output
+- Debug mode (`TELEGRAM_NOTIFIER_DEBUG=1`) in the Stop hook no longer traces the Stop event, which holds Claude's last answer: `session-notification.sh` starts tracing only after it has read the session ID, cwd and transcript path from the event, and then clears the event from its variable, so a custom trace prefix (`PS4`) cannot print it either. Tracing inherited from `bash -x` or an exported `SHELLOPTS=xtrace` is turned off for the whole hook unless debug mode turns it back on. `tests/hooks.bats` checks that the answer never appears in the hook's output
 
 ## [1.9.10] - 2026-11-25
 

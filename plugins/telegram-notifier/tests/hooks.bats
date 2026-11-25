@@ -192,6 +192,24 @@ EOF
   rm -f /tmp/claude-telegram-notifier-session-sn-nodeps
 }
 
+@test "session-notification: without curl, consumes the session file and prints one stderr line" {
+  arm_notification sn-nocurl-on
+  run --separate-stderr env PATH="$(path_without curl)" bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-nocurl-on"}'
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  [ "$stderr" = "Telegram Notifier: session notification skipped, missing curl" ]
+  [ ! -f /tmp/claude-telegram-notifier-session-sn-nocurl-on ]
+}
+
+@test "session-notification: without curl, consumes the session file quietly when notifications are off" {
+  printf -- '---\nenabled: false\n---\n' > "$HOME/.claude/telegram-notifier.local.md"
+  echo "$(($(date +%s) - 900))" > /tmp/claude-telegram-notifier-session-sn-nocurl-off
+  run --separate-stderr env PATH="$(path_without curl)" bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-nocurl-off"}'
+  [ "$status" -eq 0 ]
+  [ -z "$output$stderr" ]
+  [ ! -f /tmp/claude-telegram-notifier-session-sn-nocurl-off ]
+}
+
 @test "check-credentials: bash -x never prints the bot token" {
   cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
 ---

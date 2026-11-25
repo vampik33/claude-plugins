@@ -20,11 +20,12 @@ source "$SCRIPT_DIR/lib/html.sh"
 
 # Reading the event needs jq and sending needs curl. Without them, skip quietly
 # when notifications are off; when on, say so in one line (exit 1: Claude Code
-# shows it without blocking the stop, as exit 2 would)
+# shows it without blocking the stop, as exit 2 would). curl alone is checked
+# below, once the session file is consumed
 MISSING_DEPS=()
 command -v jq &> /dev/null || MISSING_DEPS+=("jq")
-command -v curl &> /dev/null || MISSING_DEPS+=("curl")
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
+  command -v curl &> /dev/null || MISSING_DEPS+=("curl")
   if [[ "$(is_plugin_enabled)" == "true" ]]; then
     printf -v DEPS_LIST '%s, ' "${MISSING_DEPS[@]}"
     echo "Telegram Notifier: session notification skipped, missing ${DEPS_LIST%, }" >&2
@@ -61,6 +62,11 @@ ENABLED_STATUS=$(is_plugin_enabled)
 
 if [[ "$ENABLED_STATUS" != "true" ]]; then
   exit 0
+fi
+
+if ! command -v curl &> /dev/null; then
+  echo "Telegram Notifier: session notification skipped, missing curl" >&2
+  exit 1
 fi
 
 # Get threshold (project > user > default of 10 minutes)

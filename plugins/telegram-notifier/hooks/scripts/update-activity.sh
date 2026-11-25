@@ -1,4 +1,7 @@
 #!/bin/bash
+# Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace before
+# any line runs: the trace would print the prompt (in the hook input) and the bot token
+{ set +x; } 2>/dev/null
 set -euo pipefail
 
 # Update last activity timestamp on each user prompt
@@ -20,9 +23,7 @@ if [[ "$ENABLED_STATUS" != "true" ]]; then
   exit 0
 fi
 
-# Check credentials are present (skip silently if not), with tracing off: a
-# `bash -x` trace would print the bot token
-{ set +x; } 2>/dev/null
+# Check credentials are present (skip silently if not)
 [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && exit 0
 [[ -z "${TELEGRAM_CHAT_ID:-}" ]] && exit 0
 

@@ -1,15 +1,15 @@
 #!/bin/bash
+# Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace before
+# any line runs: the trace would print the bot token wherever it is expanded
+{ set +x; } 2>/dev/null
 set -euo pipefail
 
 # Shared Telegram message sender
-# Usage: send-telegram.sh "message"
+# Usage: send-telegram.sh "message" [max_seconds]
 # Returns: 0 on success, 1 on failure
 # Output: JSON response on success, error message on failure
 # Debug: Set TELEGRAM_NOTIFIER_DEBUG=1 to print the payload and the response
 # (never `set -x`: the trace would print the bot token wherever it is expanded)
-
-# Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace, for the same reason
-{ set +x; } 2>/dev/null
 
 MESSAGE="${1:-}"
 
@@ -38,8 +38,13 @@ if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   echo "Payload: $JSON_PAYLOAD" >&2
 fi
 
-# Send with timeout and capture response; 8 s keeps it inside the Stop hook's 10 s
-RESPONSE=$(curl -s --connect-timeout 5 -m 8 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+# Send with timeout and capture response; 8 s keeps it inside the Stop hook's 10 s,
+# and the hook passes a shorter time when the summary took some of it
+MAX_TIME=8
+if [[ "${2:-}" =~ ^[1-8]$ ]]; then
+  MAX_TIME=$2
+fi
+RESPONSE=$(curl -s --connect-timeout 5 -m "$MAX_TIME" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
   -d "$JSON_PAYLOAD" 2>&1) || {
   echo "Error: curl failed" >&2

@@ -1,4 +1,7 @@
 #!/bin/bash
+# Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace before
+# any line runs; debug mode below turns it on
+{ set +x; } 2>/dev/null
 set -euo pipefail
 
 # Check if Telegram credentials are set (opt-in based on config file)

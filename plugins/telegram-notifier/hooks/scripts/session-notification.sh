@@ -40,7 +40,11 @@ HOOK_INPUT=""
 # Debug mode support. Tracing starts only after the fields above are read: the
 # Stop event holds Claude's last answer, and tracing the reads would print it
 if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-  set -x
+  # Only where the trace goes to stderr: a BASH_XTRACEFD naming stdout would put
+  # it into every $(…) value, the message among them
+  if [[ "${BASH_XTRACEFD:-2}" == "2" ]]; then
+    set -x
+  fi
   exec 2>&1
 fi
 

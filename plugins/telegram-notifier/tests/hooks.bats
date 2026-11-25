@@ -165,6 +165,36 @@ EOF
   [[ "$payload" != *"+ "* ]]
 }
 
+@test "session-notification: debug mode with BASH_XTRACEFD=1 keeps traces out of the message" {
+  arm_notification sn-xfd
+  local t="$BATS_TEST_TMPDIR/tr<b>&x.jsonl"
+  cp "$FIXTURES/transcript.jsonl" "$t"
+  local input
+  input=$(jq -cn --arg t "$t" '{session_id: "sn-xfd", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  # a trace on stdout would land in every $(…) value: the status check, the summary, the message
+  run --separate-stderr env SHELLOPTS=xtrace BASH_XTRACEFD=1 bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"Edited: main.rs"* ]]
+  [[ "$payload" != *"tr<b>"* ]]
+  [[ "$payload" != *"+ "* ]]
+}
+
+@test "check-credentials: debug mode with BASH_XTRACEFD=1 still reports ready" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  run --separate-stderr env BASH_XTRACEFD=1 bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-xfd"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Ready"* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+}
+
 @test "hooks: bash -x and an exported SHELLOPTS=xtrace (BASH_XTRACEFD=1 too) trace no line, not even the first" {
   local s mode input='{"session_id":"hk-x","cwd":"/tmp","transcript_path":"","prompt":"SECRET-PROMPT","last_assistant_message":""}'
   for mode in "bash -x" "env SHELLOPTS=xtrace bash" "env SHELLOPTS=xtrace BASH_XTRACEFD=1 bash"; do

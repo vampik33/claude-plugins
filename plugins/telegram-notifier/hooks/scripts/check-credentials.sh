@@ -11,7 +11,11 @@ set -euo pipefail
 
 # Debug mode support
 if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-  set -x
+  # Only where the trace goes to stderr: a BASH_XTRACEFD naming stdout would put
+  # it into every $(…) value and the hook's JSON
+  if [[ "${BASH_XTRACEFD:-2}" == "2" ]]; then
+    set -x
+  fi
   exec 2>&1
 fi
 
@@ -71,7 +75,7 @@ fi
 MISSING_CREDS=()
 [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && MISSING_CREDS+=("TELEGRAM_BOT_TOKEN")
 [[ -z "${TELEGRAM_CHAT_ID:-}" ]] && MISSING_CREDS+=("TELEGRAM_CHAT_ID")
-if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" && "${BASH_XTRACEFD:-2}" == "2" ]]; then
   set -x
 fi
 

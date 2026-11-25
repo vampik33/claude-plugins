@@ -1,14 +1,11 @@
 #!/bin/bash
 set -euo pipefail
+# Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace
+# while the hook input is read (see "Debug mode support" below)
+{ set +x; } 2>/dev/null
 
 # Send Telegram notification when session ends (if configured)
 # Checks session duration against threshold from settings
-
-# Debug mode support
-if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-  set -x
-  exec 2>&1
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -23,6 +20,13 @@ source "$SCRIPT_DIR/lib/html.sh"
 extract_session_id "$HOOK_INPUT"
 extract_cwd "$HOOK_INPUT"
 extract_transcript_path "$HOOK_INPUT"
+
+# Debug mode support. Tracing starts only after the fields above are read: the
+# Stop event holds Claude's last answer, and tracing the reads would print it
+if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
+  set -x
+  exec 2>&1
+fi
 
 # Read session file early to ensure cleanup happens even if plugin is disabled
 # This handles cases where user disables plugin mid-session

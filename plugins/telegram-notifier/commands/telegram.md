@@ -12,7 +12,7 @@ Send a notification message via Telegram Bot API.
 
 The message is `$ARGUMENTS`, or "Task completed" when that is empty.
 
-Escape the message for HTML and send it with the shared script. Put the message text, exactly as given, on the line between the two `TELEGRAM_MESSAGE` markers: the quoted heredoc keeps quotes, `$` and backticks in it as plain text, so nothing in the message runs as shell.
+Escape the message for HTML and send it with the shared script, which reads it from stdin. Put the message text, exactly as given, on the line between the two `TELEGRAM_MESSAGE` markers: the quoted heredoc keeps quotes, `$` and backticks in it as plain text, so nothing in the message runs as shell.
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/lib/html.sh"
@@ -20,8 +20,7 @@ RAW=$(cat <<'TELEGRAM_MESSAGE'
 <the message>
 TELEGRAM_MESSAGE
 )
-MESSAGE=$(escape_html "$RAW")
-bash "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/send-telegram.sh" "$MESSAGE"
+escape_html "$RAW" | bash "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/send-telegram.sh"
 ```
 
 Check the exit code and report any errors to the user.

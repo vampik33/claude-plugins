@@ -714,6 +714,54 @@ EOF
   [[ "$output" != *EOF* && "$output" != *=* ]]
 }
 
+@test "summarize-transcript: never names a word from inside a quoted or substituted assignment" {
+  run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/quoted-secrets.jsonl"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Ran: cargo, gh, make' ]
+  [[ "$output" != *SENTINEL* ]]
+}
+
+# One random NAME=value word whose value bash reads as one word: plain text, "…" with
+# spaces, escapes and substitutions, '…', $(…), `…`, an escaped space or $X/…, each
+# holding SENTINEL, so SENTINEL is never a command word
+# Sets REPLY (a $(…) subshell would reseed RANDOM and break the fixed seed)
+random_assignment() {
+  local v="" i n=$((1 + RANDOM % 3))
+  for ((i = 0; i < n; i++)); do
+    case $((RANDOM % 9)) in
+      0 | 6) v+="a${RANDOM}" ;;
+      1) v+='"a SENTINEL \" $(x SENTINEL ) `y SENTINEL` b"' ;;
+      2 | 7) v+="'a SENTINEL \" \$ b'" ;;
+      3) v+='$(echo SENTINEL )' ;;
+      4) v+='`echo SENTINEL `' ;;
+      5) v+='\ SENTINEL' ;;
+      8) v+='$HOME/SENTINEL' ;;
+    esac
+  done
+  REPLY="K$RANDOM=$v"
+}
+
+@test "summarize-transcript: 200 random assignment prefixes name only the real program" {
+  RANDOM=7
+  local t="$BATS_TEST_TMPDIR/one.jsonl" cmd i named=0
+  for ((i = 0; i < 200; i++)); do
+    random_assignment
+    cmd="$REPLY "
+    random_assignment
+    cmd+="$REPLY"$'\t'"prog arg"
+    # the generator's own check: bash parses it (by construction, its command word is prog)
+    bash -n -c "$cmd"
+    jq -cn --arg c "$cmd" '{type: "assistant", message: {content: [{type: "tool_use", name: "Bash", input: {command: $c}}]}}' > "$t"
+    run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "" || "$output" == "• Ran: prog" ]] || { echo "$cmd -> $output"; false; }
+    [[ -z "$output" ]] || named=$((named + 1))
+  done
+  # plain and '…' values are skipped, so some commands keep their name
+  echo "named: $named"
+  [ "$named" -ge 5 ]
+}
+
 @test "summarize-transcript: bounds a huge command word and file name" {
   local t="$BATS_TEST_TMPDIR/huge.jsonl"
   # built inside jq: 300,000 characters would not fit in one argv string
@@ -817,6 +865,18 @@ EOF
   [[ "$payload" != *"All done"* ]]
   [[ "$payload" != *"assert!"* ]]
   [[ "$payload" != *"let x"* ]]
+}
+
+@test "session-notification: payload holds no word from inside a quoted assignment" {
+  arm_notification sn-10
+  local input
+  input=$(jq -cn --arg t "$FIXTURES/quoted-secrets.jsonl" '{session_id: "sn-10", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  run bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"Ran: cargo, gh, make"* ]]
+  [[ "$payload" != *SENTINEL* ]]
 }
 
 @test "session-notification: payload holds no heredoc lines or inline assignments" {

@@ -83,7 +83,7 @@ The plugin sends notifications when:
 2. Idle time (since last interaction) exceeds the configured threshold
 3. Credentials are properly set
 
-They come from classic hooks (SessionStart, UserPromptSubmit, Stop). Where an organization manages Claude Code and allows only managed hooks (`allowManagedHooksOnly`), these don't run; `/telegram` still works. The Stop notification sends the cwd, the session id and the start of Claude's last answer (up to 1000 characters) to `api.telegram.org`.
+They come from classic hooks (SessionStart, UserPromptSubmit, Stop). Where an organization manages Claude Code and allows only managed hooks (`allowManagedHooksOnly`), these don't run; `/telegram` still works. The Stop notification sends the cwd, the session id and a summary of counts and names (base names of edited and created files, the first word of commands run) to `api.telegram.org`; never Claude's answer text, command lines or file contents.
 
 ## Configuration
 

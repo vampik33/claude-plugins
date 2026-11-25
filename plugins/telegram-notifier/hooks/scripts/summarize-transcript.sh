@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Summarize a Claude Code transcript for notifications
 # Usage: summarize-transcript.sh <transcript_path>
-# Returns: Brief summary of actions taken
+# Returns: Brief summary of actions taken: counts and names only (file base names,
+# the first word of commands), never Claude's answer text or file contents
 #
 # Design limits (to keep notifications concise):
 # - Extraction: Limit to 5 unique items per category (head -5)
@@ -26,40 +27,6 @@ if ! command -v jq &> /dev/null; then
   echo ""
   exit 0
 fi
-
-# Tier 1: Use Claude's last assistant message directly (Stop hook field)
-# The Stop hook provides last_assistant_message with Claude's final response text.
-LAST_MSG="${LAST_ASSISTANT_MESSAGE:-}"
-
-if [[ -n "$LAST_MSG" ]]; then
-  # Strip markdown formatting for cleaner Telegram output:
-  # - Remove bold/italic markers, heading prefixes
-  # - Remove markdown table rows (separators and data rows with |)
-  # - Remove backticks, insight blocks, horizontal rules
-  # - Collapse multiple blank lines
-  SESSION_SUMMARY=$(echo "$LAST_MSG" \
-    | sed 's/`//g' \
-    | awk '/^★/{skip=1} /^─+$/{skip=0; next} skip{next} 1' \
-    | sed -E \
-      -e 's/\*\*//g' \
-      -e 's/^#{1,6} //' \
-      -e '/^\|[-:| ]*\|$/d' \
-      -e '/^\| /d' \
-      -e '/^[[:space:]]*$/d' \
-    | head -15)
-
-  if [[ -n "$SESSION_SUMMARY" ]]; then
-    # Truncate at last word boundary within 1000 chars
-    if [[ ${#SESSION_SUMMARY} -gt 1000 ]]; then
-      TRUNCATED="${SESSION_SUMMARY:0:1000}"
-      SESSION_SUMMARY="${TRUNCATED% *}..."
-    fi
-    escape_html "$SESSION_SUMMARY"
-    exit 0
-  fi
-fi
-
-# Fall through to tool-based extraction if no summary section found
 
 # Extract tool usage from transcript
 # The transcript is JSONL with assistant messages containing tool_use content blocks.

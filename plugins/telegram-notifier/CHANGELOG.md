@@ -5,6 +5,14 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.10] - 2026-11-25
+
+### Security
+- The automatic Stop notification no longer sends the start of Claude's last answer (up to 1000 characters), which could quote file contents, commands or secrets; it sends only the counts and names it took from the transcript (file base names, the first word of commands). `tests/hooks.bats` checks the payload sent to the stubbed `curl`
+
+### Removed
+- `extract_last_assistant_message` in `lib/session.sh`, which only that excerpt used
+
 ## [1.9.9] - 2026-11-25
 
 ### Security

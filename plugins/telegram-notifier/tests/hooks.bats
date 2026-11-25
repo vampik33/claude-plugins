@@ -555,15 +555,7 @@ EOF
 # summarize-transcript.sh
 # =========================================================
 
-@test "summarize-transcript: uses last_assistant_message when set" {
-  export LAST_ASSISTANT_MESSAGE="## Summary\nFixed the bug in main.rs"
-  run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/transcript.jsonl"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Fixed the bug"* ]]
-}
-
-@test "summarize-transcript: falls back to tool extraction when no last message" {
-  unset LAST_ASSISTANT_MESSAGE
+@test "summarize-transcript: summarizes the tools from the transcript" {
   run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/transcript.jsonl"
   [ "$status" -eq 0 ]
   # Should mention edited/created files or commands from the transcript
@@ -571,7 +563,6 @@ EOF
 }
 
 @test "summarize-transcript: lists each file and command once, HTML-escaped" {
-  unset LAST_ASSISTANT_MESSAGE
   local t="$BATS_TEST_TMPDIR/dupes.jsonl"
   local i
   for i in 1 2 3; do
@@ -583,7 +574,6 @@ EOF
 }
 
 @test "summarize-transcript: keeps quotes and backslashes in file names" {
-  unset LAST_ASSISTANT_MESSAGE
   local t="$BATS_TEST_TMPDIR/quotes.jsonl"
   # an apostrophe name comes first, as it once hid every other name (xargs read it as quoting)
   cat > "$t" <<'EOF'
@@ -595,7 +585,6 @@ EOF
 }
 
 @test "summarize-transcript: keeps a double quote in a created file name" {
-  unset LAST_ASSISTANT_MESSAGE
   local t="$BATS_TEST_TMPDIR/dquote.jsonl"
   cat > "$t" <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/w/a\"b\\c.md","content":"x"}},{"type":"tool_use","name":"Write","input":{"file_path":"/w/sub/b.md","content":"x"}}]}}
@@ -606,7 +595,6 @@ EOF
 }
 
 @test "summarize-transcript: names the first word of each command line, skipping internal ones" {
-  unset LAST_ASSISTANT_MESSAGE
   local t="$BATS_TEST_TMPDIR/bash.jsonl"
   cat > "$t" <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd /x && make\nls\n  npm run build && cat y"}},{"type":"tool_use","name":"Bash","input":{"command":"echo hi"}}]}}
@@ -617,7 +605,6 @@ EOF
 }
 
 @test "summarize-transcript: skips a line that isn't JSON" {
-  unset LAST_ASSISTANT_MESSAGE
   local t="$BATS_TEST_TMPDIR/broken.jsonl"
   cat > "$t" <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/a.ts"}}]}}
@@ -647,29 +634,41 @@ EOF
   [ "$output" = "" ]
 }
 
-@test "summarize-transcript: truncates long last_assistant_message" {
-  # Create a message longer than 1000 chars
-  local long_msg
-  long_msg=$(head -c 1500 /dev/zero | tr '\0' 'A')
-  export LAST_ASSISTANT_MESSAGE="$long_msg"
+@test "summarize-transcript: ignores LAST_ASSISTANT_MESSAGE" {
+  export LAST_ASSISTANT_MESSAGE="SECRET-ANSWER-TEXT"
   run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/transcript.jsonl"
   [ "$status" -eq 0 ]
-  # Output should be truncated (with HTML escaping, but plain A chars don't change)
-  [ ${#output} -le 1010 ]
+  [ "$output" = $'• Edited: main.rs\n• Created: test_main.rs\n• Ran: cargo' ]
 }
 
-@test "summarize-transcript: HTML-escapes last_assistant_message" {
-  export LAST_ASSISTANT_MESSAGE="Fixed <main> & lib"
-  run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/transcript.jsonl"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"&lt;main&gt;"* ]]
-  [[ "$output" == *"&amp;"* ]]
-}
+@test "session-notification: payload holds counts and names, never Claude's answer" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+session_threshold_minutes: 0
+---
+EOF
+  echo "$(($(date +%s) - 900))" > "/tmp/claude-telegram-notifier-session-sn-8"
 
-@test "summarize-transcript: strips markdown formatting from last message" {
-  export LAST_ASSISTANT_MESSAGE="**Bold** and \`code\` and ## Heading"
-  run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/transcript.jsonl"
+  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
+#!/bin/bash
+for arg in "$@"; do echo "$arg"; done >> "$BATS_TEST_TMPDIR/curl_payload"
+echo '{"ok":true,"result":{"message_id":1}}'
+CURL
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+
+  local input
+  input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" \
+    '{session_id: "sn-8", cwd: "/tmp", transcript_path: $t, last_assistant_message: "SECRET-ANSWER-TEXT from config.rs"}')
+  run bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
-  [[ "$output" != *"**"* ]]
-  [[ "$output" != *'`'* ]]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  [[ "$payload" == *"Edited: main.rs"* ]]
+  [[ "$payload" == *"Ran: cargo"* ]]
+  [[ "$payload" != *"SECRET-ANSWER-TEXT"* ]]
+  # the transcript's own answer text and file contents stay out too
+  [[ "$payload" != *"All done"* ]]
+  [[ "$payload" != *"assert!"* ]]
+  [[ "$payload" != *"let x"* ]]
 }

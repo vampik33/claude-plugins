@@ -111,6 +111,40 @@ EOF
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
 
+@test "session-notification: debug mode never prints Claude's answer" {
+  arm_notification sn-dbg-answer
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  local input
+  input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" \
+    '{session_id: "sn-dbg-answer", cwd: "/tmp", transcript_path: $t, last_assistant_message: "SECRET-ANSWER-TEXT"}')
+  run --separate-stderr bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/curl_args" ]
+  # debug mode still traces the rest of the hook
+  [[ "$output" == *"+ "* ]]
+  [[ "$output" == *"Sending notification:"* ]]
+  [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
+}
+
+@test "session-notification: bash -x, SHELLOPTS=xtrace and a custom PS4 never print Claude's answer" {
+  arm_notification sn-x-answer
+  local input
+  input=$(jq -cn '{session_id: "sn-x-answer", cwd: "/tmp", transcript_path: "", last_assistant_message: "SECRET-ANSWER-TEXT"}')
+  run --separate-stderr bash -x "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
+  arm_notification sn-x-answer
+  run --separate-stderr env SHELLOPTS=xtrace bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
+  # a trace prefix that expands the hook input finds it gone once tracing starts
+  arm_notification sn-x-answer
+  run --separate-stderr env PS4='+[$HOOK_INPUT] ' TELEGRAM_NOTIFIER_DEBUG=1 bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"+[] "* ]]
+  [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
+}
+
 @test "check-credentials: bash -x never prints the bot token" {
   cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
 ---

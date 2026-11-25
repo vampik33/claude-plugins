@@ -2,6 +2,7 @@
 paths:
   - "plugins/*/hooks/**/*.{ts,tsx}"
   - "plugins/*/tests/**/*.{ts,tsx}"
+  - "plugins/*/types/**"
   - "verification/**"
 ---
 

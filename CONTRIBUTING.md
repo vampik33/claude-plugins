@@ -4,10 +4,7 @@ Thanks for helping improve `vampik-plugins`. This guide covers the repository la
 
 ## Prerequisites
 
-- [Claude Code](https://code.claude.com) (`claude` on `PATH`)
-- [Bun](https://bun.sh) for the property and differential tests
-- [elan](https://github.com/leanprover/elan) (Lean 4) for the proofs
-- `shellcheck` and `bats` for telegram-notifier's shell hooks
+[Claude Code](https://code.claude.com), plus the tools the checks need, listed in [verification/README.md](verification/README.md).
 
 ## Repository layout
 
@@ -54,7 +51,7 @@ claude --plugin-dir /path/to/claude-plugins/plugins/<plugin-name>
 verification/run.sh
 ```
 
-Runs the Lean proofs, the property and differential tests, `claude plugin test` for every mod, and telegram-notifier's shellcheck and bats tests. It stops at the first failing suite. To run one suite, and for what the proofs cover, see [verification/README.md](verification/README.md).
+Runs the Lean proofs, the property and differential tests, `claude plugin test` for every mod, and telegram-notifier's shellcheck and bats tests. To run one suite, and for what the proofs cover, see [verification/README.md](verification/README.md).
 
 ## Workflow
 
@@ -64,7 +61,7 @@ Runs the Lean proofs, the property and differential tests, `claude plugin test` 
 
 ## Adding a plugin
 
-1. Create `plugins/<name>/` with `.claude-plugin/plugin.json`, a `README.md` and a `CHANGELOG.md`. The README starts with `# <name>` and a short description, then `## Requirements` (when there are any; a mod lists function hooks) and `## Installation`; the plugin's own sections follow, and it ends with `## License`.
+1. Create `plugins/<name>/` with `.claude-plugin/plugin.json`, a `README.md` and a `CHANGELOG.md` (format: see [Updating a plugin](#updating-a-plugin)). The README starts with `# <name>` and a short description, then `## Requirements` (when there are any; a mod lists function hooks) and `## Installation`; the plugin's own sections follow, and it ends with `## License`.
 2. Add an entry to `.claude-plugin/marketplace.json` with the same version as `plugin.json`:
 
    ```json

@@ -22,16 +22,12 @@ source "$SCRIPT_DIR/lib/html.sh"
 # when notifications are off; when on, say so in one line (exit 1: Claude Code
 # shows it without blocking the stop, as exit 2 would). curl alone is checked
 # below, once the session file is consumed
-MISSING_DEPS=()
-command -v jq &> /dev/null || MISSING_DEPS+=("jq")
-if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
-  command -v curl &> /dev/null || MISSING_DEPS+=("curl")
-  if [[ "$(is_plugin_enabled)" == "true" ]]; then
-    printf -v DEPS_LIST '%s, ' "${MISSING_DEPS[@]}"
-    echo "Telegram Notifier: session notification skipped, missing ${DEPS_LIST%, }" >&2
-    exit 1
-  fi
-  exit 0
+if ! command -v jq &> /dev/null; then
+  [[ "$(is_plugin_enabled)" == "true" ]] || exit 0
+  MISSING="jq"
+  command -v curl &> /dev/null || MISSING="jq, curl"
+  echo "Telegram Notifier: session notification skipped, missing $MISSING" >&2
+  exit 1
 fi
 
 extract_session_id "$HOOK_INPUT"

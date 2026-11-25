@@ -1,8 +1,9 @@
 #!/bin/bash
-set -euo pipefail
 # Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace
-# while the hook input is read (see "Debug mode support" below)
-{ set +x; } 2>/dev/null
+# before any line runs, and while the hook input is read (see "Debug mode support" below);
+# the trace goes to stdout too where BASH_XTRACEFD=1
+{ set +x; } >/dev/null 2>&1
+set -euo pipefail
 
 # Send Telegram notification when session ends (if configured)
 # Checks session duration against threshold from settings
@@ -39,7 +40,11 @@ HOOK_INPUT=""
 # Debug mode support. Tracing starts only after the fields above are read: the
 # Stop event holds Claude's last answer, and tracing the reads would print it
 if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-  set -x
+  # Only where the trace goes to stderr: a BASH_XTRACEFD naming stdout would put
+  # it into every $(…) value, the message among them
+  if [[ "${BASH_XTRACEFD:-2}" == "2" ]]; then
+    set -x
+  fi
   exec 2>&1
 fi
 
@@ -95,12 +100,27 @@ CUSTOM_MESSAGE=$(get_notification_body)
 # Get transcript summary if available
 TASK_SUMMARY=""
 if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
+  # At most 4 s under coreutils' timeout (gtimeout from Homebrew on macOS), so a
+  # huge transcript on a slow machine leaves time to send; past it, the message
+  # goes without a summary. With neither, only a transcript of at most 10 MB is
+  # summarized (about 0.1 s); a larger one goes without a summary
+  SUMMARIZE=("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH")
+  TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
+  if [[ -n "$TIMEOUT_BIN" ]]; then
+    SUMMARIZE=("$TIMEOUT_BIN" 4 "${SUMMARIZE[@]}")
+  else
+    # BSD wc pads the count with spaces
+    TRANSCRIPT_BYTES=$(wc -c < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+    if ((${TRANSCRIPT_BYTES// /} > 10 * 1024 * 1024)); then
+      SUMMARIZE=(true)
+    fi
+  fi
   # Only stdout goes into the message: in debug mode the summarizer's stderr
   # (its trace, under an exported SHELLOPTS=xtrace) goes to the hook output
   if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
-    TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" || echo "")
+    TASK_SUMMARY=$("${SUMMARIZE[@]}" || echo "")
   else
-    TASK_SUMMARY=$("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || echo "")
+    TASK_SUMMARY=$("${SUMMARIZE[@]}" 2>/dev/null || echo "")
   fi
 fi
 
@@ -129,12 +149,17 @@ fi
 MESSAGE=$(printf '%s\n\n' "${MESSAGE_PARTS[@]}")
 MESSAGE="${MESSAGE%$'\n\n'}"
 
+# curl gets the time left until 8 s after this script started (SECONDS), so the
+# hook ends inside its 10 s
+SEND_TIME=$((8 - SECONDS))
+((SEND_TIME >= 1)) || SEND_TIME=1
+
 # Send notification using shared script (handles JSON escaping and response validation)
 if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   echo "Sending notification: $MESSAGE" >&2
-  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" || echo "Warning: Failed to send session notification" >&2
+  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" "$SEND_TIME" || echo "Warning: Failed to send session notification" >&2
 else
-  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" > /dev/null 2>&1 || echo "Warning: Failed to send session notification" >&2
+  bash "$SCRIPT_DIR/send-telegram.sh" "$MESSAGE" "$SEND_TIME" > /dev/null 2>&1 || echo "Warning: Failed to send session notification" >&2
 fi
 
 exit 0

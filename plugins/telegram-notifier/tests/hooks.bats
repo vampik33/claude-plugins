@@ -32,6 +32,23 @@ CURL
   export TELEGRAM_CHAT_ID="test-chat-456"
 }
 
+# Put a jq on PATH that hangs on the summarizer's pass only (its first argument is -Rnr)
+stub_hanging_summarizer() {
+  local real_jq
+  real_jq=$(command -v jq)
+  cat > "$BATS_TEST_TMPDIR/bin/jq" <<EOF
+#!/bin/bash
+[[ "\$1" == "-Rnr" ]] && exec sleep 30
+exec "$real_jq" "\$@"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+}
+
+# Print the -m (max time) the stubbed curl was called with
+curl_max_time() {
+  grep -A1 -x -- -m "$BATS_TEST_TMPDIR/curl_args" | tail -1
+}
+
 # Print a dir to use as PATH: every system tool except the named ones. One ln for
 # all of them: a basename and an ln per tool (where /bin links to /usr/bin, about
 # 3,400 tools, so 7,000 forks a call) took most of a minute per call.
@@ -132,10 +149,12 @@ EOF
   input=$(jq -cn '{session_id: "sn-x-answer", cwd: "/tmp", transcript_path: "", last_assistant_message: "SECRET-ANSWER-TEXT"}')
   run --separate-stderr bash -x "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
   [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
   arm_notification sn-x-answer
   run --separate-stderr env SHELLOPTS=xtrace bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
   [[ "$output$stderr" != *"SECRET-ANSWER-TEXT"* ]]
   # a trace prefix that expands the hook input finds it gone once tracing starts
   arm_notification sn-x-answer
@@ -161,6 +180,110 @@ EOF
   [[ "$payload" == *"Edited: main.rs"* ]]
   [[ "$payload" != *"tr<b>"* ]]
   [[ "$payload" != *"+ "* ]]
+}
+
+@test "session-notification: debug mode with BASH_XTRACEFD=1 keeps traces out of the message" {
+  arm_notification sn-xfd
+  local t="$BATS_TEST_TMPDIR/tr<b>&x.jsonl"
+  cp "$FIXTURES/transcript.jsonl" "$t"
+  local input
+  input=$(jq -cn --arg t "$t" '{session_id: "sn-xfd", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  # a trace on stdout would land in every $(…) value: the status check, the summary, the message
+  run --separate-stderr env SHELLOPTS=xtrace BASH_XTRACEFD=1 bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"Edited: main.rs"* ]]
+  [[ "$payload" != *"tr<b>"* ]]
+  [[ "$payload" != *"+ "* ]]
+}
+
+@test "check-credentials: debug mode with BASH_XTRACEFD=1 still reports ready" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  run --separate-stderr env BASH_XTRACEFD=1 bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-xfd"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Ready"* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+}
+
+@test "hooks: bash -x and an exported SHELLOPTS=xtrace (BASH_XTRACEFD=1 too) trace no line, not even the first" {
+  local s mode input='{"session_id":"hk-x","cwd":"/tmp","transcript_path":"","prompt":"SECRET-PROMPT","last_assistant_message":""}'
+  for mode in "bash -x" "env SHELLOPTS=xtrace bash" "env SHELLOPTS=xtrace BASH_XTRACEFD=1 bash"; do
+    for s in check-credentials update-activity session-notification; do
+      arm_notification hk-x
+      # shellcheck disable=SC2086 # mode is two to four words
+      run --separate-stderr $mode "$SCRIPTS/$s.sh" <<< "$input"
+      [ "$status" -eq 0 ]
+      [ -z "$stderr" ] || { echo "$mode $s: $stderr"; false; }
+      [[ "$output" != *SECRET-PROMPT* ]]
+      [[ $'\n'"$output" != *$'\n+'* ]] || { echo "$mode $s: $output"; false; }
+      # BASH_XTRACEFD=1 would put the trace into the SessionStart JSON
+      [[ "$s" != check-credentials ]] || jq -e . <<< "$output" > /dev/null || { echo "$mode $s: $output"; false; }
+    done
+    # shellcheck disable=SC2086
+    run --separate-stderr $mode "$SCRIPTS/send-telegram.sh" "Hi"
+    [ "$status" -eq 0 ]
+    [ -z "$stderr" ] || { echo "$mode send-telegram: $stderr"; false; }
+    [[ $'\n'"$output" != *$'\n+'* ]] || { echo "$mode send-telegram: $output"; false; }
+    jq -e . <<< "$output" > /dev/null || { echo "$mode send-telegram: $output"; false; }
+  done
+  rm -f /tmp/claude-telegram-notifier-session-hk-x
+}
+
+@test "session-notification: a slow summary is cut at 4 s and curl gets the time left" {
+  arm_notification sn-slow
+  stub_hanging_summarizer
+  local input start=$SECONDS
+  input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-slow", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  run bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  # the hanging jq was stopped with the summarizer, not left holding the output
+  [ $((SECONDS - start)) -lt 8 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"session completed"* ]]
+  [[ "$payload" != *"Edited"* ]]
+  local m
+  m=$(curl_max_time)
+  [ "$m" -ge 1 ] && [ "$m" -le 4 ]
+}
+
+@test "session-notification: without timeout, still summarizes and gives curl the time left" {
+  arm_notification sn-notimeout
+  local input
+  input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-notimeout", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  run env PATH="$BATS_TEST_TMPDIR/bin:$(path_without timeout gtimeout)" bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"Edited: main.rs"* ]]
+  # SECONDS counts whole seconds: crossing one leaves 7
+  local m
+  m=$(curl_max_time)
+  [ "$m" -ge 7 ] && [ "$m" -le 8 ]
+}
+
+@test "session-notification: without timeout, a transcript over 10 MB goes without a summary" {
+  arm_notification sn-big
+  stub_hanging_summarizer
+  local big="$BATS_TEST_TMPDIR/big.jsonl"
+  cp "$FIXTURES/transcript.jsonl" "$big"
+  truncate -s 11M "$big"
+  local input start=$SECONDS
+  input=$(jq -cn --arg t "$big" '{session_id: "sn-big", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  run env PATH="$BATS_TEST_TMPDIR/bin:$(path_without timeout gtimeout)" bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [ $((SECONDS - start)) -lt 8 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"session completed"* ]]
+  [[ "$payload" != *"Edited"* ]]
 }
 
 @test "session-notification: without jq, skips quietly when notifications are off" {
@@ -219,7 +342,7 @@ EOF
   run --separate-stderr bash -x "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-x"}'
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ready"* ]]
-  [[ "$stderr" == *"+ "* ]]
+  [ -z "$stderr" ]
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
 
@@ -424,7 +547,7 @@ enabled: true
 EOF
   run --separate-stderr bash -x "$SCRIPTS/update-activity.sh" <<< '{"session_id":"upd-x"}'
   [ "$status" -eq 0 ]
-  [[ "$stderr" == *"+ "* ]]
+  [ -z "$stderr" ]
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
   [ -f "/tmp/claude-telegram-notifier-session-upd-x" ]
   rm -f "/tmp/claude-telegram-notifier-session-upd-x"
@@ -457,7 +580,7 @@ EOF
   run --separate-stderr bash -x "$SCRIPTS/send-telegram.sh" "Hello World"
   [ "$status" -eq 0 ]
   [ -f "$BATS_TEST_TMPDIR/curl_args" ]
-  [[ "$stderr" == *"+ "* ]]
+  [ -z "$stderr" ]
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
 }
 
@@ -467,6 +590,21 @@ EOF
   local args
   args=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$args" == *$'-m\n8'* ]]
+  # a retry in ~/.curlrc would give each attempt the full -m
+  [[ "$args" == *$'--retry\n0'* ]]
+}
+
+@test "send-telegram: a second argument of 1 to 8 shortens curl's time" {
+  run bash "$SCRIPTS/send-telegram.sh" "Hello World" 3
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *$'-m\n3'* ]]
+  local arg
+  for arg in 9 0 x -1 ""; do
+    rm -f "$BATS_TEST_TMPDIR/curl_args"
+    run bash "$SCRIPTS/send-telegram.sh" "Hello World" "$arg"
+    [ "$status" -eq 0 ]
+    [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *$'-m\n8'* ]] || { echo "arg: $arg"; false; }
+  done
 }
 
 @test "send-telegram: fails with no message" {
@@ -706,6 +844,21 @@ EOF
   [ "$output" = $'• Ran: npm, pwdx' ]
 }
 
+@test "summarize-transcript: the program word ends at ; | & < >, and a number before < or > names nothing" {
+  local t="$BATS_TEST_TMPDIR/one.jsonl" i
+  local -a cmds=("make;SECRET x" "cargo|tee SECRET" "npm&&SECRET" "gh>SECRET" "go<SECRET" "node&SECRET"
+    'K="a && b" rustc x' "2>/dev/null SECRET" "9<SECRET x" "2>&1 SECRET" "12>f SECRET" "K=1;SECRET x" "K=1>SECRET x")
+  local -a want=(make cargo npm gh go node rustc "" "" "" "" "" "")
+  for i in "${!cmds[@]}"; do
+    jq -cn --arg c "${cmds[i]}" '{type: "assistant", message: {content: [{type: "tool_use", name: "Bash", input: {command: $c}}]}}' > "$t"
+    run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+    [ "$status" -eq 0 ]
+    local expected=""
+    [[ -z "${want[i]}" ]] || expected="• Ran: ${want[i]}"
+    [ "$output" = "$expected" ] || { echo "${cmds[i]} -> $output"; false; }
+  done
+}
+
 @test "summarize-transcript: names programs only, never heredoc lines or assignments" {
   run bash "$SCRIPTS/summarize-transcript.sh" "$FIXTURES/secrets.jsonl"
   [ "$status" -eq 0 ]
@@ -744,11 +897,13 @@ random_assignment() {
 @test "summarize-transcript: 200 random assignment prefixes name only the real program" {
   RANDOM=7
   local t="$BATS_TEST_TMPDIR/one.jsonl" cmd i named=0
+  # what follows the program: a space or an operator ends its word
+  local -a tails=(" arg" ";arg" "|arg" "&&arg" ">arg" "<arg" "&arg" ">&2")
   for ((i = 0; i < 200; i++)); do
     random_assignment
     cmd="$REPLY "
     random_assignment
-    cmd+="$REPLY"$'\t'"prog arg"
+    cmd+="$REPLY"$'\t'"prog${tails[RANDOM % ${#tails[@]}]}"
     # the generator's own check: bash parses it (by construction, its command word is prog)
     bash -n -c "$cmd"
     jq -cn --arg c "$cmd" '{type: "assistant", message: {content: [{type: "tool_use", name: "Bash", input: {command: $c}}]}}' > "$t"

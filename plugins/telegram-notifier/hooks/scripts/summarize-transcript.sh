@@ -35,11 +35,12 @@ CAP=6
 #   and backslashes in a name stay literal; at most $CAP per category, each cut to
 #   64 characters
 # - "B:" the program names of the first 5 Bash commands that have one, from a
-#   command's first line only (never heredoc or continuation lines), cut at "&&":
-#   leading NAME=value words are skipped when their value is plain, '…' or "…"
-#   (a value with $, `, (, ), an unquoted \ or a shell operator ; | & < > is not
-#   skipped, so the command word keeps the "=" and is dropped: no word inside a
-#   value is ever taken as the program), the word must be a plain name or path
+#   command's first line only (never heredoc or continuation lines), the word ending
+#   at a space or one of ; | & < > (a number before < or > is a file descriptor, so
+#   2>f names nothing): leading NAME=value words are skipped when their value is
+#   plain, '…' or "…" (a value with $, `, (, ), an unquoted \ or a shell operator
+#   ; | & < > is not skipped, so the command word keeps the "=" and is dropped: no
+#   word inside a value is ever taken as the program), the word must be a plain name or path
 #   before a path is cut to its base name (so K=$X/name never yields "name"), internal
 #   commands (find, ls, cat, …) are dropped, and the word is kept only when shaped
 #   like a program name. What bounds the output is the first-line rule and the
@@ -54,8 +55,8 @@ TOOLS=$(jq -Rnr --argjson cap "$CAP" '
   def names: [paths | base | select(. != "") | .[:64]];
   def keep($f): if .[$f] or length < $cap then .[$f] = 1 else . end;
   def program: (split("\n")[0] // "")
-    | sub("&&.*"; "")
-    | capture("^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*=(?:[^ \t\"\u0027\\\\$`();|&<>]|\"(?:[^\"\\\\$`]|\\\\.)*\"|\u0027[^\u0027]*\u0027)*[ \t]+)*(?<w>[^ \t]*)").w
+    | capture("^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*=(?:[^ \t\"\u0027\\\\$`();|&<>]|\"(?:[^\"\\\\$`]|\\\\.)*\"|\u0027[^\u0027]*\u0027)*[ \t]+)*(?<w>[^ \t;|&<>]*)(?<fd>[<>]?)")
+    | select(.fd == "" or (.w | test("^[0-9]+$") | not)).w # 2>f: a number before < or > is a file descriptor
     | select(test("^[A-Za-z0-9._/+-]+$")) # before the cut: K=$X/name must not become name
     | sub(".*/"; "")
     | select(test("^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"))

@@ -5,6 +5,13 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.14] - 2026-11-25
+
+### Fixed
+- Under `bash -x` or an exported `SHELLOPTS=xtrace`, the four hook scripts no longer trace any line: they turn tracing off before `set -euo pipefail` (which was traced), discarding that command's own trace on stdout too, so with `BASH_XTRACEFD=1` no `+ set +x` line breaks `check-credentials.sh`'s SessionStart JSON or `send-telegram.sh`'s output; `update-activity.sh` and `check-credentials.sh` turn it off at the top instead of partway through, so `update-activity.sh` no longer traces the hook input with your prompt. Debug mode (`TELEGRAM_NOTIFIER_DEBUG=1`) still traces where it did, except where `BASH_XTRACEFD` sends the trace elsewhere than stderr: on stdout it landed in every `$(…)` value, so the hooks misread their config and the trace could reach the Telegram message
+- The Stop hook stays inside its 10 s on a huge transcript and a slow network: the summary gets at most 4 s under coreutils' `timeout`, or `gtimeout` (Homebrew's name on macOS); past it, the message is sent without a summary. With neither, a transcript over 10 MB is sent without a summary. `curl` gets the time left until 8 s after the hook started instead of a fixed 8 s, and `--retry 0`, so a `retry` in `~/.curlrc` no longer gives each attempt that time again. `send-telegram.sh` takes that time as an optional second argument (1 to 8)
+- The summary's program name ends at `;`, `|`, `&`, `<` or `>` as well as at a space, so `make;rm x`, `cargo|tee log` and `gh>out` name `make`, `cargo` and `gh` instead of nothing; a number before `<` or `>` (`2>/dev/null cmd`) is a file descriptor and names nothing. Checked against bash on 14,000 generated commands: every name reported is the word bash runs
+
 ## [1.9.13] - 2026-11-25
 
 ### Security

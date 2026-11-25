@@ -10,7 +10,6 @@ setup() {
   unset CLAUDE_SESSION_ID
   unset CLAUDE_CWD
   unset TRANSCRIPT_PATH
-  unset LAST_ASSISTANT_MESSAGE
 }
 
 # --- extract_session_id ---
@@ -52,18 +51,6 @@ setup() {
 @test "extract_transcript_path: sets empty when field missing" {
   extract_transcript_path '{"session_id": "x"}'
   [ "$TRANSCRIPT_PATH" = "" ]
-}
-
-# --- extract_last_assistant_message ---
-
-@test "extract_last_assistant_message: sets LAST_ASSISTANT_MESSAGE" {
-  extract_last_assistant_message '{"last_assistant_message": "All done."}'
-  [ "$LAST_ASSISTANT_MESSAGE" = "All done." ]
-}
-
-@test "extract_last_assistant_message: handles multiline JSON value" {
-  extract_last_assistant_message '{"last_assistant_message": "Line1\nLine2"}'
-  [[ "$LAST_ASSISTANT_MESSAGE" == *"Line1"* ]]
 }
 
 # --- get_session_file_path ---

@@ -5,6 +5,17 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.10] - 2026-11-25
+
+### Security
+- The automatic Stop notification no longer sends the start of Claude's last answer (up to 1000 characters), which could quote file contents, commands or secrets; it sends only the counts and names it took from the transcript (file base names, the first word of commands). `tests/hooks.bats` checks the payload sent to the stubbed `curl`
+- The summary's command names come only from the first line of each command, skip leading `NAME=value` assignments and keep only a word shaped like a program name (no `=`, at most 32 characters; a path is cut to its base name): heredoc body lines and inline assignments such as `GITHUB_TOKEN=…` or `DB_PASSWORD=…` were sent as command names
+- The summary is bounded in size: file base names are cut to 64 characters and a command word too long for a program name is left out, so one huge command or file name can no longer make the message too long for `send-telegram.sh`'s arguments and drop the notification
+- The summary keeps at most 6 distinct edited and 6 created file names, so a transcript with tens of thousands of distinct edits no longer runs past the Stop hook's 10 s; 6 or more files show as `Edited 6+ files` / `Created 6+ files`, and 4 or 5 edits (3 to 5 creates) show their exact count (6 or more used to show as 5)
+
+### Removed
+- `extract_last_assistant_message` in `lib/session.sh`, which only that excerpt used
+
 ## [1.9.9] - 2026-11-25
 
 ### Security

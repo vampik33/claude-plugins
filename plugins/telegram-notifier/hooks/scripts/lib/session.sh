@@ -33,17 +33,6 @@ extract_transcript_path() {
   TRANSCRIPT_PATH=$(echo "$input" | jq -r '.transcript_path // empty')
 }
 
-# Extract last_assistant_message from hook input JSON
-# Only available in Stop/SubagentStop hooks
-# Usage: extract_last_assistant_message "$HOOK_INPUT"
-# Sets: LAST_ASSISTANT_MESSAGE (exported for subprocesses)
-extract_last_assistant_message() {
-  local input="${1:-}"
-  local val
-  val=$(echo "$input" | jq -r '.last_assistant_message // empty')
-  export LAST_ASSISTANT_MESSAGE="$val"
-}
-
 # Get session activity file path (tracks last user interaction)
 # Uses Claude's session_id to avoid multi-instance conflicts
 # Requires CLAUDE_SESSION_ID to be set via extract_session_id

@@ -22,7 +22,7 @@ source "$SCRIPT_DIR/lib/html.sh"
 # Reading the event needs jq and sending needs curl. Without them, skip quietly
 # when notifications are off; when on, say so in one line (exit 1: Claude Code
 # shows it without blocking the stop, as exit 2 would). curl alone is checked
-# below, once the session file is consumed
+# below, where the session file is consumed too
 if ! command -v jq &> /dev/null; then
   [[ "$(is_plugin_enabled)" == "true" ]] || exit 0
   MISSING="jq"
@@ -48,24 +48,31 @@ if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   exec 2>&1
 fi
 
-# Read session file early to ensure cleanup happens even if plugin is disabled
-# This handles cases where user disables plugin mid-session
-SESSION_FILE=$(get_session_file_path)
-SESSION_START="0"
+# Read the session file into SESSION_START ("0" without one) and remove it. Every
+# path below consumes it, so it is cleaned up even if the plugin is disabled (a
+# user disabling it mid-session); the main path consumes it only once the config
+# is read, right before the job below starts, so a hook stopped while it reads
+# the config leaves the file in place
+consume_session_file() {
+  SESSION_FILE=$(get_session_file_path)
+  SESSION_START="0"
 
-if [[ -f "$SESSION_FILE" ]]; then
-  SESSION_START=$(cat "$SESSION_FILE" 2>/dev/null || echo "0")
-  rm -f "$SESSION_FILE" 2>/dev/null || true
-fi
+  if [[ -f "$SESSION_FILE" ]]; then
+    SESSION_START=$(cat "$SESSION_FILE" 2>/dev/null || echo "0")
+    rm -f "$SESSION_FILE" 2>/dev/null || true
+  fi
+}
 
 # Check if plugin is enabled at any level (user or project config)
 ENABLED_STATUS=$(is_plugin_enabled)
 
 if [[ "$ENABLED_STATUS" != "true" ]]; then
+  consume_session_file
   exit 0
 fi
 
 if ! command -v curl &> /dev/null; then
+  consume_session_file
   echo "Telegram Notifier: session notification skipped, missing curl" >&2
   exit 1
 fi
@@ -76,6 +83,8 @@ THRESHOLD=$(resolve_config_field "session_threshold_minutes" "10")
 if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
   THRESHOLD=10
 fi
+
+consume_session_file
 
 if [[ "$SESSION_START" == "0" || ! "$SESSION_START" =~ ^[0-9]+$ ]]; then
   # Invalid timestamp, skip
@@ -165,17 +174,22 @@ deliver() {
 
 # The session file is consumed above, so a hook stopped from here on would lose
 # the notification: the slow part (summary and send) runs as a detached job and the
-# hook ends at once, out of reach of its 10 s timeout. The job holds none of the
-# hook's input or output, ignores SIGHUP (a closed terminal), and, as a background
-# job of a non-interactive shell, SIGINT (Ctrl+C). Debug mode keeps it in the
-# foreground, so its trace and the API response show in the hook output
+# hook ends at once, out of reach of its 10 s timeout. Job control (set -m, for
+# this one job) starts it in its own process group, so a signal to the hook's
+# group (a runner cancelling the hook with SIGTERM) doesn't reach it. The job
+# holds none of the hook's input or output and ignores SIGHUP (a closed terminal)
+# and SIGINT (Ctrl+C), which a background job no longer ignores under job
+# control. Debug mode keeps it in the foreground, so its trace and the API
+# response show in the hook output
 if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
   deliver
 else
+  set -m
   (
-    trap '' HUP
+    trap '' HUP INT
     deliver
   ) < /dev/null > /dev/null 2>&1 &
+  set +m
 fi
 
 exit 0

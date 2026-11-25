@@ -300,25 +300,49 @@ CURL
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
 }
 
-@test "session-notification: SIGHUP and SIGINT to the hook's process group don't stop the send" {
+@test "session-notification: SIGHUP, SIGINT and SIGTERM to the hook's process group don't stop the send" {
   command -v setsid > /dev/null || skip "needs setsid (util-linux)"
   arm_notification sn-kill
   slow_curl
   local input i
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-kill", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   # its own process group, as a terminal's foreground job would be; signal the
-  # whole group once curl runs, as closing the terminal or Ctrl+C would
+  # whole group once curl runs, as closing the terminal, Ctrl+C or a runner
+  # cancelling the hook would. setsid execs (the background child leads no
+  # group), so the hook's pid is its group
   setsid bash "$SCRIPTS/session-notification.sh" <<< "$input" > /dev/null 2>&1 &
+  local hook_pgid=$!
   for ((i = 0; i < 100; i++)); do
     [[ -s "$BATS_TEST_TMPDIR/curl_pgid" ]] && break
     sleep 0.1
   done
-  local pgid
-  pgid=$(cat "$BATS_TEST_TMPDIR/curl_pgid")
-  kill -HUP -- "-$pgid"
-  kill -INT -- "-$pgid"
+  # the job runs in a group of its own
+  [ "$(cat "$BATS_TEST_TMPDIR/curl_pgid")" != "$hook_pgid" ]
+  # the hook may have ended, leaving its group empty
+  kill -HUP -- "-$hook_pgid" 2> /dev/null || true
+  kill -INT -- "-$hook_pgid" 2> /dev/null || true
+  kill -TERM -- "-$hook_pgid" 2> /dev/null || true
   wait_for_send
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
+}
+
+@test "session-notification: reads the config before it consumes the session file" {
+  arm_notification sn-order
+  # a grep that records, at the threshold read (the last config read), whether
+  # the session file is still there
+  cat > "$BATS_TEST_TMPDIR/bin/grep" <<EOF
+#!/bin/bash
+if [[ "\$1" == "^session_threshold_minutes:" ]]; then
+  [[ -f /tmp/claude-telegram-notifier-session-sn-order ]] && echo present > "$BATS_TEST_TMPDIR/at_threshold" || echo gone > "$BATS_TEST_TMPDIR/at_threshold"
+fi
+exec $(type -P grep) "\$@"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/grep"
+  run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-order","cwd":"/tmp","transcript_path":"","last_assistant_message":""}'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/at_threshold")" = present ]
+  [ ! -f /tmp/claude-telegram-notifier-session-sn-order ]
+  wait_for_send
 }
 
 @test "session-notification: without timeout, still summarizes and gives curl the time left" {

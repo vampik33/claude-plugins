@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.15] - 2026-11-25
 
 ### Fixed
-- A Stop notification is no longer lost when the hook is stopped after it has consumed the session file (its 10 s timeout on a slow network, Ctrl+C, a closed terminal): the summary and the send now run as a detached background job and the hook returns at once. The job ignores SIGHUP and SIGINT and holds none of the hook's input or output; the summary keeps its 4 s limit and `curl` its 8 s, so the job always ends. Debug mode (`TELEGRAM_NOTIFIER_DEBUG=1`) still sends in the foreground so its trace and the API response show. Outside debug mode, a failed send no longer prints a warning to the hook's stderr
+- A Stop notification is no longer lost when the hook is stopped after it has consumed the session file (its 10 s timeout on a slow network, Ctrl+C, a closed terminal): the summary and the send now run as a detached background job and the hook returns at once. The session file is consumed only once the config is read, right before the job starts, so a hook stopped while it reads the config leaves the file in place. The job runs in its own process group, so a SIGTERM to the hook's group (a runner cancelling the hook) doesn't reach it; it ignores SIGHUP and SIGINT and holds none of the hook's input or output; the summary keeps its 4 s limit and `curl` its 8 s, so the job always ends. Debug mode (`TELEGRAM_NOTIFIER_DEBUG=1`) still sends in the foreground so its trace and the API response show. Outside debug mode, a failed send no longer prints a warning to the hook's stderr
 
 ## [1.9.14] - 2026-11-25
 

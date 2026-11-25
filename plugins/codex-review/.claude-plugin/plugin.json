@@ -3,6 +3,7 @@
   "version": "0.3.15",
   "description": "Codex reviews as background jobs: /cx or a button starts one, an always-drawn line shows its progress or the last result, a pane lists the findings to pick and send to Claude; Claude gets a CodexReview tool.",
   "author": { "name": "vampik33" },
+  "license": "Apache-2.0",
   "types": "./types/index.d.ts",
   "userConfig": {
     "suggestAfterPush": {

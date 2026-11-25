@@ -60,4 +60,4 @@ The skill can also be invoked naturally:
 
 ## License
 
-MIT.
+MIT. See [LICENSE](LICENSE).

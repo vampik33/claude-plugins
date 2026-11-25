@@ -3,6 +3,7 @@
   "version": "0.6.4",
   "description": "A side pane with this session's subagents, background shells and the repo's worktrees, with alerts when they finish or fail.",
   "author": { "name": "vampik33" },
+  "license": "Apache-2.0",
   "types": "./types/index.d.ts",
   "network": { "hosts": ["api.telegram.org"] },
   "userConfig": {

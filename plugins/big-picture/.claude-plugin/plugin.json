@@ -3,6 +3,7 @@
   "version": "0.5.5",
   "description": "When Jev judges the work big, writes a visual HTML summary (show-me style) and keeps it updated while the work goes on; /big-picture opens it in the default browser.",
   "author": { "name": "vampik33" },
+  "license": "Apache-2.0",
   "types": "./types/index.d.ts",
   "network": { "hosts": ["api.typesafe.ai", "cdn.jsdelivr.net"] }
 }

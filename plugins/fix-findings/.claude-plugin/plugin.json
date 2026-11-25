@@ -3,5 +3,6 @@
   "version": "0.2.5",
   "description": "Prove review findings against the code and fix only the valid ones; `converge` repeats failing test, fix and independent review for up to three rounds, and a turn-end hook keeps the loop from ending early",
   "author": { "name": "vampik33" },
+  "license": "Apache-2.0",
   "types": "./types/index.d.ts"
 }

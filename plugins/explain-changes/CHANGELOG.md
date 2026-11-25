@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.2] - 2026-11-25
 
+### Added
+- `LICENSE` with the MIT license text the plugin is released under
+
 ### Changed
 - README follows the repository's layout: the plugin's name as the title, Requirements before Installation, and a License section
 

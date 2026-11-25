@@ -3,5 +3,6 @@
   "version": "0.1.10",
   "description": "A side pane summarizing each auto-memory file the session creates or updates.",
   "author": { "name": "vampik33" },
+  "license": "Apache-2.0",
   "types": "./types/index.d.ts"
 }

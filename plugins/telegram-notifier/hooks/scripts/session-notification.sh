@@ -1,7 +1,8 @@
 #!/bin/bash
 # Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace
-# before any line runs, and while the hook input is read (see "Debug mode support" below)
-{ set +x; } 2>/dev/null
+# before any line runs, and while the hook input is read (see "Debug mode support" below);
+# the trace goes to stdout too where BASH_XTRACEFD=1
+{ set +x; } >/dev/null 2>&1
 set -euo pipefail
 
 # Send Telegram notification when session ends (if configured)
@@ -95,11 +96,21 @@ CUSTOM_MESSAGE=$(get_notification_body)
 # Get transcript summary if available
 TASK_SUMMARY=""
 if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
-  # At most 4 s where coreutils' timeout exists, so a huge transcript on a slow
-  # machine leaves time to send; past it, the message goes without a summary
+  # At most 4 s under coreutils' timeout (gtimeout from Homebrew on macOS), so a
+  # huge transcript on a slow machine leaves time to send; past it, the message
+  # goes without a summary. With neither, only a transcript of at most 10 MB is
+  # summarized (about 0.1 s); a larger one goes without a summary
   SUMMARIZE=("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH")
   if command -v timeout &> /dev/null; then
     SUMMARIZE=(timeout 4 "${SUMMARIZE[@]}")
+  elif command -v gtimeout &> /dev/null; then
+    SUMMARIZE=(gtimeout 4 "${SUMMARIZE[@]}")
+  else
+    # BSD wc pads the count with spaces
+    TRANSCRIPT_BYTES=$(wc -c < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)
+    if ((${TRANSCRIPT_BYTES// /} > 10 * 1024 * 1024)); then
+      SUMMARIZE=(true)
+    fi
   fi
   # Only stdout goes into the message: in debug mode the summarizer's stderr
   # (its trace, under an exported SHELLOPTS=xtrace) goes to the hook output

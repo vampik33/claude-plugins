@@ -1,7 +1,8 @@
 #!/bin/bash
 # Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace before
 # any line runs: the trace would print the prompt (in the hook input) and the bot token
-{ set +x; } 2>/dev/null
+# (to stdout too where BASH_XTRACEFD=1)
+{ set +x; } >/dev/null 2>&1
 set -euo pipefail
 
 # Update last activity timestamp on each user prompt

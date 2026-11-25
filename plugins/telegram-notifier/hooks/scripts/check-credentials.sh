@@ -1,7 +1,8 @@
 #!/bin/bash
 # Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace before
-# any line runs; debug mode below turns it on
-{ set +x; } 2>/dev/null
+# any line runs (where BASH_XTRACEFD=1, the trace goes to stdout, into the hook's
+# JSON); debug mode below turns it on
+{ set +x; } >/dev/null 2>&1
 set -euo pipefail
 
 # Check if Telegram credentials are set (opt-in based on config file)
@@ -66,7 +67,7 @@ fi
 
 # Check for credentials, with tracing off: debug mode's trace goes to the hook
 # output and would print the bot token
-{ set +x; } 2>/dev/null
+{ set +x; } >/dev/null 2>&1
 MISSING_CREDS=()
 [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && MISSING_CREDS+=("TELEGRAM_BOT_TOKEN")
 [[ -z "${TELEGRAM_CHAT_ID:-}" ]] && MISSING_CREDS+=("TELEGRAM_CHAT_ID")

@@ -165,21 +165,26 @@ EOF
   [[ "$payload" != *"+ "* ]]
 }
 
-@test "hooks: bash -x and an exported SHELLOPTS=xtrace trace no line, not even the first" {
+@test "hooks: bash -x and an exported SHELLOPTS=xtrace (BASH_XTRACEFD=1 too) trace no line, not even the first" {
   local s mode input='{"session_id":"hk-x","cwd":"/tmp","transcript_path":"","prompt":"SECRET-PROMPT","last_assistant_message":""}'
-  for mode in "bash -x" "env SHELLOPTS=xtrace bash"; do
+  for mode in "bash -x" "env SHELLOPTS=xtrace bash" "env SHELLOPTS=xtrace BASH_XTRACEFD=1 bash"; do
     for s in check-credentials update-activity session-notification; do
       arm_notification hk-x
-      # shellcheck disable=SC2086 # mode is two or three words
+      # shellcheck disable=SC2086 # mode is two to four words
       run --separate-stderr $mode "$SCRIPTS/$s.sh" <<< "$input"
       [ "$status" -eq 0 ]
       [ -z "$stderr" ] || { echo "$mode $s: $stderr"; false; }
       [[ "$output" != *SECRET-PROMPT* ]]
+      [[ $'\n'"$output" != *$'\n+'* ]] || { echo "$mode $s: $output"; false; }
+      # BASH_XTRACEFD=1 would put the trace into the SessionStart JSON
+      [[ "$s" != check-credentials ]] || jq -e . <<< "$output" > /dev/null || { echo "$mode $s: $output"; false; }
     done
     # shellcheck disable=SC2086
     run --separate-stderr $mode "$SCRIPTS/send-telegram.sh" "Hi"
     [ "$status" -eq 0 ]
     [ -z "$stderr" ] || { echo "$mode send-telegram: $stderr"; false; }
+    [[ $'\n'"$output" != *$'\n+'* ]] || { echo "$mode send-telegram: $output"; false; }
+    jq -e . <<< "$output" > /dev/null || { echo "$mode send-telegram: $output"; false; }
   done
   rm -f /tmp/claude-telegram-notifier-session-hk-x
 }
@@ -214,7 +219,7 @@ EOF
   arm_notification sn-notimeout
   local input
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-notimeout", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
-  run env PATH="$BATS_TEST_TMPDIR/bin:$(path_without timeout)" bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  run env PATH="$BATS_TEST_TMPDIR/bin:$(path_without timeout gtimeout)" bash "$SCRIPTS/session-notification.sh" <<< "$input"
   [ "$status" -eq 0 ]
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
@@ -223,6 +228,31 @@ EOF
   local m
   m=$(grep -A1 -x -- -m "$BATS_TEST_TMPDIR/curl_args" | tail -1)
   [ "$m" -ge 7 ] && [ "$m" -le 8 ]
+}
+
+@test "session-notification: without timeout, a transcript over 10 MB goes without a summary" {
+  arm_notification sn-big
+  # jq that hangs on the summarizer's pass only (its first argument is -Rnr)
+  local real_jq
+  real_jq=$(command -v jq)
+  cat > "$BATS_TEST_TMPDIR/bin/jq" <<EOF
+#!/bin/bash
+[[ "\$1" == "-Rnr" ]] && exec sleep 30
+exec "$real_jq" "\$@"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+  local big="$BATS_TEST_TMPDIR/big.jsonl"
+  cp "$FIXTURES/transcript.jsonl" "$big"
+  truncate -s 11M "$big"
+  local input start=$SECONDS
+  input=$(jq -cn --arg t "$big" '{session_id: "sn-big", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
+  run env PATH="$BATS_TEST_TMPDIR/bin:$(path_without timeout gtimeout)" bash "$SCRIPTS/session-notification.sh" <<< "$input"
+  [ "$status" -eq 0 ]
+  [ $((SECONDS - start)) -lt 8 ]
+  local payload
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
+  [[ "$payload" == *"session completed"* ]]
+  [[ "$payload" != *"Edited"* ]]
 }
 
 @test "session-notification: without jq, skips quietly when notifications are off" {
@@ -529,6 +559,8 @@ EOF
   local args
   args=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$args" == *$'-m\n8'* ]]
+  # a retry in ~/.curlrc would give each attempt the full -m
+  [[ "$args" == *$'--retry\n0'* ]]
 }
 
 @test "send-telegram: a second argument of 1 to 8 shortens curl's time" {

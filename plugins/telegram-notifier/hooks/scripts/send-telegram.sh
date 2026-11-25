@@ -1,7 +1,8 @@
 #!/bin/bash
 # Turn off tracing inherited from `bash -x` or an exported SHELLOPTS=xtrace before
-# any line runs: the trace would print the bot token wherever it is expanded
-{ set +x; } 2>/dev/null
+# any line runs: the trace would print the bot token wherever it is expanded (to
+# stdout too where BASH_XTRACEFD=1)
+{ set +x; } >/dev/null 2>&1
 set -euo pipefail
 
 # Shared Telegram message sender
@@ -44,7 +45,8 @@ MAX_TIME=8
 if [[ "${2:-}" =~ ^[1-8]$ ]]; then
   MAX_TIME=$2
 fi
-RESPONSE=$(curl -s --connect-timeout 5 -m "$MAX_TIME" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+# --retry 0 overrides a retry in ~/.curlrc, which would give each attempt the full -m
+RESPONSE=$(curl -s --retry 0 --connect-timeout 5 -m "$MAX_TIME" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
   -d "$JSON_PAYLOAD" 2>&1) || {
   echo "Error: curl failed" >&2

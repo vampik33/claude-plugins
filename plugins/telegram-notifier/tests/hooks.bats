@@ -48,9 +48,8 @@ EOF
 
 # Wait up to 10 s for the stubbed curl's record: outside debug mode the Stop hook
 # sends from a detached job and returns before it
-# Usage: wait_for_send [curl_args|curl_payload]
 wait_for_send() {
-  local f="$BATS_TEST_TMPDIR/${1:-curl_args}" i
+  local f="$BATS_TEST_TMPDIR/curl_args" i
   for ((i = 0; i < 100; i++)); do
     [[ -f "$f" ]] && return 0
     sleep 0.1
@@ -263,7 +262,6 @@ EOF
   wait_for_send
   # the hanging jq was stopped with the summarizer: the message went out in time
   [ $((SECONDS - start)) -lt 8 ]
-  wait_for_send
   local payload
   payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"session completed"* ]]
@@ -319,9 +317,10 @@ CURL
   # the job runs in a group of its own
   [ "$(cat "$BATS_TEST_TMPDIR/curl_pgid")" != "$hook_pgid" ]
   # the hook may have ended, leaving its group empty
-  kill -HUP -- "-$hook_pgid" 2> /dev/null || true
-  kill -INT -- "-$hook_pgid" 2> /dev/null || true
-  kill -TERM -- "-$hook_pgid" 2> /dev/null || true
+  local sig
+  for sig in HUP INT TERM; do
+    kill -"$sig" -- "-$hook_pgid" 2> /dev/null || true
+  done
   wait_for_send
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
 }
@@ -819,20 +818,11 @@ EOF
   local sf="/tmp/claude-telegram-notifier-session-sn-5"
   echo "$past_ts" > "$sf"
 
-  # Use a curl stub that captures the payload
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/curl_payload.$$"
-mv "$BATS_TEST_TMPDIR/curl_payload.$$" "$BATS_TEST_TMPDIR/curl_payload"
-echo '{"ok":true,"result":{"message_id":1}}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-5","cwd":"/tmp","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
-  wait_for_send curl_payload
+  wait_for_send
   local payload
-  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"my-cool-project"* ]]
 }
 
@@ -849,19 +839,11 @@ EOF
   local sf="/tmp/claude-telegram-notifier-session-sn-6"
   echo "$past_ts" > "$sf"
 
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/curl_payload.$$"
-mv "$BATS_TEST_TMPDIR/curl_payload.$$" "$BATS_TEST_TMPDIR/curl_payload"
-echo '{"ok":true,"result":{"message_id":1}}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-6","cwd":"/tmp","transcript_path":"","last_assistant_message":""}'
   [ "$status" -eq 0 ]
-  wait_for_send curl_payload
+  wait_for_send
   local payload
-  payload=$(cat "$BATS_TEST_TMPDIR/curl_payload")
+  payload=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$payload" == *"Build finished"* ]]
 }
 

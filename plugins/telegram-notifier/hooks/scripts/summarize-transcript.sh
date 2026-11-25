@@ -56,7 +56,7 @@ TOOLS=$(jq -Rnr --argjson cap "$CAP" '
   def program: (split("\n")[0] // "")
     | sub("&&.*"; "")
     | capture("^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*=(?:[^ \t\"\u0027\\\\$`();|&<>]|\"(?:[^\"\\\\$`]|\\\\.)*\"|\u0027[^\u0027]*\u0027)*[ \t]+)*(?<w>[^ \t]*)").w
-    | select(test("^[A-Za-z0-9._/+-]+$"))
+    | select(test("^[A-Za-z0-9._/+-]+$")) # before the cut: K=$X/name must not become name
     | sub(".*/"; "")
     | select(test("^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"))
     | select(IN("find", "ls", "cat", "head", "tail", "echo", "pwd", "cd") | not);

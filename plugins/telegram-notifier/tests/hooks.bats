@@ -749,7 +749,7 @@ random_assignment() {
     cmd="$REPLY "
     random_assignment
     cmd+="$REPLY"$'\t'"prog arg"
-    # the generator's own check: bash parses it, and the command word is prog
+    # the generator's own check: bash parses it (by construction, its command word is prog)
     bash -n -c "$cmd"
     jq -cn --arg c "$cmd" '{type: "assistant", message: {content: [{type: "tool_use", name: "Bash", input: {command: $c}}]}}' > "$t"
     run bash "$SCRIPTS/summarize-transcript.sh" "$t"

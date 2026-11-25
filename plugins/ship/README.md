@@ -21,6 +21,10 @@ The line above the prompt shows when there is something to say:
 
 It stops at the first failure and says why, warns when the branch is not `main` (the marketplace reads `main`, so no mod is updated), names uncommitted files it left out, and says which mods need a restart. Committing and version bumps stay with Claude.
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 Meant for this repo alone, so installed at the local scope from inside it:
@@ -35,4 +39,6 @@ claude plugin install ship@vampik-plugins --scope local
 - The versions installed when the session (re)loads its plugins are the baseline for `restart needed`.
 - Commands run with `GIT_TERMINAL_PROMPT=0`, so a push that needs a password fails instead of waiting.
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

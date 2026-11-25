@@ -13,12 +13,6 @@ Add the marketplace, then install plugins by name:
 
 Or browse with the `/plugin` menu. From a shell: `claude plugin install <plugin-name>@vampik-plugins`.
 
-To try a working copy without installing it:
-
-```bash
-claude --plugin-dir /path/to/claude-plugins/plugins/<plugin-name>
-```
-
 ## Available Plugins
 
 ### Mods
@@ -66,59 +60,9 @@ Add to your project's `.claude/settings.json` so team members are prompted to ad
 }
 ```
 
-## Repository Structure
+## Contributing
 
-```
-claude-plugins/
-├── .claude-plugin/
-│   └── marketplace.json      # Marketplace manifest listing every plugin and its version
-├── plugins/
-│   ├── CLAUDE.md             # Conventions and gotchas for mods and shell hooks
-│   ├── <mod>/                # e.g. fleet
-│   │   ├── .claude-plugin/plugin.json
-│   │   ├── hooks/            # hooks.json + TypeScript module (register.tsx, core.ts)
-│   │   ├── tests/            # run by `claude plugin test`
-│   │   ├── types/            # the mod's own types
-│   │   ├── CHANGELOG.md
-│   │   └── README.md
-│   └── <plugin>/             # e.g. gtr
-│       ├── .claude-plugin/plugin.json
-│       ├── commands/         # Slash commands
-│       ├── skills/           # Skills
-│       ├── CHANGELOG.md
-│       └── README.md
-├── verification/             # Lean proofs, property and differential tests, run.sh
-├── plans/                    # Implementation plans from Claude sessions
-├── CLAUDE.md
-├── LICENSE
-└── README.md
-```
-
-## Testing
-
-```bash
-verification/run.sh
-```
-
-Runs the Lean proofs, the property and differential tests, `claude plugin test` for every mod, and telegram-notifier's shellcheck and bats tests. See [verification/README.md](verification/README.md).
-
-## Adding a Plugin
-
-1. Create `plugins/<name>/` with `.claude-plugin/plugin.json`, a `README.md` and a `CHANGELOG.md` ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)).
-2. Add an entry to `.claude-plugin/marketplace.json` with the same version as `plugin.json`:
-   ```json
-   {
-     "name": "my-plugin",
-     "description": "What the plugin does",
-     "version": "0.1.0",
-     "author": { "name": "vampik33" },
-     "source": "./plugins/my-plugin",
-     "category": "Workflow",
-     "keywords": ["relevant", "keywords"],
-     "homepage": "https://github.com/vampik33/claude-plugins"
-   }
-   ```
-3. Add it to the table above. A new mod also goes into `verification/run.sh` (see `plugins/CLAUDE.md`).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository layout, testing, and how to add or update a plugin.
 
 ## License
 

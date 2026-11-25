@@ -1,4 +1,4 @@
-# Telegram Notifier Plugin for Claude Code
+# telegram-notifier
 
 Send Telegram notifications from Claude Code sessions - manually via command or automatically after periods of inactivity.
 
@@ -19,7 +19,7 @@ Send Telegram notifications from Claude Code sessions - manually via command or 
    - Per-project: `.claude/telegram-notifier.local.md`
 4. Use `/telegram` or wait for automatic notifications
 
-## Prerequisites
+## Requirements
 
 ### Dependencies
 
@@ -147,13 +147,6 @@ Add to your project's `.gitignore` (user-level config in `~/.claude/` is not in 
 .claude/*.local.md
 ```
 
-## Testing
-
-```bash
-shellcheck -x -P SCRIPTDIR plugins/telegram-notifier/hooks/scripts/*.sh plugins/telegram-notifier/hooks/scripts/lib/*.sh
-bats plugins/telegram-notifier/tests
-```
-
 ## Debug Mode
 
 For troubleshooting, enable debug mode:
@@ -175,4 +168,4 @@ See [troubleshooting guide](skills/telegram-messaging/references/troubleshooting
 
 ## License
 
-Apache-2.0
+Apache-2.0. See [LICENSE](LICENSE).

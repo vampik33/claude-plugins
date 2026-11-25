@@ -11,16 +11,16 @@ diff.
 - A mod must still work where an organization manages Claude Code: `classic.*`, `session.compact` and `skill.prompt` hooks don't run there, and `cc-plugin-sec-default` can refuse `$.process.run`, `$.prompt.submit` and `$.tool.call`.
 - Secrets (the Telegram token, API keys) never reach a trace, a log, a toast or an outside host: a script that reads a token turns tracing off first (`{ set +x; } 2>/dev/null`; a8136e0, 6d0cc75), and what goes to Telegram is counts and names, never command text or file content (5240041).
 - Every host a mod or script reaches is in its `plugin.json` `network.hosts`; `claude plugin validate` can't see a URL held in an imported constant (1313bc8, 7272d5b, a8136e0, ac23e5c).
-- State survives a hot reload and is reset by `/clear` (`plugins/CLAUDE.md`, Mod gotchas).
+- State survives a hot reload and is reset by `/clear` (`.claude/rules/mods.md`).
 - A decision taken after an `await` re-reads the state it depends on (a ledger, ticks, a pane) instead of trusting a read from before it, and overlapping calls (a slow look, a second press) are serialised or dropped (2b271a4, fb69e2f, bce7bf2; no diff-readable trigger).
 - Handler and timer logic takes time from `$.clock.now()`, so tests' mocked clock applies; `Date.now()` is for render ticks only (0dca19b, 1e58ee9, cd6520c).
 - A map keyed by user text uses `Map` or `Object.hasOwn`, so `constructor` and `__proto__` behave like any other name (6a09014).
-- Shell escaping holds on bash 5.2+ (`&` in a `${x//…}` replacement means the match) and on `dash`/`busybox` (4012d06; `plugins/CLAUDE.md`).
+- Shell escaping holds on bash 5.2+ (`&` in a `${x//…}` replacement means the match) and on `dash`/`busybox` (4012d06; `.claude/rules/mods.md`).
 - Hooks stay inside their budgets: a Stop hook in its 10 s on 100 MB transcripts, a render hook without blocking work. `$.fs.read` rejects files over 4 MiB, so read a log's or transcript's tail (d315863); a shell hook streams one `jq` pass (39add80).
 - A failing hook script prints one line on stderr (Claude Code shows only the first) and checks `jq` and `curl` before anything uses them (cc4ff3c, 51ab317).
-- Band rows follow `plugins/CLAUDE.md`: no `marginTop`, order only through `bandOrder` (3b58f49, 9259b17).
+- Band rows follow `.claude/rules/mods.md`: no `marginTop`, order only through `bandOrder` (3b58f49, 9259b17).
 - Each mod installs alone: helpers are copied, not shared; a Lean-modelled function changes with its model (`diff.lean.test.ts`).
-- A fix bumps the version in both manifests and adds a CHANGELOG entry (`CLAUDE.md`, Updating a Plugin).
+- A fix bumps the version in both manifests and adds a CHANGELOG entry (`CONTRIBUTING.md`, Updating a plugin).
 
 ## Checklist
 

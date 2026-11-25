@@ -1,8 +1,9 @@
 {
   "name": "chat-view",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Draws your prompts as chat bubbles on the right of the terminal, and shows when you sent each prompt, when each reply started and when each turn ended.",
   "author": { "name": "vampik33" },
+  "license": "Apache-2.0",
   "types": "./types/index.d.ts",
   "userConfig": {
     "bubbles": {

@@ -1,4 +1,4 @@
-# Explain Changes Plugin
+# explain-changes
 
 Explains code changes in detail - what was done and why. Provides educational insights about patterns and practices.
 
@@ -60,4 +60,4 @@ The skill can also be invoked naturally:
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).

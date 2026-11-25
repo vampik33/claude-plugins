@@ -1,12 +1,8 @@
-# Plan Renamer
+# plan-renamer
 
 Auto-rename Claude Code plan files from random names to meaningful titles.
 
-## Problem
-
 Claude Code generates plan files with random three-word names like `scalable-moseying-papert.md`, while the actual title lives inside the file as `# Plan: <title>`. This makes plan files hard to find and identify.
-
-## Solution
 
 `/rename-plans` renames every randomly-named plan file to a slug of the title inside it.
 
@@ -35,3 +31,7 @@ There is no automatic rename: the ExitPlanMode hook was removed in v1.2.0 becaus
 ## Configuration
 
 No configuration required. The plugin detects the plans directory automatically.
+
+## License
+
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

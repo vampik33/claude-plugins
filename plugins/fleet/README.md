@@ -29,6 +29,10 @@ Elapsed times tick live; a finished agent or shell also shows when it finished (
 
 Each running background shell shows its last line of output. When that line holds a count (`14/30`) or a percentage, a bar and an ETA at the rate seen so far (after 30 s of movement); after 5 minutes with no output, `⚠ no output 6m` and one toast. A wait loop (`until …; do …; done`, a `while` that sleeps) shows `waiting` and is never counted as stalled. Under the list, a `stop <shell>` button per running shell stops it through the TaskStop tool, as the model would.
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -59,4 +63,7 @@ A shell whose notification fleet never sees (one sent while its hooks reloaded, 
 | `sound` | `true` | chime on failure and all done |
 | `telegram` | `true` | Telegram summary when away |
 | `idleMinutes` | `5` | away after this long since your last prompt |
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+
+## License
+
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

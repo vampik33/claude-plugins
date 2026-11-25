@@ -1,10 +1,12 @@
-# Git Worktree Runner Plugin for Claude Code
+# gtr
 
 A Claude Code plugin for managing git worktrees using [git-worktree-runner](https://github.com/coderabbitai/git-worktree-runner).
 
-## Prerequisites
+## Requirements
 
-**Important**: Install git-worktree-runner first:
+- Git 2.5+ (worktree support)
+- Bash 3.2+ (4.0+ recommended)
+- [git-worktree-runner](https://github.com/coderabbitai/git-worktree-runner) on `PATH`; install it first:
 
 ```bash
 git clone https://github.com/coderabbitai/git-worktree-runner.git
@@ -129,12 +131,6 @@ cd "$(git gtr go branch-name)"  # Correct
 cd $(git gtr go branch-name)    # May break with spaces
 ```
 
-## Requirements
-
-- Git 2.5+ (worktree support)
-- Bash 3.2+ (4.0+ recommended)
-- git-worktree-runner installed and in PATH
-
 ## License
 
-Apache License 2.0
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

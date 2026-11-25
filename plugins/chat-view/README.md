@@ -18,6 +18,10 @@ Only the drawing changes: the model never sees the times, so the prompt cache is
 
 Formerly `prompt-clock`.
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -45,4 +49,6 @@ Coming from `prompt-clock`: `claude plugin uninstall prompt-clock@vampik-plugins
 | `seconds` | `true` | `16:42:07` instead of `16:42` |
 | `turnRange` | `true` | start → end on the turn's line |
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

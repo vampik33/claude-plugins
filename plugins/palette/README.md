@@ -26,6 +26,10 @@ Search: type to filter
 ▸ plugin:hookify (5)
 ```
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -51,4 +55,6 @@ Uses are counted from `command.run` (a typed command or skill), `tool.call` on t
 
 Skills the model calls are counted through `tool.call`, not `skill.prompt`, so they are counted also where an organization manages Claude Code (there `skill.prompt` runs only for plugins the organization lists).
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
+## License
+
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

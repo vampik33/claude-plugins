@@ -9,6 +9,10 @@ over 60%: handover + compact after this turn
 
 Its lines sit in the band above the prompt; other plugins' lines (surveys, tips, fleet, then codex-review) draw above it, and effort-pilot's line, when installed, below it, with no blank rows between them.
 
+## Requirements
+
+- Function hooks enabled (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`)
+
 ## Installation
 
 ```bash
@@ -67,6 +71,8 @@ The note holds: your first and latest prompts, cwd, branch and worktree, uncommi
 | `cacheHitYellowAt` | `70` | from which it is yellow; red below |
 | `cacheToast` | `true` | one toast when it turns red |
 
-Needs function hooks (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`).
-
 `/compact` is caught with `command.run` and the usage limit with `turn.complete`, not with `session.compact` and the classic `StopFailure` hook, so both also work where an organization manages Claude Code (there those two run only for plugins the organization lists).
+
+## License
+
+Apache-2.0. See [LICENSE](https://github.com/vampik33/claude-plugins/blob/main/LICENSE).

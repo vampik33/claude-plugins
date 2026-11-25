@@ -105,10 +105,9 @@ if [[ -n "${TRANSCRIPT_PATH:-}" && -f "${TRANSCRIPT_PATH}" ]]; then
   # goes without a summary. With neither, only a transcript of at most 10 MB is
   # summarized (about 0.1 s); a larger one goes without a summary
   SUMMARIZE=("$SCRIPT_DIR/summarize-transcript.sh" "$TRANSCRIPT_PATH")
-  if command -v timeout &> /dev/null; then
-    SUMMARIZE=(timeout 4 "${SUMMARIZE[@]}")
-  elif command -v gtimeout &> /dev/null; then
-    SUMMARIZE=(gtimeout 4 "${SUMMARIZE[@]}")
+  TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
+  if [[ -n "$TIMEOUT_BIN" ]]; then
+    SUMMARIZE=("$TIMEOUT_BIN" 4 "${SUMMARIZE[@]}")
   else
     # BSD wc pads the count with spaces
     TRANSCRIPT_BYTES=$(wc -c < "$TRANSCRIPT_PATH" 2>/dev/null || echo 0)

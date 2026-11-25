@@ -32,6 +32,23 @@ CURL
   export TELEGRAM_CHAT_ID="test-chat-456"
 }
 
+# Put a jq on PATH that hangs on the summarizer's pass only (its first argument is -Rnr)
+stub_hanging_summarizer() {
+  local real_jq
+  real_jq=$(command -v jq)
+  cat > "$BATS_TEST_TMPDIR/bin/jq" <<EOF
+#!/bin/bash
+[[ "\$1" == "-Rnr" ]] && exec sleep 30
+exec "$real_jq" "\$@"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+}
+
+# Print the -m (max time) the stubbed curl was called with
+curl_max_time() {
+  grep -A1 -x -- -m "$BATS_TEST_TMPDIR/curl_args" | tail -1
+}
+
 # Print a dir to use as PATH: every system tool except the named ones. One ln for
 # all of them: a basename and an ln per tool (where /bin links to /usr/bin, about
 # 3,400 tools, so 7,000 forks a call) took most of a minute per call.
@@ -221,15 +238,7 @@ EOF
 
 @test "session-notification: a slow summary is cut at 4 s and curl gets the time left" {
   arm_notification sn-slow
-  # jq that hangs on the summarizer's pass only (its first argument is -Rnr)
-  local real_jq
-  real_jq=$(command -v jq)
-  cat > "$BATS_TEST_TMPDIR/bin/jq" <<EOF
-#!/bin/bash
-[[ "\$1" == "-Rnr" ]] && exec sleep 30
-exec "$real_jq" "\$@"
-EOF
-  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+  stub_hanging_summarizer
   local input start=$SECONDS
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-slow", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   run bash "$SCRIPTS/session-notification.sh" <<< "$input"
@@ -241,7 +250,7 @@ EOF
   [[ "$payload" == *"session completed"* ]]
   [[ "$payload" != *"Edited"* ]]
   local m
-  m=$(grep -A1 -x -- -m "$BATS_TEST_TMPDIR/curl_args" | tail -1)
+  m=$(curl_max_time)
   [ "$m" -ge 1 ] && [ "$m" -le 4 ]
 }
 
@@ -256,21 +265,13 @@ EOF
   [[ "$payload" == *"Edited: main.rs"* ]]
   # SECONDS counts whole seconds: crossing one leaves 7
   local m
-  m=$(grep -A1 -x -- -m "$BATS_TEST_TMPDIR/curl_args" | tail -1)
+  m=$(curl_max_time)
   [ "$m" -ge 7 ] && [ "$m" -le 8 ]
 }
 
 @test "session-notification: without timeout, a transcript over 10 MB goes without a summary" {
   arm_notification sn-big
-  # jq that hangs on the summarizer's pass only (its first argument is -Rnr)
-  local real_jq
-  real_jq=$(command -v jq)
-  cat > "$BATS_TEST_TMPDIR/bin/jq" <<EOF
-#!/bin/bash
-[[ "\$1" == "-Rnr" ]] && exec sleep 30
-exec "$real_jq" "\$@"
-EOF
-  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+  stub_hanging_summarizer
   local big="$BATS_TEST_TMPDIR/big.jsonl"
   cp "$FIXTURES/transcript.jsonl" "$big"
   truncate -s 11M "$big"

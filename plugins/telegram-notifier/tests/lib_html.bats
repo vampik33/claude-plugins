@@ -56,3 +56,17 @@ setup() {
   run escape_html 'say "hello"'
   [ "$output" = 'say "hello"' ]
 }
+
+@test "escape_html: keeps a text that echo would read as an option" {
+  local t
+  for t in -n -e -E -neE "-n foo"; do
+    run escape_html "$t"
+    [ "$output" = "$t" ] || { echo "text: $t, output: $output"; false; }
+  done
+}
+
+@test "escape_html: keeps backslashes, even under xpg_echo" {
+  shopt -s xpg_echo
+  run escape_html 'a\nb\tc\\'
+  [ "$output" = 'a\nb\tc\\' ]
+}

@@ -62,6 +62,10 @@ If it occurs, check `retry_after` in response for wait time.
 
 ## Environment Issues
 
+### Behind a proxy
+
+`send-telegram.sh` runs `curl -q`, which ignores `~/.curlrc` (a trace or verbose setting there would log the bot token). Set the proxy in the environment instead: `export https_proxy=http://proxy.example:3128`.
+
 ### Credentials not persisting
 
 `export` only works for current shell session. See [configuration.md](configuration.md) or [README - Credentials Setup](../../../README.md#credentials-setup) for persistence options.

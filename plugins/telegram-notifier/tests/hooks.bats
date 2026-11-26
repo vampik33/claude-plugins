@@ -35,13 +35,13 @@ CURL
   export TELEGRAM_CHAT_ID="test-chat-456"
 }
 
-# Put a jq on PATH that hangs on the summarizer's pass only (its first argument is -Rnr)
+# Put a jq on PATH that hangs on the summarizer's pass only (the one run with --seq)
 stub_hanging_summarizer() {
   local real_jq
   real_jq=$(command -v jq)
   cat > "$BATS_TEST_TMPDIR/bin/jq" <<EOF
 #!/bin/bash
-[[ "\$1" == "-Rnr" ]] && exec sleep 30
+[[ " \$* " == *" --seq "* ]] && exec sleep 30
 exec "$real_jq" "\$@"
 EOF
   chmod +x "$BATS_TEST_TMPDIR/bin/jq"
@@ -733,8 +733,9 @@ EOF
   local args
   args=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$args" == *$'-m\n8'* ]]
-  # a retry in ~/.curlrc would give each attempt the full -m
-  [[ "$args" == *$'--retry\n0'* ]]
+  # -q first: curl reads no ~/.curlrc, so a retry there can't give each attempt
+  # the full -m, and a trace or verbose there can't log the URL with the token
+  [ "$(head -1 "$BATS_TEST_TMPDIR/curl_args")" = "-q" ]
 }
 
 @test "send-telegram: an argument of 1 to 8 shortens curl's time" {
@@ -1325,6 +1326,37 @@ EOF
   [ "$output" = $'• Edited: a.ts, b.ts' ]
 }
 
+@test "summarize-transcript: skips a broken tool_use line and a truncated last line" {
+  local t="$BATS_TEST_TMPDIR/broken2.jsonl"
+  cat > "$t" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/a.ts"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/broken.ts"
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/b.ts"}}]}}
+not json, but it says tool_use
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/c.ts"}}]}}
+EOF
+  printf '%s' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/trunc' >> "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Edited: a.ts, b.ts, c.ts' ]
+}
+
+@test "summarize-transcript: keeps a multibyte name whole across a 4 KB boundary of its line" {
+  local t="$BATS_TEST_TMPDIR/mb.jsonl" name pad before after n
+  name=$(printf 'é%.0s' {1..30})
+  # jq -R read a line in pieces of 4095 bytes and split a character across two
+  # into two U+FFFD: pad the line so that byte 4095 is the second byte of name's 11th é
+  before='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"pad":"'
+  after='","file_path":"/w/'
+  n=$((4095 - ${#before} - ${#after} - 21))
+  pad=$(printf 'x%.0s' $(seq "$n"))
+  printf '%s%s%s%s.rs"}}]}}\n' "$before" "$pad" "$after" "$name" > "$t"
+  [ "$(LC_ALL=C head -c 4096 "$t" | tail -c 1 | od -An -tx1 | tr -d ' ')" = "a9" ]
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = "• Edited: $name.rs" ]
+}
+
 @test "summarize-transcript: returns empty for missing transcript" {
   run bash "$SCRIPTS/summarize-transcript.sh" "$BATS_TEST_TMPDIR/nonexistent.jsonl"
   [ "$status" -eq 0 ]
@@ -1405,4 +1437,21 @@ EOF
   [[ "$payload" != *hunter2* ]]
   [[ "$payload" != *ghp_* ]]
   [[ "$payload" == *"Ran: cargo, gh, make"* ]]
+}
+
+# =========================================================
+# commands/telegram.md
+# =========================================================
+
+@test "/telegram: the documented snippet sends a hostile message as text" {
+  local snippet msg
+  # the bash block of the command, with a message holding the old fixed delimiter,
+  # a substitution and quotes
+  msg=$'line one\nTELEGRAM_MESSAGE\ntouch "$BATS_TEST_TMPDIR/pwned" $(touch "$BATS_TEST_TMPDIR/pwned2") \'q\' <b>&'
+  snippet=$(sed -n '/^```bash$/,/^```$/{/^```/d;p;}' "$PLUGIN_DIR/commands/telegram.md")
+  snippet=${snippet/<the message>/"$msg"} # quoted: bash 5.2 reads & as the match
+  CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" run bash -c "$snippet"
+  [ "$status" -eq 0 ]
+  [ ! -e "$BATS_TEST_TMPDIR/pwned" ] && [ ! -e "$BATS_TEST_TMPDIR/pwned2" ]
+  curl_payload | jq -e --arg m "$(sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' <<< "$msg")" '.text == $m'
 }

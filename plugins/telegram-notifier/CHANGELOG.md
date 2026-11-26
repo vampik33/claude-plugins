@@ -5,6 +5,16 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.17] - 2026-11-26
+
+### Security
+- `send-telegram.sh` runs `curl -q`, so it no longer reads `~/.curlrc`: a `trace`, `trace-ascii` or `verbose` there wrote the request URL, which holds the bot token, to a file or (in debug mode) to the hook output. A proxy set only in `~/.curlrc` no longer applies: set `https_proxy` instead
+- `/telegram` ends its heredoc with a delimiter of six random hex digits that no line of the message equals: a message line equal to the fixed `TELEGRAM_MESSAGE` ended the heredoc early, and the lines after it ran as shell
+
+### Fixed
+- A file name in the Stop summary no longer shows U+FFFD in place of a character: the summarizer read the transcript with `jq -R`, which splits a multibyte character that crosses a 4095-byte boundary of a line. `sed` now passes the `tool_use` lines to `jq --seq`, each after an RS byte, so a line that isn't JSON is still skipped on its own (checked with jq 1.6, 1.7, 1.7.1 and 1.8.1)
+- A message, notification body or config value of `-n` or `-e` is no longer lost, and backslashes in it are kept even under `shopt -s xpg_echo`: the scripts print data with `printf '%s\n'` instead of `echo`
+
 ## [1.9.16] - 2026-11-25
 
 ### Changed

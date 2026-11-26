@@ -5,6 +5,11 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.18] - 2026-11-26
+
+### Security
+- `send-telegram.sh` no longer puts the bot token in curl's arguments, where any local user could read it with `ps`: curl reads the URL from a config on a pipe (`-K <(printf …)`, `printf` being a shell builtin), so no process's arguments hold the token
+
 ## [1.9.17] - 2026-11-26
 
 ### Security

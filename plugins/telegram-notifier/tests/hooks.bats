@@ -22,6 +22,9 @@ setup() {
   mkdir -p "$BATS_TEST_TMPDIR/bin"
   cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
 #!/bin/bash
+# the config read with -K (it holds the URL, with the token)
+prev=""
+for a in "$@"; do [[ "$prev" != -K ]] || cat "$a" > "$BATS_TEST_TMPDIR/curl_config"; prev=$a; done
 # one atomic write: the Stop hook sends from a background job, and tests wait for the file;
 # the payload (stdin, --data-binary @-) follows the arguments
 { printf '%s\n' "$@"; cat; } > "$BATS_TEST_TMPDIR/curl_args.$$"
@@ -803,9 +806,24 @@ EOF
   [[ "$output" == *'"ok":true'* ]]
   # Check curl was called
   [ -f "$BATS_TEST_TMPDIR/curl_args" ]
-  local args
-  args=$(cat "$BATS_TEST_TMPDIR/curl_args")
-  [[ "$args" == *"sendMessage"* ]]
+  # the URL comes from the -K config
+  [ "$(cat "$BATS_TEST_TMPDIR/curl_config")" = 'url = "https://api.telegram.org/bottest-token-123/sendMessage"' ]
+}
+
+@test "send-telegram: no argument of curl's holds the bot token" {
+  run bash "$SCRIPTS/send-telegram.sh" <<< "Hello World"
+  [ "$status" -eq 0 ]
+  # curl's arguments are what ps shows; the token is only in the config on a pipe
+  [[ "$(sed '/^{$/,$d' "$BATS_TEST_TMPDIR/curl_args")" != *"$TELEGRAM_BOT_TOKEN"* ]]
+  [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *$'\n-K\n/dev/fd/'* ]]
+  [[ "$(cat "$BATS_TEST_TMPDIR/curl_config")" == *"/bot$TELEGRAM_BOT_TOKEN/sendMessage"* ]]
+}
+
+@test "send-telegram: escapes \\ and \" of the token in curl's config" {
+  export TELEGRAM_BOT_TOKEN='12:a"b\c&d'
+  run bash "$SCRIPTS/send-telegram.sh" <<< "Hello World"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/curl_config")" = 'url = "https://api.telegram.org/bot12:a\"b\\c&d/sendMessage"' ]
 }
 
 @test "send-telegram: debug mode never prints the bot token" {

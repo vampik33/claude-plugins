@@ -122,7 +122,13 @@ if [[ "${1:-}" =~ ^[1-8]$ ]]; then
 fi
 # -q (first, or curl ignores it) skips ~/.curlrc: a trace or verbose there would log
 # the URL with the token, and a retry would give each attempt the full -m
-RESPONSE=$(printf '%s' "$JSON_PAYLOAD" | curl -q -s --connect-timeout 5 -m "$MAX_TIME" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+# The URL holds the token, so curl reads it from a config on a pipe (-K, after -q)
+# rather than an argument, which any local user can read with ps; printf is a
+# builtin, so no process's arguments hold it. A config string escapes \ and "
+URL_TOKEN=${TELEGRAM_BOT_TOKEN//\\/\\\\}
+URL_TOKEN=${URL_TOKEN//\"/\\\"}
+RESPONSE=$(printf '%s' "$JSON_PAYLOAD" | curl -q -s --connect-timeout 5 -m "$MAX_TIME" -X POST \
+  -K <(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$URL_TOKEN") \
   -H "Content-Type: application/json" \
   --data-binary @- 2>&1) || {
   echo "Error: curl failed" >&2

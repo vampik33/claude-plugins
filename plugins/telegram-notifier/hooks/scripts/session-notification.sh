@@ -16,6 +16,8 @@ HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
+# shellcheck source=lib/last_error.sh
+source "$SCRIPT_DIR/lib/last_error.sh"
 # shellcheck source=lib/html.sh
 source "$SCRIPT_DIR/lib/html.sh"
 
@@ -79,17 +81,20 @@ fi
 
 # Get threshold (project > user > default of 10 minutes)
 THRESHOLD=$(resolve_config_field "session_threshold_minutes" "10")
-# Validate threshold is numeric
-if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
+# Validate threshold is numeric, and read it in base 10 (a leading 0 means octal
+# in bash arithmetic: 010 would be 8, and 08 an error)
+if ! [[ "$THRESHOLD" =~ ^[0-9]{1,6}$ ]]; then
   THRESHOLD=10
 fi
+THRESHOLD=$((10#$THRESHOLD))
 
 consume_session_file
 
-if [[ "$SESSION_START" == "0" || ! "$SESSION_START" =~ ^[0-9]+$ ]]; then
+if [[ ! "$SESSION_START" =~ ^[0-9]{1,12}$ ]] || ((10#$SESSION_START == 0)); then
   # Invalid timestamp, skip
   exit 0
 fi
+SESSION_START=$((10#$SESSION_START))
 
 CURRENT_TIME=$(date +%s)
 ELAPSED_SECONDS=$((CURRENT_TIME - SESSION_START))
@@ -169,7 +174,23 @@ deliver() {
   if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
     echo "Sending notification: $MESSAGE" >&2
   fi
-  printf '%s' "$MESSAGE" | bash "$SCRIPT_DIR/send-telegram.sh" "$SEND_TIME" || echo "Warning: Failed to send session notification" >&2
+  # The detached job's output goes nowhere, so a failure's reason (the sender's last
+  # stderr line, which never holds the token) is recorded for the next SessionStart
+  # to report (lib/last_error.sh)
+  local err sent=1
+  err=$(printf '%s' "$MESSAGE" | bash "$SCRIPT_DIR/send-telegram.sh" "$SEND_TIME" 2>&1 > /dev/null) || sent=0
+  # Debug mode: the sender's payload and response lines
+  if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" && -n "$err" ]]; then
+    printf '%s\n' "$err" >&2
+  fi
+  if ((sent)); then
+    clear_send_failure
+  else
+    err=${err##*$'\n'}
+    err=${err#Error: }
+    record_send_failure "$err"
+    echo "Warning: Failed to send session notification: $err" >&2
+  fi
 }
 
 # The session file is consumed above, so a hook stopped from here on would lose

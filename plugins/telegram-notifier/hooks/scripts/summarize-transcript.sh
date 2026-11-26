@@ -46,9 +46,20 @@ CAP=6
 #   like a program name. What bounds the output is the first-line rule and the
 #   32-character cap; the shape check only keeps the list readable.
 # - "R:" the number of Read paths
-# Lines without "tool_use" are skipped before parsing (most of a long transcript);
-# a line that isn't valid JSON is skipped rather than ending the pass.
-TOOLS=$(jq -Rnr --argjson cap "$CAP" '
+# Lines without "tool_use" (in quotes: a tool result's "tool_use_id" doesn't count)
+# are skipped before parsing (most of a long transcript):
+# sed turns each of the others into a JSON string literal after an RS byte (\ and "
+# escaped, and the tab and CR that may sit between JSON tokens), jq --seq reads the
+# strings and parses each with fromjson, so one physical line is one JSON value: a
+# line with trailing garbage or two values, or that isn't JSON, is skipped, and a
+# line with another raw control character is an invalid literal, skipped at the next
+# RS. Not --seq on the raw lines: jq emits a value before it sees what follows it on
+# the line. Not jq -R: it splits a multibyte character that crosses a 4 KB boundary
+# of its input into two U+FFFD (jq 1.6 to 1.8.1)
+RS=$'\x1e'
+TAB=$'\t'
+CR=$'\r'
+TOOLS=$(LC_ALL=C sed -n '/"tool_use"/{s/\\/\\\\/g;s/"/\\"/g;s/'"$TAB"'/\\t/g;s/'"$CR"'/\\r/g;s/^/'"$RS"'"/;s/$/"/;p;}' "$TRANSCRIPT_PATH" | jq -nr --seq --argjson cap "$CAP" '
   def lines: if . == "" then [""] else split("\n") end;
   def base: if test("^/+$") then "/" else sub("/+$"; "") | sub(".*/"; "") end;
   def paths: .input.file_path // empty | tostring | lines[];
@@ -61,7 +72,12 @@ TOOLS=$(jq -Rnr --argjson cap "$CAP" '
     | sub(".*/"; "")
     | select(test("^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$"))
     | select(IN("find", "ls", "cat", "head", "tail", "echo", "pwd", "cd") | not);
-  reduce (inputs | select(contains("tool_use")) | try fromjson catch empty
+  # Each line as a string; input raises an error for an invalid literal, and the next
+  # input starts at the next RS (end of input: "break" in jq 1.7+, "No more inputs" before)
+  def eof: . == "break" or . == "No more inputs";
+  def rows: def r: (try input catch (if eof then error else empty end)), r;
+    try r catch (if eof then empty else error end);
+  reduce (rows | try fromjson catch empty
       | select(type == "object" and .type == "assistant")
       | .message.content[]? | select(type == "object" and .type == "tool_use")) as $t
     ({e: {}, w: {}, b: [], r: 0};
@@ -75,7 +91,7 @@ TOOLS=$(jq -Rnr --argjson cap "$CAP" '
      ) catch $s)
   | (.e | keys_unsorted[] | "E:" + .), (.w | keys_unsorted[] | "W:" + .),
     (.b[] | "B:" + .), "R:\(.r)"
-' < "$TRANSCRIPT_PATH" 2>/dev/null || true)
+' 2>/dev/null || true)
 
 # Print the entries of one kind, without their tag
 # Usage: tool_entries E

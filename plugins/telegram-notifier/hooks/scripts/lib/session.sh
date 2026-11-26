@@ -9,7 +9,7 @@
 extract_session_id() {
   local input="${1:-}"
   local val
-  val=$(echo "$input" | jq -r '.session_id // empty')
+  val=$(printf '%s\n' "$input" | jq -r '.session_id // empty')
   CLAUDE_SESSION_ID="$val"
 }
 
@@ -19,7 +19,7 @@ extract_session_id() {
 extract_cwd() {
   local input="${1:-}"
   local val
-  val=$(echo "$input" | jq -r '.cwd // empty')
+  val=$(printf '%s\n' "$input" | jq -r '.cwd // empty')
   # shellcheck disable=SC2034 # CLAUDE_CWD is read by callers after sourcing
   CLAUDE_CWD="$val"
 }
@@ -31,7 +31,7 @@ extract_cwd() {
 extract_transcript_path() {
   local input="${1:-}"
   # shellcheck disable=SC2034 # TRANSCRIPT_PATH is read by callers after sourcing
-  TRANSCRIPT_PATH=$(echo "$input" | jq -r '.transcript_path // empty')
+  TRANSCRIPT_PATH=$(printf '%s\n' "$input" | jq -r '.transcript_path // empty')
 }
 
 # Get session activity file path (tracks last user interaction)

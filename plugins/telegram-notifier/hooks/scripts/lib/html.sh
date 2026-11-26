@@ -9,5 +9,6 @@ escape_html() {
   text="${text//&/\&amp;}"
   text="${text//</\&lt;}"
   text="${text//>/\&gt;}"
-  echo "$text"
+  # printf, not echo: echo reads a text of -n or -e as an option
+  printf '%s\n' "$text"
 }

@@ -210,3 +210,15 @@ EOF
   [[ "$output" == *"Hello"* ]]
   [[ "$output" == *"World"* ]]
 }
+
+@test "parse_yaml_field: reads frontmatter and a value that echo would read as options" {
+  run parse_yaml_field "-e" "default" "-e: -n"
+  [ "$output" = "-n" ]
+}
+
+@test "extract_body: keeps a body that echo would read as an option" {
+  local f="$BATS_TEST_TMPDIR/opt.md"
+  printf -- '---\nenabled: true\n---\n-e\n' > "$f"
+  run extract_body "$f"
+  [ "$output" = "-e" ]
+}

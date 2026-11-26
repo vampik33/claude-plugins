@@ -8,12 +8,12 @@ source "$LIB_DIR/yaml.sh"
 
 # Get user-level config path
 get_user_config_path() {
-  echo "${HOME}/.claude/telegram-notifier.local.md"
+  printf '%s\n' "${HOME}/.claude/telegram-notifier.local.md"
 }
 
 # Get project-level config path
 get_project_config_path() {
-  echo "${CLAUDE_PROJECT_DIR:-.}/.claude/telegram-notifier.local.md"
+  printf '%s\n' "${CLAUDE_PROJECT_DIR:-.}/.claude/telegram-notifier.local.md"
 }
 
 # Resolve config value with dual-scope support
@@ -30,13 +30,13 @@ resolve_config_field() {
     [[ -f "$config" ]] || continue
     value=$(parse_yaml_field "$field" "" "$(extract_frontmatter "$config")")
     if [[ -n "$value" ]]; then
-      echo "$value"
+      printf '%s\n' "$value"
       return
     fi
   done
 
   # Return default
-  echo "$default"
+  printf '%s\n' "$default"
 }
 
 # Check if plugin is enabled
@@ -71,7 +71,7 @@ get_notification_body() {
     [[ -f "$config" ]] || continue
     body=$(extract_body "$config" | head -c 500)
     if [[ -n "$body" ]]; then
-      echo "$body"
+      printf '%s\n' "$body"
       return
     fi
   done

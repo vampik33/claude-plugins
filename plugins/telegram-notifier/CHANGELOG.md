@@ -5,6 +5,19 @@ All notable changes to the Telegram Notifier plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.17] - 2026-11-26
+
+### Security
+- `send-telegram.sh` runs `curl -q`, so it no longer reads `~/.curlrc`: a `trace`, `trace-ascii` or `verbose` there wrote the request URL, which holds the bot token, to a file or (in debug mode) to the hook output. A proxy set only in `~/.curlrc` no longer applies: set `https_proxy` instead
+- `/telegram` never puts the message into a shell command: the Write tool writes it to `message.txt` in a private directory made by `mktemp -d`, and the send reads it from there and removes the directory. It went into a quoted heredoc, and a message line equal to the delimiter (`TELEGRAM_MESSAGE`) ended the heredoc early, so the lines after it ran as shell. The command now also uses the Write tool
+
+### Fixed
+- A file name in the Stop summary no longer shows U+FFFD in place of a character: the summarizer read the transcript with `jq -R`, which splits a multibyte character that crosses a 4095-byte boundary of a line. `sed` now turns each `tool_use` line into a JSON string literal after an RS byte, and `jq --seq` reads the strings and parses each with `fromjson`, so a line that isn't one JSON value (not JSON, or with trailing garbage or a second value) is still skipped on its own (checked with jq 1.6, 1.7, 1.7.1 and 1.8.1)
+- `tests/hooks.bats`: the test that signals the Stop hook's process group starts the hook under `set -m` instead of `setsid`, so it runs on macOS too instead of skipping
+- A Stop notification that fails to send is no longer silent: its detached job keeps the reason in `~/.claude/telegram-notifier.last-error`, and the next session start reports it once ("Ready, but the last session notification failed (…)"); a send that works clears it. The record is written aside and moved into place, and a session start claims it with one `mv` before reading it, so it is never read half written, two session starts never both report it, and an empty one is not reported. Debug mode also names the reason in its warning
+- A `session_threshold_minutes` with leading zeros is read in base 10: `010` was 8 minutes, and `08` or `09` an arithmetic error that sent the notification whatever the idle time. A value of more than 6 digits falls back to the default of 10; the session start time is read in base 10 and bounded too
+- A message, notification body or config value of `-n` or `-e` is no longer lost, and backslashes in it are kept even under `shopt -s xpg_echo`: the scripts print data with `printf '%s\n'` instead of `echo`
+
 ## [1.9.16] - 2026-11-25
 
 ### Changed

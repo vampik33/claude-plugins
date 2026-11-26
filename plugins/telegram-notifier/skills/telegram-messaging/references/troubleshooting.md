@@ -14,6 +14,8 @@ Common issues and solutions. For setup instructions, see [configuration.md](conf
 
 ### Automatic notifications not sending
 
+The Stop notification is sent in the background, so a failure shows at the next session start: "Ready, but the last session notification failed (<time> <reason>)". The reason is also in `~/.claude/telegram-notifier.last-error` until then.
+
 **Checklist:**
 1. `.claude/telegram-notifier.local.md` exists?
 2. Contains `enabled: true` in frontmatter?
@@ -61,6 +63,10 @@ Telegram allows ~30 messages/second. Normal usage won't trigger this.
 If it occurs, check `retry_after` in response for wait time.
 
 ## Environment Issues
+
+### Behind a proxy
+
+`send-telegram.sh` runs `curl -q`, which ignores `~/.curlrc` (a trace or verbose setting there would log the bot token). Set the proxy in the environment instead: `export https_proxy=http://proxy.example:3128`.
 
 ### Credentials not persisting
 

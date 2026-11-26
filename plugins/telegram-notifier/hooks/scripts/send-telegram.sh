@@ -33,8 +33,8 @@ if ! command -v jq &> /dev/null; then
   exit 1
 fi
 
-# --rawfile, not -R: jq 1.7's -R splits a multibyte character that crosses a 4 KB
-# boundary of its input into two U+FFFD
+# --rawfile, not -R: jq's -R (1.6 to 1.8.1) splits a multibyte character that
+# crosses a 4 KB boundary of its input into two U+FFFD
 JSON_PAYLOAD=$(printf '%s' "$MESSAGE" | jq -n \
   --arg chat_id "$TELEGRAM_CHAT_ID" \
   --rawfile text /dev/stdin '
@@ -120,8 +120,9 @@ MAX_TIME=8
 if [[ "${1:-}" =~ ^[1-8]$ ]]; then
   MAX_TIME=$1
 fi
-# --retry 0 overrides a retry in ~/.curlrc, which would give each attempt the full -m
-RESPONSE=$(printf '%s' "$JSON_PAYLOAD" | curl -s --retry 0 --connect-timeout 5 -m "$MAX_TIME" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+# -q (first, or curl ignores it) skips ~/.curlrc: a trace or verbose there would log
+# the URL with the token, and a retry would give each attempt the full -m
+RESPONSE=$(printf '%s' "$JSON_PAYLOAD" | curl -q -s --connect-timeout 5 -m "$MAX_TIME" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H "Content-Type: application/json" \
   --data-binary @- 2>&1) || {
   echo "Error: curl failed" >&2
@@ -133,11 +134,11 @@ if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
 fi
 
 # Validate API response
-if echo "$RESPONSE" | jq -e '.ok == true' > /dev/null 2>&1; then
-  echo "$RESPONSE"
+if printf '%s\n' "$RESPONSE" | jq -e '.ok == true' > /dev/null 2>&1; then
+  printf '%s\n' "$RESPONSE"
   exit 0
 else
-  ERROR_DESC=$(echo "$RESPONSE" | jq -r '.description // "Unknown error"' 2>/dev/null || echo "Invalid response")
+  ERROR_DESC=$(printf '%s\n' "$RESPONSE" | jq -r '.description // "Unknown error"' 2>/dev/null || echo "Invalid response")
   echo "Error: Telegram API failed - $ERROR_DESC" >&2
   exit 1
 fi

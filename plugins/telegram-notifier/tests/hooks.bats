@@ -13,6 +13,7 @@ setup() {
 
   # Isolate from real config
   export HOME="$BATS_TEST_TMPDIR/home"
+  LAST_ERROR_FILE="$HOME/.claude/telegram-notifier.last-error"
   export CLAUDE_PROJECT_DIR="$BATS_TEST_TMPDIR/project"
   mkdir -p "$HOME/.claude"
   mkdir -p "$CLAUDE_PROJECT_DIR/.claude"
@@ -35,28 +36,39 @@ CURL
   export TELEGRAM_CHAT_ID="test-chat-456"
 }
 
-# Put a jq on PATH that hangs on the summarizer's pass only (its first argument is -Rnr)
+# Put a jq on PATH that hangs on the summarizer's pass only (the one run with --seq)
 stub_hanging_summarizer() {
   local real_jq
   real_jq=$(command -v jq)
   cat > "$BATS_TEST_TMPDIR/bin/jq" <<EOF
 #!/bin/bash
-[[ "\$1" == "-Rnr" ]] && exec sleep 30
+[[ " \$* " == *" --seq "* ]] && exec sleep 30
 exec "$real_jq" "\$@"
 EOF
   chmod +x "$BATS_TEST_TMPDIR/bin/jq"
 }
 
-# Wait up to 10 s for the stubbed curl's record: outside debug mode the Stop hook
-# sends from a detached job and returns before it
-wait_for_send() {
-  local f="$BATS_TEST_TMPDIR/curl_args" i
+# Wait up to 10 s for a file to have content
+wait_for_file() {
+  local i
   for ((i = 0; i < 100; i++)); do
-    [[ -f "$f" ]] && return 0
+    [[ -s "$1" ]] && return 0
     sleep 0.1
   done
-  echo "no send recorded in $f"
+  echo "nothing in $1"
   return 1
+}
+
+# Wait for the stubbed curl's record: outside debug mode the Stop hook sends from a
+# detached job and returns before it
+wait_for_send() {
+  wait_for_file "$BATS_TEST_TMPDIR/curl_args"
+}
+
+# Put a curl on PATH that reads its input and answers with an API error
+failing_curl() {
+  printf '#!/bin/bash\ncat > /dev/null\necho %q\n' "{\"ok\":false,\"description\":\"$1\"}" > "$BATS_TEST_TMPDIR/bin/curl"
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
 }
 
 # Print the JSON payload the stubbed curl read on stdin (jq prints "{" on a line of its own)
@@ -322,21 +334,21 @@ CURL
 }
 
 @test "session-notification: SIGHUP, SIGINT and SIGTERM to the hook's process group don't stop the send" {
-  command -v setsid > /dev/null || skip "needs setsid (util-linux)"
   arm_notification sn-kill
   slow_curl
-  local input i
+  local input i hook_pgid
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-kill", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   # its own process group, as a terminal's foreground job would be; signal the
   # whole group once curl runs, as closing the terminal, Ctrl+C or a runner
-  # cancelling the hook would. setsid execs (the background child leads no
-  # group), so the hook's pid is its group
-  setsid bash "$SCRIPTS/session-notification.sh" <<< "$input" > /dev/null 2>&1 &
-  local hook_pgid=$!
-  for ((i = 0; i < 100; i++)); do
-    [[ -s "$BATS_TEST_TMPDIR/curl_pgid" ]] && break
-    sleep 0.1
-  done
+  # cancelling the hook would. Under job control (set -m; bash 3.2 too, no setsid
+  # needed) a background job leads a group of its own, so the hook's pid is its group
+  # A wrapper records its group, then execs the hook (same pid)
+  # shellcheck disable=SC2016 # $$, $0 and $1 are the inner bash's
+  hook_pgid=$(set -m; bash -c 'ps -o pgid= -p $$ | tr -d " " > "$1"; exec bash "$0"' \
+    "$SCRIPTS/session-notification.sh" "$BATS_TEST_TMPDIR/hook_pgid" <<< "$input" > /dev/null 2>&1 & echo $!)
+  wait_for_file "$BATS_TEST_TMPDIR/hook_pgid"
+  [ "$(cat "$BATS_TEST_TMPDIR/hook_pgid")" = "$hook_pgid" ]
+  wait_for_file "$BATS_TEST_TMPDIR/curl_pgid"
   # the job runs in a group of its own
   [ "$(cat "$BATS_TEST_TMPDIR/curl_pgid")" != "$hook_pgid" ]
   # the hook may have ended, leaving its group empty
@@ -346,6 +358,91 @@ CURL
   done
   wait_for_send
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
+}
+
+@test "session-notification: a failed send is reported at the next SessionStart, once" {
+  arm_notification sn-fail
+  failing_curl "Bad Request: chat not found"
+  local f="$LAST_ERROR_FILE"
+  run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-fail","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  wait_for_file "$f"
+  [[ "$(cat "$f")" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}\ Telegram\ API\ failed\ -\ Bad\ Request:\ chat\ not\ found$ ]]
+  [[ "$(cat "$f")" != *"$TELEGRAM_BOT_TOKEN"* ]]
+  run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"sn-fail2"}'
+  [ "$status" -eq 0 ]
+  jq -e '.systemMessage | test("^Telegram Notifier plugin: Ready, but the last session notification failed \\([0-9-]+ [0-9:]+ Telegram API failed - Bad Request: chat not found\\)")' <<< "$output"
+  [ ! -e "$f" ]
+  run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"sn-fail3"}'
+  [[ "$output" == *"Ready. Use /telegram"* ]]
+}
+
+@test "session-notification: a send that works clears the last failure" {
+  arm_notification sn-clear
+  local f="$LAST_ERROR_FILE" i
+  echo "2026-01-01 00:00 curl failed" > "$f"
+  run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-clear","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  wait_for_send
+  for ((i = 0; i < 50; i++)); do
+    [[ -e "$f" ]] || break
+    sleep 0.1
+  done
+  [ ! -e "$f" ]
+}
+
+@test "check-credentials: an empty failure record is not reported, and is removed" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  local f="$LAST_ERROR_FILE"
+  : > "$f"
+  run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-empty"}'
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"systemMessage": "Telegram Notifier plugin: Ready. Use /telegram to send messages."}' ]
+  [ ! -e "$f" ]
+}
+
+@test "check-credentials: a failure is reported by one session start only, never from a claimed copy" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+---
+EOF
+  local f="$LAST_ERROR_FILE" i reports
+  # left by a session start stopped between its claim and its rm
+  echo "2026-01-01 00:00 stale claimed failure" > "$f.claimed.999999"
+  echo "2026-01-02 00:00 curl failed" > "$f"
+  run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-claim1"}'
+  [[ "$output" == *"Ready, but the last session notification failed (2026-01-02 00:00 curl failed)"* ]]
+  run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-claim2"}'
+  [ "$output" = '{"systemMessage": "Telegram Notifier plugin: Ready. Use /telegram to send messages."}' ]
+  [ ! -e "$f" ]
+  [ -z "$(find "$HOME/.claude" -name 'telegram-notifier.last-error.claimed.*' ! -name '*.999999')" ]
+  # two session starts at once: one of them reports the failure
+  for ((i = 0; i < 10; i++)); do
+    echo "2026-01-03 00:00 failure $i" > "$f"
+    bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-race-a"}' > "$BATS_TEST_TMPDIR/race-a" &
+    bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-race-b"}' > "$BATS_TEST_TMPDIR/race-b"
+    wait
+    reports=$(cat "$BATS_TEST_TMPDIR/race-a" "$BATS_TEST_TMPDIR/race-b" | grep -c "failure $i" || true)
+    [ "$reports" -eq 1 ] || { echo "round $i: $reports reports"; false; }
+  done
+}
+
+@test "session-notification: debug mode shows why a send failed" {
+  arm_notification sn-fail-dbg
+  failing_curl "Unauthorized"
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  run --separate-stderr bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-fail-dbg","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Payload:"* ]]
+  [[ "$output" == *"Warning: Failed to send session notification: Telegram API failed - Unauthorized"* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+  [[ "$(cat "$LAST_ERROR_FILE")" == *"Telegram API failed - Unauthorized" ]]
 }
 
 @test "session-notification: a 30 KB cwd is sent, cut to 4096 characters" {
@@ -733,8 +830,9 @@ EOF
   local args
   args=$(cat "$BATS_TEST_TMPDIR/curl_args")
   [[ "$args" == *$'-m\n8'* ]]
-  # a retry in ~/.curlrc would give each attempt the full -m
-  [[ "$args" == *$'--retry\n0'* ]]
+  # -q first: curl reads no ~/.curlrc, so a retry there can't give each attempt
+  # the full -m, and a trace or verbose there can't log the URL with the token
+  [ "$(head -1 "$BATS_TEST_TMPDIR/curl_args")" = "-q" ]
 }
 
 @test "send-telegram: an argument of 1 to 8 shortens curl's time" {
@@ -771,13 +869,7 @@ EOF
 }
 
 @test "send-telegram: reports error on API failure" {
-  # Override curl stub to return error
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-cat > /dev/null
-echo '{"ok":false,"description":"Unauthorized"}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+  failing_curl "Unauthorized"
   run bash "$SCRIPTS/send-telegram.sh" <<< "test"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unauthorized"* ]]
@@ -1145,6 +1237,62 @@ EOF
   wait_for_send
 }
 
+# Run the Stop hook in debug mode (the send in the foreground, so the absence of a
+# send record is final) with threshold $1 and session start $2 minutes ago
+run_threshold() {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<EOF
+---
+enabled: true
+session_threshold_minutes: $1
+---
+EOF
+  echo "$(($(date +%s) - $2 * 60 - 30))" > "/tmp/claude-telegram-notifier-session-sn-thr"
+  TELEGRAM_NOTIFIER_DEBUG=1 run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-thr","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+}
+
+@test "session-notification: a threshold with leading zeros is read in base 10" {
+  # 010 is 10, not octal 8
+  run_threshold 010 9
+  [ ! -e "$BATS_TEST_TMPDIR/curl_args" ]
+  # 09 is 9, not an arithmetic error that skips the check
+  run_threshold 09 5
+  [ ! -e "$BATS_TEST_TMPDIR/curl_args" ]
+  [[ "$output" != *"value too great"* ]]
+  run_threshold 08 9
+  [ -e "$BATS_TEST_TMPDIR/curl_args" ]
+}
+
+@test "session-notification: a threshold of more than 6 digits falls back to 10" {
+  run_threshold 1000000 15
+  [ -e "$BATS_TEST_TMPDIR/curl_args" ]
+  rm -f "$BATS_TEST_TMPDIR/curl_args"
+  run_threshold 1000000 9
+  [ ! -e "$BATS_TEST_TMPDIR/curl_args" ]
+}
+
+@test "session-notification: a session start with leading zeros is read in base 10, an overlong one skips" {
+  cat > "$HOME/.claude/telegram-notifier.local.md" <<'EOF'
+---
+enabled: true
+session_threshold_minutes: 0
+---
+EOF
+  local sf="/tmp/claude-telegram-notifier-session-sn-start"
+  # 0 then the epoch: read as octal, an error (a digit 8 or 9) or another time
+  printf '0%s\n' "$(($(date +%s) - 900))" > "$sf"
+  TELEGRAM_NOTIFIER_DEBUG=1 run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-start","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"value too great"* ]]
+  [[ "$(curl_payload | jq -r .text)" == *"(15m)"* ]]
+  rm -f "$BATS_TEST_TMPDIR/curl_args"
+  printf '%s\n' 1234567890123 > "$sf"
+  TELEGRAM_NOTIFIER_DEBUG=1 run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-start","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  [ ! -e "$BATS_TEST_TMPDIR/curl_args" ]
+  [ ! -e "$sf" ]
+}
+
 # =========================================================
 # summarize-transcript.sh
 # =========================================================
@@ -1325,6 +1473,74 @@ EOF
   [ "$output" = $'• Edited: a.ts, b.ts' ]
 }
 
+@test "summarize-transcript: skips a broken tool_use line and a truncated last line" {
+  local t="$BATS_TEST_TMPDIR/broken2.jsonl"
+  cat > "$t" <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/a.ts"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/broken.ts"
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/b.ts"}}]}}
+not json, but it says tool_use
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/c.ts"}}]}}
+EOF
+  printf '%s' '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/trunc' >> "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Edited: a.ts, b.ts, c.ts' ]
+}
+
+@test "summarize-transcript: one line is one JSON value: trailing garbage, two values or a control character skip it" {
+  local t="$BATS_TEST_TMPDIR/oneline.jsonl" e='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/' z='"}}]}}'
+  {
+    printf '%s%s%s x\n' "$e" garbage.ts "$z"
+    printf '%s%s%s%s%s%s\n' "$e" two1.ts "$z" "$e" two2.ts "$z"
+    printf '%s%s%s {}\n' "$e" two3.ts "$z"
+    printf '%s%s\001%s\n' "$e" ctl.ts "$z"
+    printf '%s%s%s\n' "$e" a.ts "$z"
+  } > "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'• Edited: a.ts' ]
+}
+
+@test "summarize-transcript: reads a tool_use written with spaces, and only quoted tool_use lines" {
+  local t="$BATS_TEST_TMPDIR/spaced.jsonl"
+  cat > "$t" <<'EOF'
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "/w/spaced.ts"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"not counted"}]}}
+EOF
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = "• Edited: spaced.ts" ]
+}
+
+@test "summarize-transcript: reads tabs between tokens and CRLF line ends" {
+  local t="$BATS_TEST_TMPDIR/crlf.jsonl"
+  {
+    printf '{"type":\t"assistant",\t"message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/tab.ts"}}]}}\n'
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/crlf.ts"}}]}}\r\n'
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/q\\"uo\\\\te.ts"}}]}}\r\n'
+  } > "$t"
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = '• Edited: crlf.ts, q"uo\te.ts, tab.ts' ]
+}
+
+@test "summarize-transcript: keeps a multibyte name whole across a 4 KB boundary of its line" {
+  local t="$BATS_TEST_TMPDIR/mb.jsonl" name pad before after n
+  name=$(printf 'é%.0s' {1..30})
+  # jq -R read a line in pieces of 4095 bytes and split a character across two
+  # into two U+FFFD: pad the line so that byte 4095 is the second byte of name's 11th é
+  before='{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"pad":"'
+  after='","file_path":"/w/'
+  n=$((4095 - ${#before} - ${#after} - 21))
+  pad=$(printf 'x%.0s' $(seq "$n"))
+  printf '%s%s%s%s.rs"}}]}}\n' "$before" "$pad" "$after" "$name" > "$t"
+  [ "$(LC_ALL=C head -c 4096 "$t" | tail -c 1 | od -An -tx1 | tr -d ' ')" = "a9" ]
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = "• Edited: $name.rs" ]
+}
+
 @test "summarize-transcript: returns empty for missing transcript" {
   run bash "$SCRIPTS/summarize-transcript.sh" "$BATS_TEST_TMPDIR/nonexistent.jsonl"
   [ "$status" -eq 0 ]
@@ -1405,4 +1621,50 @@ EOF
   [[ "$payload" != *hunter2* ]]
   [[ "$payload" != *ghp_* ]]
   [[ "$payload" == *"Ran: cargo, gh, make"* ]]
+}
+
+# =========================================================
+# commands/telegram.md
+# =========================================================
+
+# Print bash block $1 (1-based) of commands/telegram.md, its indent removed
+telegram_block() {
+  awk -v n="$1" '/^ *```bash$/ { b++; on = (b == n); next } /^ *```$/ { on = 0; next } on { sub(/^   /, ""); print }' \
+    "$PLUGIN_DIR/commands/telegram.md"
+}
+
+# Run the command's steps as the model would: block 1 makes the directory, the
+# message goes to message.txt (as the Write tool would write it), then block 2 sends
+# it. Sets dir, msg, status and output
+run_telegram_steps() {
+  local step2
+  [ "$(grep -c '^ *```bash$' "$PLUGIN_DIR/commands/telegram.md")" -eq 2 ]
+  dir=$(TMPDIR="$BATS_TEST_TMPDIR" bash -c "$(telegram_block 1)")
+  [[ "$dir" == "$BATS_TEST_TMPDIR/telegram-message."* && -d "$dir" ]]
+  [ "$(stat -c %a "$dir" 2>/dev/null || stat -f %Lp "$dir")" = "700" ]
+  # lines equal to the old heredoc delimiters, substitutions, quotes, HTML, a last "EOF"
+  msg=$'line one\nTELEGRAM_MESSAGE\nTELEGRAM_MESSAGE_7f3a9c\ntouch "$BATS_TEST_TMPDIR/pwned" $(touch "$BATS_TEST_TMPDIR/pwned2") `touch "$BATS_TEST_TMPDIR/pwned3"` \'q\' "dq" <b>&\nEOF'
+  printf '%s' "$msg" > "$dir/message.txt"
+  step2=$(telegram_block 2)
+  [[ "$step2" == *"'<the directory>'"* ]]
+  step2=${step2/<the directory>/"$dir"} # quoted: bash 5.2 reads & as the match
+  CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" run bash -c "$step2"
+}
+
+@test "/telegram: the documented steps send a hostile message as text and remove its directory" {
+  local dir msg
+  run_telegram_steps
+  [ "$status" -eq 0 ]
+  [ ! -e "$BATS_TEST_TMPDIR/pwned" ] && [ ! -e "$BATS_TEST_TMPDIR/pwned2" ] && [ ! -e "$BATS_TEST_TMPDIR/pwned3" ]
+  curl_payload | jq -e --arg m "$(sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' <<< "$msg")" '.text == $m'
+  [ ! -e "$dir" ]
+}
+
+@test "/telegram: a failed send ends the steps non-zero and still removes the directory" {
+  failing_curl "Bad Request: chat not found"
+  local dir msg
+  run_telegram_steps
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"chat not found"* ]]
+  [ ! -e "$dir" ]
 }

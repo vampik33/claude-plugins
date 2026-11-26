@@ -27,6 +27,8 @@ HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
+# shellcheck source=lib/last_error.sh
+source "$SCRIPT_DIR/lib/last_error.sh"
 
 # Clean up stale session files from previous force-quit sessions
 cleanup_stale_session_files
@@ -86,6 +88,12 @@ if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
   exit 2
 fi
 
-# Success message
+# Success message, with the reason the last Stop notification failed, if one did,
+# reported once (lib/last_error.sh); an empty record is not reported
+LAST_ERROR=$(claim_send_failure)
+if [[ -n "$LAST_ERROR" ]]; then
+  jq -cn --arg e "$LAST_ERROR" '{systemMessage: ("Telegram Notifier plugin: Ready, but the last session notification failed (" + $e + "). Use /telegram to send messages.")}'
+  exit 0
+fi
 echo '{"systemMessage": "Telegram Notifier plugin: Ready. Use /telegram to send messages."}'
 exit 0

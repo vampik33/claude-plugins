@@ -188,3 +188,18 @@ EOF
   run get_notification_body
   [ ${#output} -le 500 ]
 }
+
+@test "get_notification_body: keeps a body that echo would read as an option" {
+  local b
+  for b in -n -e "-e done\\n"; do
+    printf -- '---\nenabled: true\n---\n%s\n' "$b" > "$HOME/.claude/telegram-notifier.local.md"
+    run get_notification_body
+    [ "$output" = "$b" ] || { echo "body: $b, output: $output"; false; }
+  done
+}
+
+@test "resolve_config_field: keeps a value of -n" {
+  printf -- '---\nsession_threshold_minutes: -n\n---\n' > "$HOME/.claude/telegram-notifier.local.md"
+  run resolve_config_field "session_threshold_minutes" "10"
+  [ "$output" = "-n" ]
+}

@@ -13,6 +13,7 @@ setup() {
 
   # Isolate from real config
   export HOME="$BATS_TEST_TMPDIR/home"
+  LAST_ERROR_FILE="$HOME/.claude/telegram-notifier.last-error"
   export CLAUDE_PROJECT_DIR="$BATS_TEST_TMPDIR/project"
   mkdir -p "$HOME/.claude"
   mkdir -p "$CLAUDE_PROJECT_DIR/.claude"
@@ -47,16 +48,27 @@ EOF
   chmod +x "$BATS_TEST_TMPDIR/bin/jq"
 }
 
-# Wait up to 10 s for the stubbed curl's record: outside debug mode the Stop hook
-# sends from a detached job and returns before it
-wait_for_send() {
-  local f="$BATS_TEST_TMPDIR/curl_args" i
+# Wait up to 10 s for a file to have content
+wait_for_file() {
+  local i
   for ((i = 0; i < 100; i++)); do
-    [[ -f "$f" ]] && return 0
+    [[ -s "$1" ]] && return 0
     sleep 0.1
   done
-  echo "no send recorded in $f"
+  echo "nothing in $1"
   return 1
+}
+
+# Wait for the stubbed curl's record: outside debug mode the Stop hook sends from a
+# detached job and returns before it
+wait_for_send() {
+  wait_for_file "$BATS_TEST_TMPDIR/curl_args"
+}
+
+# Put a curl on PATH that reads its input and answers with an API error
+failing_curl() {
+  printf '#!/bin/bash\ncat > /dev/null\necho %q\n' "{\"ok\":false,\"description\":\"$1\"}" > "$BATS_TEST_TMPDIR/bin/curl"
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
 }
 
 # Print the JSON payload the stubbed curl read on stdin (jq prints "{" on a line of its own)
@@ -334,15 +346,9 @@ CURL
   # shellcheck disable=SC2016 # $$, $0 and $1 are the inner bash's
   hook_pgid=$(set -m; bash -c 'ps -o pgid= -p $$ | tr -d " " > "$1"; exec bash "$0"' \
     "$SCRIPTS/session-notification.sh" "$BATS_TEST_TMPDIR/hook_pgid" <<< "$input" > /dev/null 2>&1 & echo $!)
-  for ((i = 0; i < 50; i++)); do
-    [[ -s "$BATS_TEST_TMPDIR/hook_pgid" ]] && break
-    sleep 0.1
-  done
+  wait_for_file "$BATS_TEST_TMPDIR/hook_pgid"
   [ "$(cat "$BATS_TEST_TMPDIR/hook_pgid")" = "$hook_pgid" ]
-  for ((i = 0; i < 100; i++)); do
-    [[ -s "$BATS_TEST_TMPDIR/curl_pgid" ]] && break
-    sleep 0.1
-  done
+  wait_for_file "$BATS_TEST_TMPDIR/curl_pgid"
   # the job runs in a group of its own
   [ "$(cat "$BATS_TEST_TMPDIR/curl_pgid")" != "$hook_pgid" ]
   # the hook may have ended, leaving its group empty
@@ -356,21 +362,12 @@ CURL
 
 @test "session-notification: a failed send is reported at the next SessionStart, once" {
   arm_notification sn-fail
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-cat > /dev/null
-echo '{"ok":false,"description":"Bad Request: chat not found"}'
-touch "$BATS_TEST_TMPDIR/curl_done"
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
-  local f="$HOME/.claude/telegram-notifier.last-error" i
+  failing_curl "Bad Request: chat not found"
+  local f="$LAST_ERROR_FILE"
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-fail","cwd":"/tmp","transcript_path":""}'
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  for ((i = 0; i < 100; i++)); do
-    [[ -s "$f" ]] && break
-    sleep 0.1
-  done
+  wait_for_file "$f"
   [[ "$(cat "$f")" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}\ Telegram\ API\ failed\ -\ Bad\ Request:\ chat\ not\ found$ ]]
   [[ "$(cat "$f")" != *"$TELEGRAM_BOT_TOKEN"* ]]
   run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"sn-fail2"}'
@@ -383,7 +380,7 @@ CURL
 
 @test "session-notification: a send that works clears the last failure" {
   arm_notification sn-clear
-  local f="$HOME/.claude/telegram-notifier.last-error" i
+  local f="$LAST_ERROR_FILE" i
   echo "2026-01-01 00:00 curl failed" > "$f"
   run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-clear","cwd":"/tmp","transcript_path":""}'
   [ "$status" -eq 0 ]
@@ -401,7 +398,7 @@ CURL
 enabled: true
 ---
 EOF
-  local f="$HOME/.claude/telegram-notifier.last-error"
+  local f="$LAST_ERROR_FILE"
   : > "$f"
   run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"cc-empty"}'
   [ "$status" -eq 0 ]
@@ -415,7 +412,7 @@ EOF
 enabled: true
 ---
 EOF
-  local f="$HOME/.claude/telegram-notifier.last-error" i reports
+  local f="$LAST_ERROR_FILE" i reports
   # left by a session start stopped between its claim and its rm
   echo "2026-01-01 00:00 stale claimed failure" > "$f.claimed.999999"
   echo "2026-01-02 00:00 curl failed" > "$f"
@@ -438,19 +435,14 @@ EOF
 
 @test "session-notification: debug mode shows why a send failed" {
   arm_notification sn-fail-dbg
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-cat > /dev/null
-echo '{"ok":false,"description":"Unauthorized"}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+  failing_curl "Unauthorized"
   export TELEGRAM_NOTIFIER_DEBUG=1
   run --separate-stderr bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-fail-dbg","cwd":"/tmp","transcript_path":""}'
   [ "$status" -eq 0 ]
   [[ "$output" == *"Payload:"* ]]
   [[ "$output" == *"Warning: Failed to send session notification: Telegram API failed - Unauthorized"* ]]
   [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
-  [[ "$(cat "$HOME/.claude/telegram-notifier.last-error")" == *"Telegram API failed - Unauthorized" ]]
+  [[ "$(cat "$LAST_ERROR_FILE")" == *"Telegram API failed - Unauthorized" ]]
 }
 
 @test "session-notification: a 30 KB cwd is sent, cut to 4096 characters" {
@@ -877,13 +869,7 @@ EOF
 }
 
 @test "send-telegram: reports error on API failure" {
-  # Override curl stub to return error
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-cat > /dev/null
-echo '{"ok":false,"description":"Unauthorized"}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+  failing_curl "Unauthorized"
   run bash "$SCRIPTS/send-telegram.sh" <<< "test"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unauthorized"* ]]
@@ -1675,12 +1661,7 @@ run_telegram_steps() {
 }
 
 @test "/telegram: a failed send ends the steps non-zero and still removes the directory" {
-  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
-#!/bin/bash
-cat > /dev/null
-echo '{"ok":false,"description":"Bad Request: chat not found"}'
-CURL
-  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+  failing_curl "Bad Request: chat not found"
   local dir msg
   run_telegram_steps
   [ "$status" -ne 0 ]

@@ -16,6 +16,8 @@ HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
+# shellcheck source=lib/last_error.sh
+source "$SCRIPT_DIR/lib/last_error.sh"
 # shellcheck source=lib/html.sh
 source "$SCRIPT_DIR/lib/html.sh"
 
@@ -173,24 +175,20 @@ deliver() {
     echo "Sending notification: $MESSAGE" >&2
   fi
   # The detached job's output goes nowhere, so a failure's reason (the sender's last
-  # stderr line, which never holds the token) is kept for the next SessionStart to
-  # report; a send that works clears it
-  local err sent=1 error_file
-  error_file=$(get_last_error_path)
+  # stderr line, which never holds the token) is recorded for the next SessionStart
+  # to report (lib/last_error.sh)
+  local err sent=1
   err=$(printf '%s' "$MESSAGE" | bash "$SCRIPT_DIR/send-telegram.sh" "$SEND_TIME" 2>&1 > /dev/null) || sent=0
   # Debug mode: the sender's payload and response lines
   if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" && -n "$err" ]]; then
     printf '%s\n' "$err" >&2
   fi
   if ((sent)); then
-    # Last writer wins: a failure recorded by an overlapping job is cleared too
-    rm -f "$error_file" 2>/dev/null || true
+    clear_send_failure
   else
     err=${err##*$'\n'}
     err=${err#Error: }
-    # Written aside, then moved into place, so a reader never sees it half written
-    { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$err" > "$error_file.$$" &&
-      mv -f "$error_file.$$" "$error_file"; } 2>/dev/null || rm -f "$error_file.$$" 2>/dev/null || true
+    record_send_failure "$err"
     echo "Warning: Failed to send session notification: $err" >&2
   fi
 }

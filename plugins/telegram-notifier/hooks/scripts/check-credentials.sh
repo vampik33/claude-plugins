@@ -27,6 +27,8 @@ HOOK_INPUT=$(cat)
 source "$SCRIPT_DIR/lib/config.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
+# shellcheck source=lib/last_error.sh
+source "$SCRIPT_DIR/lib/last_error.sh"
 
 # Clean up stale session files from previous force-quit sessions
 cleanup_stale_session_files
@@ -86,17 +88,9 @@ if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
   exit 2
 fi
 
-# Success message, with the reason the last Stop notification failed, if one did
-# (its detached send job had no output to show it in); reported once. The record is
-# claimed with one mv, so two session starts never both report it, and a failure
-# recorded after the claim stays for the next one; an empty record is not reported
-ERROR_FILE=$(get_last_error_path)
-CLAIMED_FILE="$ERROR_FILE.claimed.$$"
-LAST_ERROR=""
-if mv "$ERROR_FILE" "$CLAIMED_FILE" 2>/dev/null; then
-  LAST_ERROR=$(head -c 300 "$CLAIMED_FILE" | head -1)
-  rm -f "$CLAIMED_FILE" 2>/dev/null || true
-fi
+# Success message, with the reason the last Stop notification failed, if one did,
+# reported once (lib/last_error.sh); an empty record is not reported
+LAST_ERROR=$(claim_send_failure)
 if [[ -n "$LAST_ERROR" ]]; then
   jq -cn --arg e "$LAST_ERROR" '{systemMessage: ("Telegram Notifier plugin: Ready, but the last session notification failed (" + $e + "). Use /telegram to send messages.")}'
   exit 0

@@ -814,9 +814,20 @@ EOF
   run bash "$SCRIPTS/send-telegram.sh" <<< "Hello World"
   [ "$status" -eq 0 ]
   # curl's arguments are what ps shows; the token is only in the config on a pipe
-  [[ "$(sed '/^{$/,$d' "$BATS_TEST_TMPDIR/curl_args")" != *"$TELEGRAM_BOT_TOKEN"* ]]
+  [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" != *"$TELEGRAM_BOT_TOKEN"* ]]
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *$'\n-K\n/dev/fd/'* ]]
-  [[ "$(cat "$BATS_TEST_TMPDIR/curl_config")" == *"/bot$TELEGRAM_BOT_TOKEN/sendMessage"* ]]
+}
+
+@test "send-telegram: refuses a token with a line break before curl runs" {
+  local tok
+  for tok in $'12:abc\nverbose' $'12:abc\rtrace = /tmp/x' $'\n'; do
+    rm -f "$BATS_TEST_TMPDIR/curl_args"
+    TELEGRAM_BOT_TOKEN=$tok run --separate-stderr bash "$SCRIPTS/send-telegram.sh" <<< "Hello World"
+    [ "$status" -eq 1 ]
+    [ "$stderr" = "Error: TELEGRAM_BOT_TOKEN holds a line break" ]
+    [ -z "$output" ]
+    [ ! -e "$BATS_TEST_TMPDIR/curl_args" ]
+  done
 }
 
 @test "send-telegram: escapes \\ and \" of the token in curl's config" {

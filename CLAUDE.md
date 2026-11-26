@@ -13,10 +13,10 @@ Claude Code plugin marketplace `vampik-plugins`. Users read [README.md](README.m
 
 - One suite at a time: the commands are in `verification/README.md`.
 - After a `run.sh` failure, fix it and rerun before reading later suites as passing: it stops at the first failing suite.
-- Without Lean (`lake`) installed, `run.sh` stops at the Lean step and `diff.lean.test.ts` fails with "no oracle"; run the other suites one target at a time.
+- Without Lean (`elan`, which puts `lake` in `~/.elan/bin`) installed, `run.sh` stops at the Lean step and `diff.lean.test.ts` fails with "no oracle"; run the other suites one target at a time.
 - Without `bats`/`shellcheck` installed: `npm i --prefix <scratch-dir> bats shellcheck`, then run both from `<scratch-dir>/node_modules/.bin`.
 
 ## Gotchas
 
-- gtr's CHANGELOG.md starts at 1.0.1: changes before it were not recorded.
+- gtr's CHANGELOG.md has no history before 1.0.1 (the 1.0.0 entry is a stub): don't backfill it.
 - **Daily-review issues and PRs** (`Daily review <date>` issue, branch `daily-review/<date>-main`) are made remotely without a checkout: before merging, rebase onto `main`, add a test, and apply the "Updating a plugin" steps. The repo doesn't delete merged branches.

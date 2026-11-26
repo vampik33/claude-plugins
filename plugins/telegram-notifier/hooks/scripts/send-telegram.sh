@@ -27,6 +27,13 @@ if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] || [[ -z "${TELEGRAM_CHAT_ID:-}" ]]; then
   exit 1
 fi
 
+# The token goes into a line of curl's config below, where a line break would start
+# an option of its own (a trace, another destination)
+if [[ "$TELEGRAM_BOT_TOKEN" == *[$'\n\r']* ]]; then
+  echo "Error: TELEGRAM_BOT_TOKEN holds a line break" >&2
+  exit 1
+fi
+
 # Use jq for proper JSON escaping (handles quotes, backslashes, newlines, control chars)
 if ! command -v jq &> /dev/null; then
   echo "Error: jq is required for safe JSON encoding" >&2
@@ -120,9 +127,14 @@ MAX_TIME=8
 if [[ "${1:-}" =~ ^[1-8]$ ]]; then
   MAX_TIME=$1
 fi
-# -q (first, or curl ignores it) skips ~/.curlrc: a trace or verbose there would log
-# the URL with the token, and a retry would give each attempt the full -m
-RESPONSE=$(printf '%s' "$JSON_PAYLOAD" | curl -q -s --connect-timeout 5 -m "$MAX_TIME" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+# The URL holds the token. -q (first, or curl ignores it) skips ~/.curlrc, where a
+# trace or verbose would log it (and a retry would give each attempt the full -m);
+# -K reads it from a config on a pipe, not an argument, which any local user can
+# read with ps (printf is a builtin, so no process's arguments hold it)
+URL_TOKEN=${TELEGRAM_BOT_TOKEN//\\/\\\\} # escaped for a config string
+URL_TOKEN=${URL_TOKEN//\"/\\\"}
+RESPONSE=$(printf '%s' "$JSON_PAYLOAD" | curl -q -s --connect-timeout 5 -m "$MAX_TIME" -X POST \
+  -K <(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$URL_TOKEN") \
   -H "Content-Type: application/json" \
   --data-binary @- 2>&1) || {
   echo "Error: curl failed" >&2

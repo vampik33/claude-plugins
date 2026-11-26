@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A file name in the Stop summary no longer shows U+FFFD in place of a character: the summarizer read the transcript with `jq -R`, which splits a multibyte character that crosses a 4095-byte boundary of a line. `sed` now passes the `tool_use` lines to `jq --seq`, each after an RS byte, so a line that isn't JSON is still skipped on its own (checked with jq 1.6, 1.7, 1.7.1 and 1.8.1)
+- `tests/hooks.bats`: the test that signals the Stop hook's process group starts the hook under `set -m` instead of `setsid`, so it runs on macOS too instead of skipping
+- A Stop notification that fails to send is no longer silent: its detached job keeps the reason in `~/.claude/telegram-notifier.last-error`, and the next session start reports it once ("Ready, but the last session notification failed (…)"); a send that works clears it. Debug mode also names the reason in its warning
 - A message, notification body or config value of `-n` or `-e` is no longer lost, and backslashes in it are kept even under `shopt -s xpg_echo`: the scripts print data with `printf '%s\n'` instead of `echo`
 
 ## [1.9.16] - 2026-11-25

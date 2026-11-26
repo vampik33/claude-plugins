@@ -169,7 +169,24 @@ deliver() {
   if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" ]]; then
     echo "Sending notification: $MESSAGE" >&2
   fi
-  printf '%s' "$MESSAGE" | bash "$SCRIPT_DIR/send-telegram.sh" "$SEND_TIME" || echo "Warning: Failed to send session notification" >&2
+  # The detached job's output goes nowhere, so a failure's reason (the sender's last
+  # stderr line, which never holds the token) is kept for the next SessionStart to
+  # report; a send that works clears it
+  local err sent=1 error_file
+  error_file=$(get_last_error_path)
+  err=$(printf '%s' "$MESSAGE" | bash "$SCRIPT_DIR/send-telegram.sh" "$SEND_TIME" 2>&1 > /dev/null) || sent=0
+  # Debug mode: the sender's payload and response lines
+  if [[ "${TELEGRAM_NOTIFIER_DEBUG:-}" == "1" && -n "$err" ]]; then
+    printf '%s\n' "$err" >&2
+  fi
+  if ((sent)); then
+    rm -f "$error_file" 2>/dev/null || true
+  else
+    err=${err##*$'\n'}
+    err=${err#Error: }
+    (printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$err" > "$error_file") 2>/dev/null || true
+    echo "Warning: Failed to send session notification: $err" >&2
+  fi
 }
 
 # The session file is consumed above, so a hook stopped from here on would lose

@@ -322,17 +322,23 @@ CURL
 }
 
 @test "session-notification: SIGHUP, SIGINT and SIGTERM to the hook's process group don't stop the send" {
-  command -v setsid > /dev/null || skip "needs setsid (util-linux)"
   arm_notification sn-kill
   slow_curl
-  local input i
+  local input i hook_pgid
   input=$(jq -cn --arg t "$FIXTURES/transcript.jsonl" '{session_id: "sn-kill", cwd: "/tmp", transcript_path: $t, last_assistant_message: ""}')
   # its own process group, as a terminal's foreground job would be; signal the
   # whole group once curl runs, as closing the terminal, Ctrl+C or a runner
-  # cancelling the hook would. setsid execs (the background child leads no
-  # group), so the hook's pid is its group
-  setsid bash "$SCRIPTS/session-notification.sh" <<< "$input" > /dev/null 2>&1 &
-  local hook_pgid=$!
+  # cancelling the hook would. Under job control (set -m; bash 3.2 too, no setsid
+  # needed) a background job leads a group of its own, so the hook's pid is its group
+  # A wrapper records its group, then execs the hook (same pid)
+  # shellcheck disable=SC2016 # $$, $0 and $1 are the inner bash's
+  hook_pgid=$(set -m; bash -c 'ps -o pgid= -p $$ | tr -d " " > "$1"; exec bash "$0"' \
+    "$SCRIPTS/session-notification.sh" "$BATS_TEST_TMPDIR/hook_pgid" <<< "$input" > /dev/null 2>&1 & echo $!)
+  for ((i = 0; i < 50; i++)); do
+    [[ -s "$BATS_TEST_TMPDIR/hook_pgid" ]] && break
+    sleep 0.1
+  done
+  [ "$(cat "$BATS_TEST_TMPDIR/hook_pgid")" = "$hook_pgid" ]
   for ((i = 0; i < 100; i++)); do
     [[ -s "$BATS_TEST_TMPDIR/curl_pgid" ]] && break
     sleep 0.1
@@ -346,6 +352,64 @@ CURL
   done
   wait_for_send
   [[ "$(cat "$BATS_TEST_TMPDIR/curl_args")" == *"Edited: main.rs"* ]]
+}
+
+@test "session-notification: a failed send is reported at the next SessionStart, once" {
+  arm_notification sn-fail
+  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
+#!/bin/bash
+cat > /dev/null
+echo '{"ok":false,"description":"Bad Request: chat not found"}'
+touch "$BATS_TEST_TMPDIR/curl_done"
+CURL
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+  local f="$HOME/.claude/telegram-notifier.last-error" i
+  run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-fail","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  for ((i = 0; i < 100; i++)); do
+    [[ -s "$f" ]] && break
+    sleep 0.1
+  done
+  [[ "$(cat "$f")" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}\ Telegram\ API\ failed\ -\ Bad\ Request:\ chat\ not\ found$ ]]
+  [[ "$(cat "$f")" != *"$TELEGRAM_BOT_TOKEN"* ]]
+  run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"sn-fail2"}'
+  [ "$status" -eq 0 ]
+  jq -e '.systemMessage | test("^Telegram Notifier plugin: Ready, but the last session notification failed \\([0-9-]+ [0-9:]+ Telegram API failed - Bad Request: chat not found\\)")' <<< "$output"
+  [ ! -e "$f" ]
+  run bash "$SCRIPTS/check-credentials.sh" <<< '{"session_id":"sn-fail3"}'
+  [[ "$output" == *"Ready. Use /telegram"* ]]
+}
+
+@test "session-notification: a send that works clears the last failure" {
+  arm_notification sn-clear
+  local f="$HOME/.claude/telegram-notifier.last-error" i
+  echo "2026-01-01 00:00 curl failed" > "$f"
+  run bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-clear","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  wait_for_send
+  for ((i = 0; i < 50; i++)); do
+    [[ -e "$f" ]] || break
+    sleep 0.1
+  done
+  [ ! -e "$f" ]
+}
+
+@test "session-notification: debug mode shows why a send failed" {
+  arm_notification sn-fail-dbg
+  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
+#!/bin/bash
+cat > /dev/null
+echo '{"ok":false,"description":"Unauthorized"}'
+CURL
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+  export TELEGRAM_NOTIFIER_DEBUG=1
+  run --separate-stderr bash "$SCRIPTS/session-notification.sh" <<< '{"session_id":"sn-fail-dbg","cwd":"/tmp","transcript_path":""}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Payload:"* ]]
+  [[ "$output" == *"Warning: Failed to send session notification: Telegram API failed - Unauthorized"* ]]
+  [[ "$output$stderr" != *"$TELEGRAM_BOT_TOKEN"* ]]
+  [[ "$(cat "$HOME/.claude/telegram-notifier.last-error")" == *"Telegram API failed - Unauthorized" ]]
 }
 
 @test "session-notification: a 30 KB cwd is sent, cut to 4096 characters" {

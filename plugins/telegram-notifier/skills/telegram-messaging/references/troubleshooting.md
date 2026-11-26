@@ -14,6 +14,8 @@ Common issues and solutions. For setup instructions, see [configuration.md](conf
 
 ### Automatic notifications not sending
 
+The Stop notification is sent in the background, so a failure shows at the next session start: "Ready, but the last session notification failed (<time> <reason>)". The reason is also in `~/.claude/telegram-notifier.last-error` until then.
+
 **Checklist:**
 1. `.claude/telegram-notifier.local.md` exists?
 2. Contains `enabled: true` in frontmatter?

@@ -16,6 +16,12 @@ get_project_config_path() {
   printf '%s\n' "${CLAUDE_PROJECT_DIR:-.}/.claude/telegram-notifier.local.md"
 }
 
+# Path of the reason the last Stop notification failed, written by the detached
+# send job (which has no output to show it in) and reported at the next SessionStart
+get_last_error_path() {
+  printf '%s\n' "${HOME}/.claude/telegram-notifier.last-error"
+}
+
 # Resolve config value with dual-scope support
 # Priority: project > user > default
 # Usage: resolve_config_field "field_name" "default_value"

@@ -86,6 +86,14 @@ if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
   exit 2
 fi
 
-# Success message
+# Success message, with the reason the last Stop notification failed, if one did
+# (its detached send job had no output to show it in); reported once
+ERROR_FILE=$(get_last_error_path)
+if [[ -f "$ERROR_FILE" ]]; then
+  LAST_ERROR=$(head -c 300 "$ERROR_FILE" | head -1)
+  rm -f "$ERROR_FILE" 2>/dev/null || true
+  jq -cn --arg e "$LAST_ERROR" '{systemMessage: ("Telegram Notifier plugin: Ready, but the last session notification failed (" + $e + "). Use /telegram to send messages.")}'
+  exit 0
+fi
 echo '{"systemMessage": "Telegram Notifier plugin: Ready. Use /telegram to send messages."}'
 exit 0

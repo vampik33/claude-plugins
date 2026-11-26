@@ -87,11 +87,17 @@ if [[ ${#MISSING_CREDS[@]} -gt 0 ]]; then
 fi
 
 # Success message, with the reason the last Stop notification failed, if one did
-# (its detached send job had no output to show it in); reported once
+# (its detached send job had no output to show it in); reported once. The record is
+# claimed with one mv, so two session starts never both report it, and a failure
+# recorded after the claim stays for the next one; an empty record is not reported
 ERROR_FILE=$(get_last_error_path)
-if [[ -f "$ERROR_FILE" ]]; then
-  LAST_ERROR=$(head -c 300 "$ERROR_FILE" | head -1)
-  rm -f "$ERROR_FILE" 2>/dev/null || true
+CLAIMED_FILE="$ERROR_FILE.claimed.$$"
+LAST_ERROR=""
+if mv "$ERROR_FILE" "$CLAIMED_FILE" 2>/dev/null; then
+  LAST_ERROR=$(head -c 300 "$CLAIMED_FILE" | head -1)
+  rm -f "$CLAIMED_FILE" 2>/dev/null || true
+fi
+if [[ -n "$LAST_ERROR" ]]; then
   jq -cn --arg e "$LAST_ERROR" '{systemMessage: ("Telegram Notifier plugin: Ready, but the last session notification failed (" + $e + "). Use /telegram to send messages.")}'
   exit 0
 fi

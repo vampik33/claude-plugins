@@ -79,17 +79,20 @@ fi
 
 # Get threshold (project > user > default of 10 minutes)
 THRESHOLD=$(resolve_config_field "session_threshold_minutes" "10")
-# Validate threshold is numeric
-if ! [[ "$THRESHOLD" =~ ^[0-9]+$ ]]; then
+# Validate threshold is numeric, and read it in base 10 (a leading 0 means octal
+# in bash arithmetic: 010 would be 8, and 08 an error)
+if ! [[ "$THRESHOLD" =~ ^[0-9]{1,6}$ ]]; then
   THRESHOLD=10
 fi
+THRESHOLD=$((10#$THRESHOLD))
 
 consume_session_file
 
-if [[ "$SESSION_START" == "0" || ! "$SESSION_START" =~ ^[0-9]+$ ]]; then
+if [[ ! "$SESSION_START" =~ ^[0-9]{1,12}$ ]] || ((10#$SESSION_START == 0)); then
   # Invalid timestamp, skip
   exit 0
 fi
+SESSION_START=$((10#$SESSION_START))
 
 CURRENT_TIME=$(date +%s)
 ELAPSED_SECONDS=$((CURRENT_TIME - SESSION_START))
@@ -180,11 +183,14 @@ deliver() {
     printf '%s\n' "$err" >&2
   fi
   if ((sent)); then
+    # Last writer wins: a failure recorded by an overlapping job is cleared too
     rm -f "$error_file" 2>/dev/null || true
   else
     err=${err##*$'\n'}
     err=${err#Error: }
-    (printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$err" > "$error_file") 2>/dev/null || true
+    # Written aside, then moved into place, so a reader never sees it half written
+    { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$err" > "$error_file.$$" &&
+      mv -f "$error_file.$$" "$error_file"; } 2>/dev/null || rm -f "$error_file.$$" 2>/dev/null || true
     echo "Warning: Failed to send session notification: $err" >&2
   fi
 }

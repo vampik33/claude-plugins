@@ -1516,6 +1516,17 @@ EOF
   [ "$output" = $'• Edited: a.ts' ]
 }
 
+@test "summarize-transcript: reads a tool_use written with spaces, and only quoted tool_use lines" {
+  local t="$BATS_TEST_TMPDIR/spaced.jsonl"
+  cat > "$t" <<'EOF'
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "/w/spaced.ts"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"not counted"}]}}
+EOF
+  run bash "$SCRIPTS/summarize-transcript.sh" "$t"
+  [ "$status" -eq 0 ]
+  [ "$output" = "• Edited: spaced.ts" ]
+}
+
 @test "summarize-transcript: reads tabs between tokens and CRLF line ends" {
   local t="$BATS_TEST_TMPDIR/crlf.jsonl"
   {

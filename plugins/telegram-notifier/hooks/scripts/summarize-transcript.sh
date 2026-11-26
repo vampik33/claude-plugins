@@ -46,7 +46,8 @@ CAP=6
 #   like a program name. What bounds the output is the first-line rule and the
 #   32-character cap; the shape check only keeps the list readable.
 # - "R:" the number of Read paths
-# Lines without "tool_use" are skipped before parsing (most of a long transcript):
+# Lines without "tool_use" (in quotes: a tool result's "tool_use_id" doesn't count)
+# are skipped before parsing (most of a long transcript):
 # sed turns each of the others into a JSON string literal after an RS byte (\ and "
 # escaped, and the tab and CR that may sit between JSON tokens), jq --seq reads the
 # strings and parses each with fromjson, so one physical line is one JSON value: a
@@ -58,7 +59,7 @@ CAP=6
 RS=$'\x1e'
 TAB=$'\t'
 CR=$'\r'
-TOOLS=$(LC_ALL=C sed -n '/tool_use/{s/\\/\\\\/g;s/"/\\"/g;s/'"$TAB"'/\\t/g;s/'"$CR"'/\\r/g;s/^/'"$RS"'"/;s/$/"/;p;}' "$TRANSCRIPT_PATH" | jq -nr --seq --argjson cap "$CAP" '
+TOOLS=$(LC_ALL=C sed -n '/"tool_use"/{s/\\/\\\\/g;s/"/\\"/g;s/'"$TAB"'/\\t/g;s/'"$CR"'/\\r/g;s/^/'"$RS"'"/;s/$/"/;p;}' "$TRANSCRIPT_PATH" | jq -nr --seq --argjson cap "$CAP" '
   def lines: if . == "" then [""] else split("\n") end;
   def base: if test("^/+$") then "/" else sub("/+$"; "") | sub(".*/"; "") end;
   def paths: .input.file_path // empty | tostring | lines[];
